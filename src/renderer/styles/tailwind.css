@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+@theme {
+  --spacing: 1px;
+  --color-mint-500: oklch(0.72 0.11 178);
+}
