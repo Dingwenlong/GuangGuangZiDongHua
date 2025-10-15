@@ -1,5 +1,6 @@
 import type MainInit from "./window-manager";
 import authManager from "./auth-manager";
+import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
 import config from "@config/index";
 import { BrowserWindow } from "electron";
 
@@ -76,6 +77,20 @@ export const ipcCustomMainHandlers = (
       channel: "GetAuthInfo",
       handler: async () => {
         return await authManager.getAuthInfo();
+      },
+    },
+    {
+      channel: "RunWatermarkRemoval",
+      handler: async (_: any,
+        arg: { filePath: string; targetDir: string }) => {
+        const { filePath, targetDir } = arg;
+        return await runWatermarkRemoval(filePath, targetDir);
+      },
+    },
+    {
+      channel: "CheckLoginStatus",
+      handler: async () => {
+        return await checkLoginStatus();
       },
     },
   ];

@@ -15,7 +15,8 @@
         </div>
       </div>
       <div class="w-full bg-white">
-        content
+        <S1 v-if="menus[0].checked" />
+        <S2 v-if="menus[1].checked" />
       </div>
       <div class="min-w-3/12 bg-gray-100">
         <LogPanel :logs="logData" />
@@ -26,6 +27,8 @@
 <script lang="ts" setup>
 import { onMounted, ref } from 'vue';
 import LogPanel from './components/log-panel.vue';
+import S1 from './components/s1.vue';
+import S2 from './components/s2.vue';
 import MoFang from '@renderer/assets/icons/webp/mo-fang.webp';
 
 interface MenuItem {

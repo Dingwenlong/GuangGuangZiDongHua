@@ -63,6 +63,11 @@ export class IpcChannelMainCustomClass {
   Logout: IpcMainEventListener;
   GetLoginUserInfo: IpcMainEventListener<void, UserData>;
   GetAuthInfo: IpcMainEventListener<void, Auth>;
+  RunWatermarkRemoval: IpcMainEventListener<{
+    filePath: string;
+    targetDir: string;
+  }>;
+  CheckLoginStatus: IpcMainEventListener<void, boolean>;
 }
 
 /**
