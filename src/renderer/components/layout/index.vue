@@ -1,10 +1,10 @@
 <template>
-  <div class="select-none w-screen h-screen overflow-hidden">
+  <div class="select-none w-screen h-screen flex flex-col">
     <TitleBar />
     <div
-      class="fixed top-40 border-t-2 border-[#a8bbce] w-full h-[calc(100%-40px)] overflow-auto p-20"
+      class="flex-1 border-t-2 border-[#a8bbce] w-full p-20 overflow-hidden"
     >
-      <div class="h-full bg-white rounded-[10px]">
+      <div class="h-full bg-white rounded-[10px] overflow-hidden">
         <router-view v-slot="{ Component }">
           <component :is="Component" />
         </router-view>

@@ -90,6 +90,7 @@ function startCrash() {
 
 function openNewWin() {
   const data = {
+    winId: 'formIndex',
     url: "/form/index",
   };
   ipcRendererChannel.OpenWin.invoke(data);

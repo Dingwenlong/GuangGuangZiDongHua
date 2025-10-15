@@ -1,31 +1,29 @@
 <template>
-  <div class="drag flex justify-between fixed top-0 w-[calc(100%-140px)] h-40 text-center text-white text-[14px] z-99999" v-if="!IsUseSysTitle && isNotMac && !IsWeb">
+  <div class="drag flex justify-between w-[calc(100%-140px)] h-40 text-center text-white text-[14px] z-99999" v-if="!IsUseSysTitle && isNotMac && !IsWeb">
     <div class="flex items-center">
       <div class="w-28 ml-20 mr-5">
         <img src="@renderer/assets/icons/svg/meike-logo.svg" class="fill-current overflow-hidden" />
       </div>{{ i18nt.appTitle }}
     </div>
     <div class="no-drag flex items-center gap-8 text-xs leading-tight mx-5">
-      <div class="user-info flex items-center rounded-sm gap-4 p-4 transition-all hover:bg-white/30">
+      <div class="h-2/3 flex items-center rounded-sm gap-4 px-4 transition-all hover:bg-white/30">
         <img :src="NavUser" alt="用户" class="h-[18px] w-[18px] rounded-full" />
         {{userStore.userData?.realName}}&nbsp;&nbsp;{{userStore.userData?.mobile}}
       </div>
       <div
-          class="flex cursor-pointer items-center rounded-sm gap-4 p-4 transition-all hover:bg-white/30"
+          class="h-2/3 flex cursor-pointer items-center rounded-sm gap-4 px-4 transition-all hover:bg-white/30"
           @click="handleLogout"
         >
           <img :src="NavLogout" alt="登出" class="h-[18px] w-[18px]" />登出
         </div>
-      <div>
-        <div
-          class="flex cursor-pointer items-center rounded-sm gap-4 p-4 transition-all hover:bg-white/30"
-          @click="handleSetting"
-        >
-          <SettingFilled />设置
-        </div>
+      <div
+        class="h-2/3 flex cursor-pointer items-center rounded-sm gap-4 px-4 transition-all hover:bg-white/30"
+        @click="handleSetting"
+      >
+        <SettingFilled />设置
       </div>
       <div
-        class="flex cursor-pointer items-center rounded-sm p-4 transition-all hover:bg-white/30"
+        class="h-2/3 flex cursor-pointer items-center rounded-sm px-4 transition-all hover:bg-white/30"
         @click="() => ipcRendererChannel.OpenDevTools.invoke()"
       >
         <img :src="NavLBug" alt="调试" width="16" height="16" />
@@ -51,6 +49,7 @@ const IsUseSysTitle = ref(false);
 const mix = ref(false);
 const isNotMac = ref(false);
 const IsWeb = ref(Boolean(__ISWEB__));
+const creating = ref(false);
 
 if (systemInfo) isNotMac.value = systemInfo.platform !== "darwin";
 
@@ -61,9 +60,14 @@ ipcRendererChannel.IsUseSysTitle.invoke().then((res) => {
 const handleLogout = async () => {
   await userStore.logoutAction();
 };
-const handleSetting = () => {
-  ipcRendererChannel.OpenWin.invoke({
-    url: '/setting'
+const handleSetting = async () => {
+  if(creating.value) return;
+
+  creating.value = true;
+  await ipcRendererChannel.OpenWin.invoke({
+    url: '/setting',
+    winId: 'setting'
   });
+  creating.value = false;
 };
 </script>

@@ -96,6 +96,12 @@ export class IpcChannelMainClass extends IpcChannelMainCustomClass {
    */
   OpenWin!: IpcMainEventListener<{
     /**
+     * 窗体id
+     *
+     * @type {string}
+     */
+    winId: string;
+    /**
      * 新的窗口地址
      *
      * @type {string}

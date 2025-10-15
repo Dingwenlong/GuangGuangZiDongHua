@@ -5,11 +5,26 @@ import { webContentSend } from "./web-content-send";
 import { childWindowConfig } from "../config/window-create";
 import InitWindow from "../services/window-manager";
 
+type openningWinArray = {
+  winId: string;
+  win: BrowserWindow;
+}
+
+let winArray: openningWinArray[] = [];
 export const ipcMainHandlers = [
   {
     channel: "OpenWin",
-    handler: async (_: Electron.IpcMainEvent, arg: { url: any; IsPay: any; PayUrl: string; sendData: unknown; }) => {
-      const childWin = await new InitWindow().createWindow(
+    handler: async (_: Electron.IpcMainEvent, arg: { winId: string; url: any; IsPay: any; PayUrl: string; sendData: unknown; }) => {
+      let childWin = winArray.find(x => x.winId == arg.winId)?.win;
+      if(childWin) {
+        if(!childWin.isDestroyed()) {
+          childWin.show();
+          return;
+        }
+        winArray = winArray.filter(x => x.winId != arg.winId);
+      }
+
+      childWin = await new InitWindow().createWindow(
         childWindowConfig,
         winURL + `#${arg.url}`,
         false,
@@ -35,6 +50,7 @@ export const ipcMainHandlers = [
       childWin.once("show", () => {
         webContentSend.SendDataTest(childWin.webContents, arg.sendData);
       });
+      winArray.push({ winId: arg.winId, win: childWin })
     },
   },
   {

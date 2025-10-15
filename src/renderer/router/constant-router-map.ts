@@ -10,23 +10,29 @@ const routes: Array<RouteRecordRaw> = [
     path: "/",
     component: Layout,
     meta: { requiresAuth: true },
+    redirect: '/workflow',
     children: [
       {
-        path: "",
-        name: "总览",
-        component: import("@renderer/views/landing-page/LandingPage.vue"),
+        path: "workflow",
+        name: "工作流",
+        component: () => import("@renderer/views/home/index.vue"),
       },
+      {
+        path: "setting",
+        name: "设置",
+        component: () => import("@renderer/views/setting/index.vue"),
+      },
+      {
+        path: "landing",
+        name: "总览",
+        component: import("@renderer/views/landing/index.vue"),
+      }
     ],
   },
   {
     path: "/login",
     name: "登录",
-    component: () => import("@renderer/views/login-page/index.vue"),
-  },
-  {
-    path: "/setting",
-    name: "设置",
-    component: () => import("@renderer/views/setting-page/index.vue"),
+    component: () => import("@renderer/views/login/index.vue"),
   },
 ];
 
