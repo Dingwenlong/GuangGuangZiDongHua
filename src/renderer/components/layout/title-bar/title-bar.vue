@@ -1,11 +1,11 @@
 <template>
-  <div class="drag flex justify-between w-[calc(100%-140px)] h-40 text-center text-white text-[14px] z-99999" v-if="!IsUseSysTitle && isNotMac && !IsWeb">
+  <div class="drag flex justify-between w-[calc(100%-136px)] h-40 text-center text-white text-[14px] z-99999" v-if="!IsUseSysTitle && isNotMac && !IsWeb">
     <div class="flex items-center">
       <div class="w-28 ml-20 mr-5">
         <img src="@renderer/assets/icons/svg/meike-logo.svg" class="fill-current overflow-hidden" />
       </div>{{ i18nt.appTitle }}
     </div>
-    <div class="no-drag flex items-center gap-8 text-xs leading-tight mx-5">
+    <div class="no-drag flex items-center gap-8 text-xs leading-tight px-5 border-r">
       <div class="h-2/3 flex items-center rounded-sm gap-4 px-4 transition-all hover:bg-white/30">
         <img :src="NavUser" alt="用户" class="h-[18px] w-[18px] rounded-full" />
         {{userStore.userData?.realName}}&nbsp;&nbsp;{{userStore.userData?.mobile}}

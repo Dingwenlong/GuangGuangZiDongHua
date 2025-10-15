@@ -4,7 +4,7 @@
         <div class="space-y-10">
           <div
             v-for="(item, index) in menus"
-            :key="index"W
+            :key="index"
             class="flex items-center gap-2 p-8 rounded-lg cursor-pointer transition-all duration-200"
             :class="item.checked ? 'bg-black text-white' : 'hover:bg-gray-200'"
             @click="selectMenu(index)"
@@ -33,6 +33,7 @@ interface MenuItem {
   checked: boolean;
 }
 
+// 菜单数据
 const menus = ref<MenuItem[]>([
   { title: "S1 - 素材合并", checked: true },
   { title: "S2 - 开拍去水印", checked: false },
