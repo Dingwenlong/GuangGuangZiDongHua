@@ -4,6 +4,7 @@
   "main": "./dist/electron/main/main.js",
   "author": "Pincheng Technology",
   "description": "guang-guang-zi-dong-hua project",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "tsx .electron-vite/dev-runner.ts",
     "build": "tsx .electron-vite/build.ts -m prod && electron-builder -c build.json",

@@ -44,7 +44,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, nextTick, withDefaults, defineProps, VNodeRef } from 'vue';
+import { ref, watch, nextTick, VNodeRef } from 'vue';
 import RightRetract from '@renderer/assets/icons/webp/right-retract.webp';
 import LeftRetract from '@renderer/assets/icons/webp/left-retract.webp';
 
