@@ -1,6 +1,6 @@
 <template>
     <div class="h-full flex flex-row justify-between">
-      <div class="min-w-200 h-full bg-[#F5F6F7] p-15 text-[14px]">
+      <div class="min-w-200 h-full bg-gray-100 p-15 text-[14px]">
         <div class="space-y-10">
           <div
             v-for="(item, index) in menus"
@@ -14,7 +14,7 @@
           </div>
         </div>
       </div>
-      <div class="w-full bg-white">
+      <div class="w-full bg-white p-15">
         <S1 v-if="menus[0].checked" />
         <S2 v-if="menus[1].checked" />
       </div>

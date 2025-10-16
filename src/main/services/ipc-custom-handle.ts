@@ -1,12 +1,19 @@
 import type MainInit from "./window-manager";
 import authManager from "./auth-manager";
+import workbenchManager from "./workbench-manager";
 import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
 import config from "@config/index";
 import { BrowserWindow } from "electron";
+import VideoProcessor from "./video-processor";
 
+/**
+ * 自定义全局
+ * @param mainInit
+ * @returns
+ */
 export const ipcCustomGlobalHandlers = (
   mainInit: MainInit
-) => {
+): IpcHandler[] => {
   return [
     {
       channel: "GetLoginState",
@@ -14,7 +21,7 @@ export const ipcCustomGlobalHandlers = (
     },
     {
       channel: "OpenDevTools",
-      handler: async (event: Electron.IpcMainEvent) => {
+      handler: async (event) => {
         event.sender?.openDevTools({
           mode: "undocked",
           activate: true,
@@ -24,14 +31,19 @@ export const ipcCustomGlobalHandlers = (
   ];
 };
 
+/**
+ * 自定义登录
+ * @param mainInit
+ * @returns
+ */
 export const ipcCustomLoginHandlers = (
   mainInit: MainInit
-) => {
+): IpcHandler[] => {
   return [
     {
       channel: "LoginSuccess",
       handler: async (
-        _: any,
+        _,
         arg: { userData: any; token: any; refreshToken: any }
       ) => {
         const { userData, token, refreshToken } = arg;
@@ -46,14 +58,21 @@ export const ipcCustomLoginHandlers = (
   ];
 };
 
+let videoProcessor: VideoProcessor;
+
+/**
+ * 自定义主窗口
+ * @param mainInit
+ * @returns
+ */
 export const ipcCustomMainHandlers = (
   mainInit: MainInit
-) => {
+): IpcHandler[] => {
   return [
     {
       channel: "Test",
       handler: () => {
-        authManager.clearLoginState();
+        // authManager.clearLoginState();
       },
     },
     {
@@ -81,8 +100,7 @@ export const ipcCustomMainHandlers = (
     },
     {
       channel: "RunWatermarkRemoval",
-      handler: async (_: any,
-        arg: { filePath: string; targetDir: string }) => {
+      handler: async (_, arg: { filePath: string; targetDir: string }) => {
         const { filePath, targetDir } = arg;
         return await runWatermarkRemoval(filePath, targetDir);
       },
@@ -93,5 +111,46 @@ export const ipcCustomMainHandlers = (
         return await checkLoginStatus();
       },
     },
+    {
+      channel: "UpdateWorkbenchData",
+      handler: async (_, arg: any) => {
+        return await workbenchManager.updateData(arg);
+      },
+    },
+    {
+      channel: "GetWorkbenchData",
+      handler: async () => {
+        return await workbenchManager.getInfo();
+      },
+    },
+    {
+      channel: "StartMonitoring",
+      handler: async (_, directory: string) => {
+        if (videoProcessor) {
+          videoProcessor.stop();
+        }
+
+        videoProcessor = new VideoProcessor(directory);
+        videoProcessor.on('status', (data) => {
+          mainInit.mainWindow!.webContents.send('StatusUpdate', data);
+        });
+        videoProcessor.on('log', (data) => {
+          mainInit.mainWindow!.webContents.send('LogUpdate', data);
+        });
+
+        videoProcessor.start();
+        return { success: true };
+      },
+    },
+    {
+      channel: "StopMonitoring",
+      handler: async () => {
+        if (videoProcessor) {
+          videoProcessor.stop();
+          return { success: true };
+        }
+        return { success: false };
+      },
+    }
   ];
 };

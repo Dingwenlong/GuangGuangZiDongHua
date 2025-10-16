@@ -10,10 +10,9 @@ const routes: Array<RouteRecordRaw> = [
     path: "/",
     component: Layout,
     meta: { requiresAuth: true },
-    redirect: '/workflow',
     children: [
       {
-        path: "workflow",
+        path: "",
         name: "工作流",
         component: () => import("@renderer/views/home/index.vue"),
       },

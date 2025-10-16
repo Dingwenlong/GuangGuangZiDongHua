@@ -16,12 +16,12 @@
     <div
       v-show="isExpanded"
       ref="logContainer"
-      class="flex-1 overflow-auto p-3"
+      class="flex-1 overflow-auto p-6"
     >
       <div v-if="logs.length === 0" class="text-gray-500 text-center py-4">
         暂无日志信息
       </div>
-      <ul v-else class="space-y-2">
+      <ul v-else class="space-y-6">
         <li
           v-for="(log, index) in logs"
           :key="index"

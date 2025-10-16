@@ -6,6 +6,7 @@
 
 import type { ProgressInfo } from "electron-updater";
 import type { UserData, Auth } from "@main/services/auth-manager";
+import type { WorkbenchStoreSchema } from "@main/services/workbench-manager";
 
 /**
  * 主进程的IPC通道事件监听
@@ -52,22 +53,26 @@ export interface IpcRendererEventListener<Send = void> {
  * 具体实现在 src/main/services/ipc-main-custom-handle.ts
  */
 export class IpcChannelMainCustomClass {
-  GetLoginState: IpcMainEventListener<void, boolean>;
-  OpenDevTools: IpcMainEventListener;
-  LoginSuccess: IpcMainEventListener<{
+  GetLoginState!: IpcMainEventListener<void, boolean>;
+  OpenDevTools!: IpcMainEventListener;
+  LoginSuccess!: IpcMainEventListener<{
     userData: any;
     token?: string;
     refreshToken?: string;
   }>;
-  Test: IpcMainEventListener;
-  Logout: IpcMainEventListener;
-  GetLoginUserInfo: IpcMainEventListener<void, UserData>;
-  GetAuthInfo: IpcMainEventListener<void, Auth>;
-  RunWatermarkRemoval: IpcMainEventListener<{
+  Test!: IpcMainEventListener;
+  Logout!: IpcMainEventListener;
+  GetLoginUserInfo!: IpcMainEventListener<void, UserData>;
+  GetAuthInfo!: IpcMainEventListener<void, Auth>;
+  RunWatermarkRemoval!: IpcMainEventListener<{
     filePath: string;
     targetDir: string;
   }>;
-  CheckLoginStatus: IpcMainEventListener<void, boolean>;
+  CheckLoginStatus!: IpcMainEventListener<void, boolean>;
+  UpdateWorkbenchData!: IpcMainEventListener<WorkbenchStoreSchema>;
+  GetWorkbenchData!: IpcMainEventListener<void, WorkbenchStoreSchema>;
+  StartMonitoring!: IpcMainEventListener<string>;
+  StopMonitoring!: IpcMainEventListener;
 }
 
 /**
@@ -136,6 +141,8 @@ export class IpcChannelMainClass extends IpcChannelMainCustomClass {
   }>
   CloseWin!: IpcMainEventListener
   GetAppVersion!: IpcMainEventListener<void, string>
+  SelectDirectory!: IpcMainEventListener<void, string>
+  CreateDirectory!: IpcMainEventListener<any, any>
 }
 
 /**

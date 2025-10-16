@@ -1,6 +1,5 @@
 import config from "@config/index";
 import {
-  app,
   BrowserWindow,
   type BrowserWindowConstructorOptions,
 } from "electron";

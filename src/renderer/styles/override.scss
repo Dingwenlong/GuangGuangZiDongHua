@@ -13,6 +13,7 @@
 .ant-input {
   box-shadow: none !important;
   color: #001428 !important;
+  line-height: 50%;
   &.ant-btn-primary {
     background-color: #001428 !important;
   }
@@ -45,4 +46,13 @@
   &.ant-btn-primary:disabled {
     opacity: 0.65 !important;
   }
+}
+.ant-switch  {
+  &.ant-switch-checked {
+    background: #000;
+    margin-top: -2px;
+  }
+  &.ant-switch-checked:hover:not(.ant-switch-disabled) {
+    background: rgb(50, 50, 50)
+}
 }
