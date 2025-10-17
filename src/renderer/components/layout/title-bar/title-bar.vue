@@ -1,5 +1,5 @@
 <template>
-  <div class="drag flex justify-between w-[calc(100%-136px)] h-40 text-center text-white text-[14px] z-99999" v-if="!IsUseSysTitle && isNotMac && !IsWeb">
+  <div class="select-none drag flex justify-between w-[calc(100%-136px)] h-40 text-center text-white text-[14px] z-99999" v-if="!IsUseSysTitle && isNotMac && !IsWeb">
     <div class="flex items-center">
       <div class="w-28 ml-20 mr-5">
         <img src="@renderer/assets/icons/svg/meike-logo.svg" class="fill-current overflow-hidden" />
@@ -30,7 +30,7 @@
       </div>
     </div>
   </div>
-  <div v-else-if="!IsUseSysTitle && !isNotMac" class="drag flex fixed top-0 w-full h-40 z-99999"></div>
+  <div v-else-if="!IsUseSysTitle && !isNotMac" class="select-none drag flex fixed top-0 w-full h-40 z-99999"></div>
 </template>
 
 <script setup lang="ts">

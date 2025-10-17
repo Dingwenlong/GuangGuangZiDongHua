@@ -128,6 +128,7 @@ export const ipcMainHandlers: IpcHandler[] = [
     handler: async (_, arg: { dirPath: string, dirName: string }) => {
       try {
         const targetDir = path.join(arg.dirPath, arg.dirName);
+        console.log('targetDir', targetDir)
         await fs.promises.mkdir(targetDir, {
             recursive: true
         });

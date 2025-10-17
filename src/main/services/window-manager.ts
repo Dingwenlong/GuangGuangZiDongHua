@@ -37,14 +37,13 @@ class MainInit {
       this.winURL,
       true,
       (win) => {
-        // 注册主窗体专属的IPC事件
-        registerIpcHandlers(ipcCustomMainHandlers(this));
-        // dom-ready之后显示界面
         win.show();
         if (config.UseStartupChart && this.loadWindow)
           this.loadWindow.destroy();
       }
     );
+    // 注册主窗体专属的IPC事件
+    registerIpcHandlers(ipcCustomMainHandlers(this));
     this.mainWindow.on("closed", () => {
       this.mainWindow = null;
       unregisterIpcHandlers(ipcCustomMainHandlers(this));
@@ -57,16 +56,15 @@ class MainInit {
     this.loginWindow = await this.createWindow(
       loginWindowConfig,
       this.winURL,
-      true,
+      false,
       (win) => {
-        // 注册登录窗体专属的IPC事件
-        registerIpcHandlers(ipcCustomLoginHandlers(this));
-        // dom-ready之后显示界面
         win.show();
         if (config.UseStartupChart && this.loadWindow)
           this.loadWindow.destroy();
       }
     );
+    // 注册登录窗体专属的IPC事件
+    registerIpcHandlers(ipcCustomLoginHandlers(this));
     this.loginWindow.on("closed", () => {
       this.loginWindow = null;
       unregisterIpcHandlers(ipcCustomLoginHandlers(this));

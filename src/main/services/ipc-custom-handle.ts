@@ -5,6 +5,8 @@ import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
 import config from "@config/index";
 import { BrowserWindow } from "electron";
 import VideoProcessor from "./video-processor";
+import DirectoryMonitor from "./directory-monitor";
+import { webContentSend } from "./web-content-send";
 
 /**
  * 自定义全局
@@ -58,7 +60,8 @@ export const ipcCustomLoginHandlers = (
   ];
 };
 
-let videoProcessor: VideoProcessor;
+let videoProcessor: VideoProcessor | null = null;
+let dirMonitor: DirectoryMonitor | null = null;
 
 /**
  * 自定义主窗口
@@ -124,18 +127,55 @@ export const ipcCustomMainHandlers = (
       },
     },
     {
-      channel: "StartMonitoring",
-      handler: async (_, directory: string) => {
+      channel: "StartMonitoringDirectory",
+      handler: async (event, directory: string) => {
+        if (dirMonitor) {
+          dirMonitor.stop();
+        }
+
+        dirMonitor = new DirectoryMonitor(directory, {
+          maxDepth: 3,           // 监控深度
+          updateInterval: 30000, // 30秒更新一次
+          debounceDelay: 500     // 500ms防抖延迟
+        });
+        dirMonitor.on('directoryStructure', ({ root, structure }) => {
+          if(mainInit.mainWindow)
+            webContentSend.MonitoringDirectoryCallback(mainInit.mainWindow.webContents, { root, structure });
+        });
+        dirMonitor.on('log', ({ message, type }) => {
+          if(mainInit.mainWindow)
+            webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
+        });
+
+        dirMonitor.start();
+        return { success: true };
+      },
+    },
+    {
+      channel: "StopMonitoringDirectory",
+      handler: async () => {
+        if (dirMonitor) {
+          dirMonitor.stop();
+          return { success: true };
+        }
+        return { success: false };
+      },
+    },
+    {
+      channel: "StartMonitoringVideo",
+      handler: async (event, directory: string) => {
         if (videoProcessor) {
           videoProcessor.stop();
         }
 
         videoProcessor = new VideoProcessor(directory);
         videoProcessor.on('status', (data) => {
-          mainInit.mainWindow!.webContents.send('StatusUpdate', data);
+          if(mainInit.mainWindow)
+            webContentSend.MonitoringVideoStatusUpdate(mainInit.mainWindow.webContents, data);
         });
-        videoProcessor.on('log', (data) => {
-          mainInit.mainWindow!.webContents.send('LogUpdate', data);
+        videoProcessor.on('log', ({ message, type }) => {
+          if(mainInit.mainWindow)
+            webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
         });
 
         videoProcessor.start();
@@ -143,7 +183,7 @@ export const ipcCustomMainHandlers = (
       },
     },
     {
-      channel: "StopMonitoring",
+      channel: "StopMonitoringVideo",
       handler: async () => {
         if (videoProcessor) {
           videoProcessor.stop();
