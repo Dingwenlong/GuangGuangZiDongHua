@@ -51,6 +51,11 @@ interface memoryInfo {
 }
 
 declare global {
+  interface IpcHandler {
+    channel: string;
+    handler: (event: Electron.IpcMainEvent, args: any) => any;
+  }
+
   interface Window {
     performance: {
       memory: memoryInfo;

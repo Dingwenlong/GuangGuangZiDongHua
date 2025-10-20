@@ -6,6 +6,7 @@
 
 import type { ProgressInfo } from "electron-updater";
 import type { UserData, Auth } from "@main/services/auth-manager";
+import type { WorkbenchStoreSchema } from "@main/services/workbench-manager";
 
 /**
  * 主进程的IPC通道事件监听
@@ -52,22 +53,28 @@ export interface IpcRendererEventListener<Send = void> {
  * 具体实现在 src/main/services/ipc-main-custom-handle.ts
  */
 export class IpcChannelMainCustomClass {
-  GetLoginState: IpcMainEventListener<void, boolean>;
-  OpenDevTools: IpcMainEventListener;
-  LoginSuccess: IpcMainEventListener<{
+  GetLoginState!: IpcMainEventListener<void, boolean>;
+  OpenDevTools!: IpcMainEventListener;
+  LoginSuccess!: IpcMainEventListener<{
     userData: any;
     token?: string;
     refreshToken?: string;
   }>;
-  Test: IpcMainEventListener;
-  Logout: IpcMainEventListener;
-  GetLoginUserInfo: IpcMainEventListener<void, UserData>;
-  GetAuthInfo: IpcMainEventListener<void, Auth>;
-  RunWatermarkRemoval: IpcMainEventListener<{
+  Test!: IpcMainEventListener;
+  Logout!: IpcMainEventListener;
+  GetLoginUserInfo!: IpcMainEventListener<void, UserData>;
+  GetAuthInfo!: IpcMainEventListener<void, Auth>;
+  RunWatermarkRemoval!: IpcMainEventListener<{
     filePath: string;
     targetDir: string;
   }>;
-  CheckLoginStatus: IpcMainEventListener<void, boolean>;
+  CheckLoginStatus!: IpcMainEventListener<void, boolean>;
+  UpdateWorkbenchData!: IpcMainEventListener<WorkbenchStoreSchema>;
+  GetWorkbenchData!: IpcMainEventListener<void, WorkbenchStoreSchema>;
+  StartMonitoringVideo!: IpcMainEventListener<string>;
+  StopMonitoringVideo!: IpcMainEventListener;
+  StartMonitoringDirectory!: IpcMainEventListener<string>;
+  StopMonitoringDirectory!: IpcMainEventListener;
 }
 
 /**
@@ -136,8 +143,16 @@ export class IpcChannelMainClass extends IpcChannelMainCustomClass {
   }>
   CloseWin!: IpcMainEventListener
   GetAppVersion!: IpcMainEventListener<void, string>
+  SelectDirectory!: IpcMainEventListener<void, string>
+  CreateDirectory!: IpcMainEventListener<any, any>
 }
 
+
+export class IpcChannelRendererCustomClass {
+  MonitoringDirectoryCallback!: IpcRendererEventListener<any>
+  MonitoringVideoStatusUpdate!: IpcRendererEventListener<any>
+  LogUpdate!: IpcRendererEventListener<any>
+}
 /**
  * 渲染进程的IPC通道事件
  * 给渲染进程发消息的事件以及渲染进程监听的时间都写在这里，但是这里也只是规定了都有什么，并没有具体实现
@@ -145,7 +160,7 @@ export class IpcChannelMainClass extends IpcChannelMainCustomClass {
  * 主进程给渲染进程发消息的话，直接就 webContentSend.事件名 就行了
  * 如 webContentSend.SendDataTest(childWin.webContents, arg.sendData);
  */
-export class IpcChannelRendererClass {
+export class IpcChannelRendererClass extends IpcChannelRendererCustomClass {
   // ipcRenderer
   DownloadProgress!: IpcRendererEventListener<number>
   DownloadError!: IpcRendererEventListener<Boolean>
