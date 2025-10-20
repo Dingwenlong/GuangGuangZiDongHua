@@ -1,10 +1,11 @@
 import type MainInit from "./window-manager";
 import authManager from "./auth-manager";
 import workbenchManager from "./workbench-manager";
-import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
+// import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
 import config from "@config/index";
 import { BrowserWindow } from "electron";
 import VideoProcessor from "./video-processor";
+import PlaywrightScript from "./playwright";
 import DirectoryMonitor from "./directory-monitor";
 import { webContentSend } from "./web-content-send";
 
@@ -61,6 +62,7 @@ export const ipcCustomLoginHandlers = (
 };
 
 let videoProcessor: VideoProcessor | null = null;
+let playwrightScript: PlaywrightScript | null = null;
 let dirMonitor: DirectoryMonitor | null = null;
 
 /**
@@ -103,15 +105,31 @@ export const ipcCustomMainHandlers = (
     },
     {
       channel: "RunWatermarkRemoval",
-      handler: async (_, arg: { filePath: string; targetDir: string }) => {
+      handler: async (event, arg: { filePath: string; targetDir: string }) => {
         const { filePath, targetDir } = arg;
-        return await runWatermarkRemoval(filePath, targetDir);
+        if (playwrightScript) {
+          playwrightScript = null;
+        }
+        playwrightScript = new PlaywrightScript();
+        playwrightScript.on('log', ({ message, type }) => {
+          if(mainInit.mainWindow)
+            webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
+        });
+        return await playwrightScript.runWatermarkRemoval(filePath, targetDir);
       },
     },
     {
       channel: "CheckLoginStatus",
-      handler: async () => {
-        return await checkLoginStatus();
+      handler: async (event) => {
+        if (playwrightScript) {
+          playwrightScript = null;
+        }
+        playwrightScript = new PlaywrightScript();
+        playwrightScript.on('log', ({ message, type }) => {
+          if(mainInit.mainWindow)
+            webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
+        });
+        return await playwrightScript.checkLoginStatus();
       },
     },
     {
@@ -179,6 +197,15 @@ export const ipcCustomMainHandlers = (
         });
 
         videoProcessor.start();
+        return { success: true };
+      },
+    },
+    {
+      channel: "PlaywrightScript",
+      handler: async (_, arg: { filePath: string; targetDir: string }) => {
+        const { filePath, targetDir } = arg;
+        if (playwrightScript) {
+        }
         return { success: true };
       },
     },
