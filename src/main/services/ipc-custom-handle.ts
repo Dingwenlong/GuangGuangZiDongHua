@@ -195,6 +195,15 @@ export const ipcCustomMainHandlers = (
           if(mainInit.mainWindow)
             webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
         });
+        videoProcessor.on('addToSubtitleRemoveQueue', (subtitleRemoveQueue: Array<string>) => {
+          // 队列内容元素新增事件触发
+
+          // // 删除处理完成之后的元素
+          // const item = subtitleRemoveQueue.pop();
+          // if(item && videoProcessor) {
+          //   videoProcessor.removeToSubtitleRemoveQueue(item);
+          // }
+        });
 
         videoProcessor.start();
         return { success: true };

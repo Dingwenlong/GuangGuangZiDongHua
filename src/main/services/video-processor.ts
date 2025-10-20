@@ -2,11 +2,7 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as chokidar from 'chokidar';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import ffmpegPath from 'ffmpeg-static';
-
-const execFileAsync = promisify(execFile);
+import { FFmpegUtil, FFmpegProgressEvent } from '../utils/ffmpeg';
 
 // 类型定义
 interface VideoProcessorOptions {
@@ -47,6 +43,11 @@ class VideoProcessor extends EventEmitter {
     private status: StatusObject;
     private videoExtensions: Set<string>;
     private queueProcessInterval!: NodeJS.Timeout | null;
+    private ffmpegUtil: FFmpegUtil;
+
+    // 去字幕任务队列
+    private subtitleRemoveQueue: string[];
+    private isProcessingSubtitle: boolean;
 
     constructor(monitorDirectory: string, options: VideoProcessorOptions = {}) {
         super();
@@ -66,6 +67,10 @@ class VideoProcessor extends EventEmitter {
         this.recentlyProcessedCleanup = null;     // 清理定时器
         this.processingQueue = new Map<string, ProcessingQueueItem>();         // 处理队列
 
+        // 去字幕任务队列
+        this.subtitleRemoveQueue = [];
+        this.isProcessingSubtitle = false;
+
         // 系统状态
         this.status = {
             monitoring: false,
@@ -80,12 +85,30 @@ class VideoProcessor extends EventEmitter {
             '.mp4', '.avi', '.mov', '.mkv', '.wmv',
             '.flv', '.webm', '.m4v', '.3gp', '.ogg'
         ]);
+
+        // 初始化FFmpeg工具
+        this.ffmpegUtil = FFmpegUtil.getInstance();
+        this.setupFFmpegEvents();
+    }
+
+    /**
+     * 设置FFmpeg事件监听
+     */
+    private setupFFmpegEvents(): void {
+        this.ffmpegUtil.on('progress', (event: FFmpegProgressEvent) => {
+            this.status.processingStatus = `${event.operation}: ${event.progress.toFixed(1)}%`;
+            this.updateStatus();
+        });
+
+        this.ffmpegUtil.on('log', (event: LogEvent) => {
+            this.emit('log', event);
+        });
     }
 
     /**
      * 获取文件标识键
      */
-    private getFileKey(filePath: string): string {
+    public getFileKey(filePath: string) {
         // 默认使用文件全路径
         if (this.options.fileKeyMethod === 'path') {
             return filePath;
@@ -379,7 +402,7 @@ class VideoProcessor extends EventEmitter {
         let duration: number;
 
         try {
-            duration = await this.getVideoDuration(inputPath);
+            duration = await this.ffmpegUtil.getVideoDuration(inputPath);
             this.emit('log', { message: `视频时长: ${duration.toFixed(2)}秒`, type: 'info' } as LogEvent);
         } catch (error) {
             throw new Error(`无法获取视频时长: ${(error as Error).message}`);
@@ -396,7 +419,7 @@ class VideoProcessor extends EventEmitter {
             return;
         }
 
-        // 获取输出文件名
+        // 获取输出文件名 - 保留S1---前缀
         const outputFileName = await this.getOutputFileName(productDir);
         const outputPath = path.join(productDir, outputFileName);
 
@@ -405,13 +428,14 @@ class VideoProcessor extends EventEmitter {
 
         try {
             if (duration >= 16 && duration <= 24) {
-                await this.adjustSpeed(inputPath, outputPath, duration);
+                const speed = duration / 20;
+                await this.ffmpegUtil.adjustSpeed(inputPath, outputPath, speed);
             } else if (duration > 24) {
-                await this.trimVideo(inputPath, outputPath);
+                await this.ffmpegUtil.trimVideo(inputPath, outputPath);
             }
 
             // 验证输出文件
-            await this.verifyOutputVideo(outputPath);
+            await this.ffmpegUtil.verifyOutputVideo(outputPath);
 
             // 删除原视频
             fs.unlinkSync(inputPath);
@@ -431,178 +455,6 @@ class VideoProcessor extends EventEmitter {
             this.status.processingStatus = '空闲';
             this.updateStatus();
         }
-    }
-
-    /**
-     * 调整视频速度
-     */
-    private async adjustSpeed(inputPath: string, outputPath: string, duration: number): Promise<void> {
-        const speed = duration / 20;
-
-        this.emit('log', {
-            message: `变速处理: 速度比例 ${speed.toFixed(3)}`,
-            type: 'info'
-        });
-
-        try {
-            const args = [
-                '-i', inputPath,
-                '-vf', `setpts=${1/speed}*PTS`,
-                '-af', `atempo=${speed > 2 ? 2 : speed}`,
-                ...(speed > 2 ? ['-af', `atempo=${speed/2}`] : []),
-                '-t', '20',
-                '-c:v', 'libx264',
-                '-preset', 'fast',
-                '-crf', '23',
-                '-c:a', 'aac',
-                '-b:a', '128k',
-                outputPath
-            ];
-
-            await this.executeFFmpeg(args, '变速处理');
-        } catch (error) {
-            throw new Error(`变速处理失败: ${(error as Error).message}`);
-        }
-    }
-
-    /**
-     * 截取视频前20秒
-     */
-    private async trimVideo(inputPath: string, outputPath: string): Promise<void> {
-        this.emit('log', { message: '截取视频前20秒', type: 'info' });
-
-        try {
-            const args = [
-                '-i', inputPath,
-                '-t', '20',
-                '-c:v', 'libx264',
-                '-preset', 'fast',
-                '-crf', '23',
-                '-c:a', 'aac',
-                '-b:a', '128k',
-                outputPath
-            ];
-
-            await this.executeFFmpeg(args, '截取处理');
-        } catch (error) {
-            throw new Error(`截取处理失败: ${(error as Error).message}`);
-        }
-    }
-
-    /**
-     * 执行 FFmpeg 命令
-     */
-    private async executeFFmpeg(args: string[], operationName: string): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const child = execFile(ffmpegPath, args);
-
-            child.stdout?.on('data', (data) => {
-                // FFmpeg 输出通常在 stderr
-            });
-
-            child.stderr?.on('data', (data) => {
-                // 解析进度信息
-                const progress = this.parseFFmpegProgress(data.toString());
-                if (progress !== null) {
-                    this.status.processingStatus = `${operationName}: ${progress.toFixed(1)}%`;
-                    this.updateStatus();
-                }
-            });
-
-            child.on('close', (code) => {
-                if (code === 0) {
-                    resolve();
-                } else {
-                    reject(new Error(`FFmpeg exited with code ${code}`));
-                }
-            });
-
-            child.on('error', (error) => {
-                reject(error);
-            });
-        });
-    }
-
-    /**
-     * 解析 FFmpeg 进度信息
-     */
-    private parseFFmpegProgress(stderr: string): number | null {
-        // FFmpeg 进度格式示例: frame=  123 fps= 25 q=28.0 size=    1024kB time=00:00:04.92 bitrate=1680.8kbits/s speed=1.03x
-        const timeMatch = stderr.match(/time=(\d+):(\d+):(\d+\.\d+)/);
-        if (timeMatch) {
-            const hours = parseInt(timeMatch[1], 10);
-            const minutes = parseInt(timeMatch[2], 10);
-            const seconds = parseFloat(timeMatch[3]);
-            const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-
-            // 假设目标时长为20秒，计算进度百分比
-            const progress = Math.min(100, (totalSeconds / 20) * 100);
-            return progress;
-        }
-        return null;
-    }
-
-    /**
-     * 获取视频时长
-     */
-    private async getVideoDuration(filePath: string): Promise<number> {
-        try {
-            const args = [
-                '-i', filePath,
-                '-hide_banner'
-            ];
-
-            const { stderr } = await execFileAsync(ffmpegPath, args);
-
-            // 从 FFmpeg 输出中解析时长
-            const durationMatch = stderr.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
-            if (durationMatch) {
-                const hours = parseInt(durationMatch[1], 10);
-                const minutes = parseInt(durationMatch[2], 10);
-                const seconds = parseFloat(durationMatch[3]);
-                return hours * 3600 + minutes * 60 + seconds;
-            }
-
-            throw new Error('无法从 FFmpeg 输出中解析视频时长');
-        } catch (error) {
-            throw new Error(`获取视频时长失败: ${(error as Error).message}`);
-        }
-    }
-
-    /**
-     * 验证输出视频
-     */
-    private async verifyOutputVideo(filePath: string): Promise<void> {
-        try {
-            const duration = await this.getVideoDuration(filePath);
-            if (Math.abs(duration - 20) > 1) {
-                throw new Error(`输出视频时长异常: ${duration}秒`);
-            }
-        } catch (error) {
-            throw new Error(`验证输出视频失败: ${(error as Error).message}`);
-        }
-    }
-
-    /**
-     * 获取输出文件名
-     */
-    private async getOutputFileName(productDir: string): Promise<string> {
-        const files = fs.readdirSync(productDir);
-        const processedVideos = files.filter(file =>
-            file.endsWith('.mp4') && file.includes('---')
-        );
-
-        let maxNumber = 0;
-        processedVideos.forEach(file => {
-            const match = file.match(/---(\d+)\.mp4$/);
-            if (match) {
-                const num = parseInt(match[1], 10);
-                if (num > maxNumber) maxNumber = num;
-            }
-        });
-
-        const productName = path.basename(productDir).replace('S1---', '');
-        return `${productName}---${maxNumber + 1}.mp4`;
     }
 
     /**
@@ -663,7 +515,7 @@ class VideoProcessor extends EventEmitter {
                 type: 'info'
             } as LogEvent);
 
-            await this.concatVideos(videoFiles, outputPath);
+            await this.ffmpegUtil.concatVideos(videoFiles, outputPath);
 
             // 清空商品目录并重命名
             await this.cleanAndRenameProductDirs(productDirs);
@@ -672,6 +524,9 @@ class VideoProcessor extends EventEmitter {
                 message: `视频合并成功: ${outputFileName} (总时长: 400秒)`,
                 type: 'success'
             } as LogEvent);
+
+            // 将合并后的视频加入去字幕处理队列
+            this.addToSubtitleRemoveQueue(outputPath);
 
         } catch (error) {
             this.emit('log', {
@@ -685,38 +540,28 @@ class VideoProcessor extends EventEmitter {
     }
 
     /**
-     * 连接视频文件
+     * 添加到去字幕处理队列
      */
-    private async concatVideos(videoFiles: string[], outputPath: string): Promise<void> {
-        const tempDir = path.join(this.monitorDirectory, 'temp');
-        const listPath = path.join(tempDir, `concat_list_${Date.now()}.txt`);
+    private addToSubtitleRemoveQueue(videoPath: string): void {
+        this.subtitleRemoveQueue.push(videoPath);
+        this.emit('log', {
+            message: `已加入去字幕队列: ${path.basename(videoPath)} (队列长度: ${this.subtitleRemoveQueue.length})`,
+            type: 'info'
+        } as LogEvent);
 
-        try {
-            // 创建 concat 列表文件
-            const listContent = videoFiles.map(file => `file '${path.resolve(file)}'`).join('\n');
-            fs.writeFileSync(listPath, listContent);
+        // 触发队列处理
+        this.emit('addToSubtitleRemoveQueue', this.subtitleRemoveQueue);
+    }
 
-            const args = [
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', listPath,
-                '-c', 'copy',
-                outputPath
-            ];
-
-            await this.executeFFmpeg(args, '合并进度');
-        } catch (error) {
-            throw new Error(`合并视频失败: ${(error as Error).message}`);
-        } finally {
-            // 清理临时文件
-            try {
-                if (fs.existsSync(listPath)) {
-                    fs.unlinkSync(listPath);
-                }
-            } catch (e) {
-                // 忽略清理错误
-            }
-        }
+    /**
+     * 删除去字幕处理队列的某项
+     */
+    public removeToSubtitleRemoveQueue(videoPath: string): void {
+        this.subtitleRemoveQueue = this.subtitleRemoveQueue.filter(x => x !== videoPath);
+        this.emit('log', {
+            message: `已删除去字幕队列项: ${path.basename(videoPath)} (剩余队列长度: ${this.subtitleRemoveQueue.length})`,
+            type: 'info'
+        } as LogEvent);
     }
 
     /**
@@ -849,6 +694,27 @@ class VideoProcessor extends EventEmitter {
         }
     }
 
+    // 获取输出文件名 - 保留S1---前缀
+    private async getOutputFileName(productDir: string): Promise<string> {
+        const files = fs.readdirSync(productDir);
+        const processedVideos = files.filter(file =>
+            file.endsWith('.mp4') && file.includes('---')
+        );
+
+        let maxNumber = 0;
+        processedVideos.forEach(file => {
+            const match = file.match(/---(\d+)\.mp4$/);
+            if (match) {
+                const num = parseInt(match[1], 10);
+                if (num > maxNumber) maxNumber = num;
+            }
+        });
+
+        // 保留完整的目录名，包括 S1--- 前缀
+        const productName = path.basename(productDir);
+        return `${productName}---${maxNumber + 1}.mp4`;
+    }
+
     // 扫描现有文件
     private scanExistingFiles(): void {
         this.emit('log', { message: '开始扫描现有文件', type: 'info' } as LogEvent);
@@ -908,12 +774,14 @@ class VideoProcessor extends EventEmitter {
         recentlyProcessed: number;
         queueSize: number;
         productDirs: number;
+        subtitleQueueSize: number;
     } {
         return {
             currentlyProcessing: this.currentlyProcessing.size,
             recentlyProcessed: this.recentlyProcessed.size,
             queueSize: this.processingQueue.size,
-            productDirs: this.getProductDirectories().length
+            productDirs: this.getProductDirectories().length,
+            subtitleQueueSize: this.subtitleRemoveQueue.length
         };
     }
 }
