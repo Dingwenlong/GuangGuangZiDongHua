@@ -6,7 +6,7 @@
  */
 
 import { memoryInfo } from 'customTypes/global'
-import Timer from './timer'
+import Timer from '@shared/utils/timer'
 
 class Performance {
   /**

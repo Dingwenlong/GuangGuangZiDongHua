@@ -57,7 +57,7 @@ import {
   Button,
   type TableColumnType
 } from 'ant-design-vue';
-import Timer from '@renderer/utils/timer'
+import Timer from '@shared/utils/timer'
 import { nanoid } from 'nanoid';
 
 const { shell, ipcRendererChannel } = window
