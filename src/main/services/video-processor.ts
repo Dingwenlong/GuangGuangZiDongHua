@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as chokidar from 'chokidar';
 import { FFmpegUtil, FFmpegProgressEvent } from '../utils/ffmpeg';
+import Timer from '@shared/utils/timer';
 
 // 类型定义
 interface VideoProcessorOptions {
@@ -34,7 +35,6 @@ interface LogEvent {
 class VideoProcessor extends EventEmitter {
     private monitorDirectory: string;
     private watcher: chokidar.FSWatcher | null;
-    private mergeInterval: NodeJS.Timeout | null;
     private options: VideoProcessorOptions;
     private currentlyProcessing: Set<string>;
     private recentlyProcessed: Map<string, number>;
@@ -47,13 +47,11 @@ class VideoProcessor extends EventEmitter {
 
     // 去字幕任务队列
     private subtitleRemoveQueue: string[];
-    private isProcessingSubtitle: boolean;
 
     constructor(monitorDirectory: string, options: VideoProcessorOptions = {}) {
         super();
         this.monitorDirectory = monitorDirectory;
         this.watcher = null;
-        this.mergeInterval = null;
 
         // 配置选项
         this.options = {
@@ -69,7 +67,6 @@ class VideoProcessor extends EventEmitter {
 
         // 去字幕任务队列
         this.subtitleRemoveQueue = [];
-        this.isProcessingSubtitle = false;
 
         // 系统状态
         this.status = {
@@ -145,7 +142,7 @@ class VideoProcessor extends EventEmitter {
         this.startFileWatching();
 
         // 定期检查合并条件
-        this.mergeInterval = setInterval(() => this.checkMergeCondition(), 10000);
+        this.checkMergeCondition();
 
         // 启动处理队列检查
         this.startQueueProcessing();
@@ -163,10 +160,6 @@ class VideoProcessor extends EventEmitter {
         if (this.watcher) {
             this.watcher.close();
             this.emit('log', { message: '文件监控已停止', type: 'info' } as LogEvent);
-        }
-
-        if (this.mergeInterval) {
-            clearInterval(this.mergeInterval);
         }
 
         if (this.recentlyProcessedCleanup) {
@@ -482,6 +475,11 @@ class VideoProcessor extends EventEmitter {
             } as LogEvent);
             await this.mergeVideos();
         }
+
+        // 递归执行
+        Timer.interval(5000, async () => {
+          await this.checkMergeCondition();
+        });
     }
 
     /**
