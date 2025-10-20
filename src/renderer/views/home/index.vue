@@ -18,7 +18,7 @@
         <S1 v-if="menus[0].checked" />
         <S2 v-if="menus[1].checked" />
       </div>
-      <div class="min-w-3/12 bg-gray-100">
+      <div class="min-w-3/12 max-w-3/12 bg-gray-100">
         <LogPanel :logs="logData" />
       </div>
     </div>

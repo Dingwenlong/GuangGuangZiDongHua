@@ -36,5 +36,12 @@
   },
   "linux": {
     "icon": "build/icons"
-  }
+  },
+  "extraResources": [
+    {
+      "from": "resources",
+      "to": "resources",
+      "filter": ["**/*"]
+    }
+  ]
 }

@@ -4,6 +4,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+resources
 dist/
 build/
 !build/icons
