@@ -4,6 +4,7 @@ import workbenchManager from "./workbench-manager";
 // import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
 import config from "@config/index";
 import { BrowserWindow } from "electron";
+import * as path from "path";
 import VideoProcessor from "./video-processor";
 import PlaywrightScript from "./playwright";
 import DirectoryMonitor from "./directory-monitor";
@@ -195,26 +196,46 @@ export const ipcCustomMainHandlers = (
           if(mainInit.mainWindow)
             webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
         });
-        videoProcessor.on('addToSubtitleRemoveQueue', (subtitleRemoveQueue: Array<string>) => {
+        videoProcessor.on('addToSubtitleRemoveQueue', async (subtitleRemoveQueue: Array<string>) => {
           // 队列内容元素新增事件触发
+          if (subtitleRemoveQueue.length > 0) {
+            // 从队列头部取出第一个待处理的视频
+            const item = subtitleRemoveQueue[0];
+            if (item) {
+              try {
+                // 初始化PlaywrightScript实例
+                if (playwrightScript) {
+                  playwrightScript = null;
+                }
+                playwrightScript = new PlaywrightScript();
+                playwrightScript.on('log', ({ message, type }) => {
+                  if(mainInit.mainWindow)
+                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
+                });
 
-          // // 删除处理完成之后的元素
-          // const item = subtitleRemoveQueue.pop();
-          // if(item && videoProcessor) {
-          //   videoProcessor.removeToSubtitleRemoveQueue(item);
-          // }
+                // 提取文件所在目录作为目标目录
+                const targetDir = path.dirname(item);
+
+                // 调用runWatermarkRemoval处理视频
+                const result = await playwrightScript.runWatermarkRemoval(item, targetDir);
+
+                // 处理完成后从队列中删除该元素
+                if (result.success && videoProcessor) {
+                  videoProcessor.removeToSubtitleRemoveQueue(item);
+                }
+              } catch (error:any) {
+                console.error('处理视频去水印失败:', error);
+                if(mainInit.mainWindow)
+                  webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                    message: `处理视频去水印失败: ${error.message}`,
+                    type: 'error'
+                  });
+              }
+            }
+          }
         });
 
         videoProcessor.start();
-        return { success: true };
-      },
-    },
-    {
-      channel: "PlaywrightScript",
-      handler: async (_, arg: { filePath: string; targetDir: string }) => {
-        const { filePath, targetDir } = arg;
-        if (playwrightScript) {
-        }
         return { success: true };
       },
     },

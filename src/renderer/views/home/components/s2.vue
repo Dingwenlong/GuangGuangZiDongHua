@@ -93,7 +93,7 @@ function setCookie() {
     ipcRendererChannel.RunWatermarkRemoval.invoke({
       filePath: firstFilePath,
       targetDir: 'C:/Users/ASUS/Downloads/kaipai_output'
-    }).then(result => {
+    }).then((result: any) => {
       // 直接处理返回结果
       if (result && result.success) {
         console.log('去水印成功:', result.message);
