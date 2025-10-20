@@ -11,7 +11,6 @@ class PlaywrightScript extends EventEmitter {
    * 视频去水印处理
    */
   public async runWatermarkRemoval(filePath?: string, targetDir?: string) {
-    this.emit('log', { message: '开始处理视频去水印', type: 'info' });
     let browser;
 
     try {
@@ -23,20 +22,21 @@ class PlaywrightScript extends EventEmitter {
       const defaultDownloadDir = path.join(os.homedir(), 'Downloads', 'kaipai_output');
       const downloadDir = targetDir ? path.resolve(targetDir) : defaultDownloadDir;
 
-      this.emit('log', { message: `下载目录: ${downloadDir}`, type: 'info' });
-      this.emit('log', { message: `用户数据目录: ${userDataDir}`, type: 'info' });
+      // this.emit('log', { message: `下载目录: ${downloadDir}`, type: 'info' });
+      // this.emit('log', { message: `用户数据目录: ${userDataDir}`, type: 'info' });
+      this.emit('log', { message: '开始处理视频去水印', type: 'info' });
 
       // 确保目录存在
       if (!fs.existsSync(downloadDir)) {
         fs.mkdirSync(downloadDir, { recursive: true });
-        this.emit('log', { message: `已创建下载目录: ${downloadDir}`, type: 'info' });
+        // this.emit('log', { message: `已创建下载目录: ${downloadDir}`, type: 'info' });
       }
 
       if (!fs.existsSync(userDataDir)) {
         fs.mkdirSync(userDataDir, { recursive: true });
-        this.emit('log', { message: `已为用户 ${username} 创建数据目录: ${userDataDir}`, type: 'info' });
+        // this.emit('log', { message: `已为用户 ${username} 创建数据目录: ${userDataDir}`, type: 'info' });
       } else {
-        this.emit('log', { message: `使用用户 ${username} 的现有数据目录: ${userDataDir}`, type: 'info' });
+        console.log(`使用用户 ${username} 的现有数据目录: ${userDataDir}`);
       }
 
       // 启动浏览器
@@ -99,9 +99,9 @@ class PlaywrightScript extends EventEmitter {
       const startButton = await page.waitForSelector(startBtnSelector, {
         timeout: 30000
       });
-
       await startButton.click();
       console.log('已点击开始处理');
+
 
       // 处理登录
       console.log('检查是否需要登录...');
@@ -242,6 +242,12 @@ class PlaywrightScript extends EventEmitter {
 
       await browser.close();
 
+      return {
+        success: true,
+        message: `文件已成功处理并保存至: ${targetPath}`,
+        filePath: targetPath
+      };
+
     } catch (error: any) {
       console.error('操作过程中出现错误:', error.message);
       this.emit('log', { message: `操作过程中出现错误: ${error.message}`, type: 'error' });
@@ -260,7 +266,7 @@ class PlaywrightScript extends EventEmitter {
 
     try {
       // 获取当前系统用户名
-      this.emit('log', { message: '获取当前系统用户名...', type: 'info' });
+      // this.emit('log', { message: '获取当前系统用户名...', type: 'info' });
       const username = os.userInfo().username;
       // 为每个用户创建独立的数据目录，避免冲突
       const userDataDir = path.join('C:\\', `kaipai_${username}_data`);
@@ -268,9 +274,10 @@ class PlaywrightScript extends EventEmitter {
       // 确保用户数据目录存在
       if (!fs.existsSync(userDataDir)) {
         fs.mkdirSync(userDataDir, { recursive: true });
-        this.emit('log', { message: `已为用户 ${username} 创建数据目录: ${userDataDir}`, type: 'info' });
+        // this.emit('log', { message: `已为用户 ${username} 创建数据目录: ${userDataDir}`, type: 'info' });
       } else {
-        this.emit('log', { message: `使用用户 ${username} 的现有数据目录: ${userDataDir}`, type: 'info' });
+        // this.emit('log', { message: `使用用户 ${username} 的现有数据目录: ${userDataDir}`, type: 'info' });
+        console.log(`使用用户 ${username} 的现有数据目录: ${userDataDir}`);
       }
 
       // 启动浏览器
@@ -285,8 +292,8 @@ class PlaywrightScript extends EventEmitter {
       const page = await browser.newPage();
 
       // 导航到目标URL
-      console.log(`正在访问页面: https://www.kaipai.com/video-tool/remove-watermark`);
-      await page.goto('https://www.kaipai.com/video-tool/remove-watermark');
+      console.log(`正在访问页面: https://www.kaipai.com/home`);
+      await page.goto('https://www.kaipai.com/home');
       await page.waitForLoadState('networkidle');
       console.log('页面加载完成');
 
@@ -303,8 +310,22 @@ class PlaywrightScript extends EventEmitter {
 
       this.emit('log', { message: `登录状态检测结果: ${isLoggedIn ? '已登录' : '未登录'}`, type: 'info' });
 
+      return {
+        success: isLoggedIn,
+        message: isLoggedIn
+          ? '检测到用户已登录（发现账户头像元素）'
+          : '未检测到用户登录状态（未发现账户头像元素）',
+        isLoggedIn: isLoggedIn // 明确返回登录状态
+      };
+
     } catch (error: any) {
       console.error('登录状态检测过程中出现错误:', error.message);
+
+      return {
+        success: false,
+        message: `登录状态检测失败: ${error.message}`,
+        isLoggedIn: null // 错误情况下登录状态为null
+      };
 
     } finally {
       // 确保浏览器被关闭
