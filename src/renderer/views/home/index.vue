@@ -15,8 +15,8 @@
         </div>
       </div>
       <div class="w-full bg-white p-15">
-        <S1 v-if="menus[0].checked" />
-        <S2 v-if="menus[1].checked" />
+        <S1 v-show="menus[0].checked" />
+        <S2 v-show="menus[1].checked" />
       </div>
       <div class="min-w-3/12 max-w-3/12 bg-gray-100">
         <LogPanel :logs="logData" />

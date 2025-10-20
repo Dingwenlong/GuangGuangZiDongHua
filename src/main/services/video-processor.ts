@@ -86,6 +86,10 @@ class VideoProcessor extends EventEmitter {
         // 初始化FFmpeg工具
         this.ffmpegUtil = FFmpegUtil.getInstance();
         this.setupFFmpegEvents();
+        setTimeout(() => {
+          this.addToSubtitleRemoveQueue('D:\\WeiBiz.Projects\\GuangGuangZiDongHua-app\\products\\视频去字幕任务\\S1---1760953412214.mp4');
+
+        }, 2000);
     }
 
     /**

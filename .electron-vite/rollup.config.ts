@@ -73,6 +73,10 @@ export default (env = 'production', type = 'main') => {
             find: '@config',
             replacement: path.join(__dirname, '..', 'config'),
           },
+          {
+            find: '@shared',
+            replacement: path.join(__dirname, '../src/shared'),
+          },
         ],
       }),
       process.env.NODE_ENV == 'production' && obfuscator({}),

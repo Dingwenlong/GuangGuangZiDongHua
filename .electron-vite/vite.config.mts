@@ -24,6 +24,7 @@ export default defineConfig({
     alias: {
       "@renderer": root,
       "@store": join(root, "/store/modules"),
+      "@shared": resolve("src/shared"),
     },
   },
 
