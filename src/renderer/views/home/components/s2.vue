@@ -85,33 +85,28 @@ function openFolder(record: any) {
 function setCookie() {
   console.log('设置Cookie并执行去水印');
 
-  // 检查playTrigger接口是否可用
-
   try {
     // 处理文件路径（使用/代替\避免转义问题）
     const firstFilePath = 'C:/Users/ASUS/Downloads/S1-33019725083-1-192.mp4';
 
-    // 1. 调用去水印脚本 - 使用async/await直接获取返回值
+    // 调用去水印脚本
     ipcRendererChannel.RunWatermarkRemoval.invoke({
       filePath: firstFilePath,
       targetDir: 'C:/Users/ASUS/Downloads/kaipai_output'
     }).then(result => {
       // 直接处理返回结果
-      if (result.success) {
+      if (result && result.success) {
         console.log('去水印成功:', result.message);
         console.log('处理后的文件路径:', result.filePath);
-        // 这里可以添加UI提示，如createMessage.success(result.message);
+        // 日志信息会通过IPC事件自动显示在页面上
       } else {
-        console.error('去水印失败:', result.message);
-        // createMessage.error(result.message);
+        console.error('去水印失败:', result?.message || '未知错误');
       }
     }).catch(error => {
       console.error('调用去水印脚本时出错:', error);
-      // createMessage.error(`执行去水印脚本时出错: ${error.message}`);
     });
   } catch (error: any) {
     console.error('执行去水印脚本时出错:', error.message);
-    // createMessage.error(`执行去水印脚本时出错: ${error.message}`);
   }
 }
 
@@ -120,27 +115,15 @@ function checkLogin() {
   console.log('开始检测登录状态');
 
   try {
-    // 直接使用Promise获取登录检测结果
+    // 调用登录检测脚本
     ipcRendererChannel.CheckLoginStatus.invoke().then(result => {
       console.log('登录检测结果:', result);
-      // 区分三种状态：已登录、未登录、检测失败
-      if (result.isLoggedIn === true) {
-        console.log('用户已登录');
-        // createMessage.success(result.message);
-      } else if (result.isLoggedIn === false) {
-        console.log('用户未登录');
-        // createMessage.warning(result.message);
-      } else {
-        console.log('登录检测失败');
-        // createMessage.error(result.message);
-      }
+      // 日志信息会通过IPC事件自动显示在页面上
     }).catch(error => {
       console.error('检测登录状态时出错:', error);
-      // createMessage.error(`检测登录状态时出错: ${error.message}`);
     });
   } catch (error: any) {
     console.error('检测登录状态时出错:', error.message);
-    // createMessage.error(`检测登录状态时出错: ${error.message}`);
   }
 }
 onMounted(() => {
