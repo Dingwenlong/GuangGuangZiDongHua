@@ -1,84 +1,101 @@
 <template>
-  <div>
-    <div class="from">
-      <span>
-        <Select v-model:value="queryForm.input" style="width: 160px" placeholder="Tags">
-          <SelectOption value="1">商品</SelectOption>
-          <SelectOption value="2">服务</SelectOption>
-        </Select>
-      </span>
-      <Button type="primary">任务检测目录</Button>
-      <Button type="primary" @click="setCookie">设置开拍Cookie</Button>
-      <Button type="primary">Cookie设置成功</Button>
-
-      <span>自动持续检测开启 <Switch v-model:checked="queryForm.autoCheck" /></span>
-      <Button type="primary">执行自动工作流任务</Button>
+  <div class="mb-15 flex flex-row items-center flex-wrap gap-10">
+    <div class="w-full flex justify-between flex-row items-center gap-10">
+      <Input class="w-6/12!" readonly v-model:value="s2.taskDirectory" placeholder="点击选择任务监听目录文件夹" @click="selectDirectoryHandler" :disabled="s2.taskDirectory !== ''" />
+      <div class="w-3/12 h-32 text-[12px] leading-35 text-gray-400 content-center text-right">
+        自动持续检测{{s2.autoMonitoring ? '开启' : '关闭' }}
+        <Switch v-model:checked="s2.autoMonitoring" size="small" />
+      </div>
     </div>
-    <div class="list" style="margin-top: 20px; padding: 0 10px">
-      <Table :columns="columns" :data-source="data">
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'address'">
-            <p
-              v-for="(item, index) in record.address.split(',')"
-              :key="index"
-              style="margin: 4px 0"
-            >
-              {{ item }}
-            </p>
-          </template>
-          <template v-else-if="column.key === 'action'">
-            <span>
-              <Button type="primary" @click="openFolder(record)">打开文件夹</Button>
-            </span>
-          </template>
+    <div class="w-full flex flex-row justify-end gap-10">
+      <Button type="primary" @click="() => startOrStopTaskHandler(!s2.autoMonitoring)">{{ !s2.autoMonitoring ? '开始' : '结束' }}执行素材去水印任务</Button>
+    </div>
+  </div>
+  <div class="list" style="margin-top: 20px; padding: 0 10px">
+    <Table :columns="columns" :data-source="data" size="small" :scroll="{ scrollToFirstRowOnChange: true }" bordered :pagination="false">
+      <template #bodyCell="{ column, record }">
+        <template v-if="column.dataIndex === 'videoMaterial'">
+          <p
+            v-for="(item, index) in record.videoMaterial"
+            :key="index"
+            style="margin: 4px 0"
+          >
+            {{ item }}
+          </p>
         </template>
-      </Table>
-    </div>
+        <template v-else-if="column.dataIndex === 'address'">
+          <p
+            v-for="(item, index) in record.address.split(',')"
+            :key="index"
+            style="margin: 4px 0"
+          >
+            {{ item }}
+          </p>
+        </template>
+        <template v-else-if="column.key === 'action'">
+          <span>
+            <Button type="primary" @click="openFolder(s2.taskDirectory + '\\' + record.productDirectory)">打开文件夹</Button>
+          </span>
+        </template>
+      </template>
+    </Table>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { onMounted, reactive } from 'vue';
-import { Switch, Select, SelectOption, Table, Button } from 'ant-design-vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { Switch, Input, Table, Button, type TableColumnType } from 'ant-design-vue';
+import Timer from '@shared/utils/timer'
+const { shell, ipcRendererChannel } = window;
 
-  const { ipcRendererChannel } = window;
-
-const queryForm = reactive({
-  input: '',
-  duration: '20',
-  autoCheck: false
+const s2 = ref({
+  taskDirectory: 'test',
+  autoMonitoring: false,
+  intervalSeconds: 5
 });
 
-const columns = [
+const columns: TableColumnType[] = [
   {
     title: '任务目录',
-    dataIndex: 'name',
-    key: 'name'
+    dataIndex: 'taskDirectory',
+    key: 'taskDirectory',
+    width: '20%',
   },
   {
-    title: '视频素材',
-    dataIndex: 'address',
-    key: 'address'
+    title: '视频素材-去字幕',
+    dataIndex: 'videoMaterial',
+    key: 'videoMaterial',
+    width: '30%',
   },
   {
     title: '操作',
-    key: 'action'
+    key: 'action',
+    align: 'center',
+    width: '20%',
   }
 ];
 
-const data = [
-  {
-    name: 'C:/Users/ASUS/Downloads',
-    address: 'S5---海尔微型滚筒洗衣机---5698778665---1.mp4'
-  },
-  {
-    name: 'Z:\张海涛15898900999',
-    address: 'S5---海尔微型滚筒洗衣机---5698778665---1.mp4'
-  }
-];
+const data = ref<any>([]);
 
-function openFolder(record: any) {
-  console.log(record.name);
+async function selectDirectoryHandler() {
+  s2.value.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke()
+}
+
+function openFolder(path: string) {
+
+  shell.openPath(path)
+}
+
+const videoMonitoringRunning = ref(false);
+
+function startOrStopTaskHandler(start = true) {
+  if (start && s2.value.taskDirectory && !videoMonitoringRunning.value) {
+    videoMonitoringRunning.value = true;
+    ipcRendererChannel.StartMonitoringVideo.invoke(s2.value.taskDirectory);
+  } else if (!start && videoMonitoringRunning.value) {
+    videoMonitoringRunning.value = false;
+    ipcRendererChannel.StopMonitoringVideo.invoke();
+  }
 }
 
 // 调用去水印脚本
@@ -87,7 +104,7 @@ function setCookie() {
 
   try {
     // 处理文件路径（使用/代替\避免转义问题）
-    const firstFilePath = 'C:/Users/ASUS/Downloads/S1-33019725083-1-192.mp4';
+    const firstFilePath = 'C:/Users/ASUS/Downloads/S1---33019725083-1-192.mp4';
 
     // 调用去水印脚本
     ipcRendererChannel.RunWatermarkRemoval.invoke({
@@ -116,7 +133,7 @@ function checkLogin() {
 
   try {
     // 调用登录检测脚本
-    ipcRendererChannel.CheckLoginStatus.invoke().then(result => {
+    ipcRendererChannel.CheckKaipaiLoginStatus.invoke().then(result => {
       console.log('登录检测结果:', result);
       // 日志信息会通过IPC事件自动显示在页面上
     }).catch(error => {
@@ -126,9 +143,63 @@ function checkLogin() {
     console.error('检测登录状态时出错:', error.message);
   }
 }
-onMounted(() => {
-  checkLogin();
+
+
+watch(s2.value, async (val, _) => {
+  await ipcRendererChannel.UpdateWorkbenchData.invoke({ ...val } as any);
+  // 监听视频
+  // if(!val.autoMonitoring) {
+  //   videoMonitoringRunning.value = false;
+  //   ipcRendererChannel.StopMonitoringVideo.invoke();
+  // }
+  // 监听文件夹
+  if(val.taskDirectory && !videoMonitoringRunning.value) {
+    ipcRendererChannel.StartMonitoringDirectory.invoke(val.taskDirectory);
+  }
 });
+
+onMounted(async () => {
+  const workbench = await ipcRendererChannel.GetWorkbenchData.invoke();
+  s2.value.taskDirectory = workbench.taskDirectory ?? '';
+  s2.value.autoMonitoring = workbench.autoMonitoring ?? true;
+
+  Timer.interval(s2.value.intervalSeconds * 1000, () => {
+    if(s2.value.autoMonitoring) {
+      startOrStopTaskHandler();
+    }
+  });
+
+  // 获取历史缓存数据
+  await ipcRendererChannel.GetWorkbenchData.invoke().then((workbench: any) => {
+    s2.value = workbench ?? {
+      taskDirectory: '',
+      autoMonitoring: false,
+      intervalSeconds: 5
+    };
+  });
+
+    // 绑定文件夹变化监听事件
+  ipcRendererChannel.MonitoringDirectoryCallback.on((event, arg: { root: string, structure: any[]}) => {
+    data.value = arg.structure
+    .filter(dir => {
+      return dir.type === 'directory' && dir.name === '视频去字幕任务'
+    })
+    .map(dir => {
+      return {
+        taskDirectory: s2.value.taskDirectory,
+        productDirectory: dir.path.replace(s2.value.taskDirectory + '\\', ''),
+        videoMaterial: dir.children
+          .filter((file: any) => file.isVideo && file.type === 'file')
+          .map((file: any) => file.name)
+      };
+    });
+  });
+});
+
+onUnmounted(() => {
+  // 移除文件夹变化监听事件
+  ipcRendererChannel.MonitoringDirectoryCallback.removeAllListeners();
+})
 </script>
 
 <style scoped>

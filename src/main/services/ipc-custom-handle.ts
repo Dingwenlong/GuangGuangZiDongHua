@@ -120,7 +120,7 @@ export const ipcCustomMainHandlers = (
       },
     },
     {
-      channel: "CheckLoginStatus",
+      channel: "CheckKaipaiLoginStatus",
       handler: async (event) => {
         if (playwrightScript) {
           playwrightScript = null;
@@ -130,7 +130,7 @@ export const ipcCustomMainHandlers = (
           if(mainInit.mainWindow)
             webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
         });
-        return await playwrightScript.checkLoginStatus();
+        return await playwrightScript.CheckKaipaiLoginStatus();
       },
     },
     {
@@ -197,6 +197,7 @@ export const ipcCustomMainHandlers = (
             webContentSend.LogUpdate(mainInit.mainWindow.webContents, { message, type });
         });
         videoProcessor.on('addToSubtitleRemoveQueue', async (subtitleRemoveQueue: Array<string>) => {
+
           // 队列内容元素新增事件触发
           if (subtitleRemoveQueue.length > 0) {
             // 从队列头部取出第一个待处理的视频

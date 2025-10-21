@@ -68,7 +68,7 @@ export class IpcChannelMainCustomClass {
     filePath: string;
     targetDir: string;
   }>;
-  CheckLoginStatus!: IpcMainEventListener<void, boolean>;
+  CheckKaipaiLoginStatus!: IpcMainEventListener<void, boolean>;
   UpdateWorkbenchData!: IpcMainEventListener<WorkbenchStoreSchema>;
   GetWorkbenchData!: IpcMainEventListener<void, WorkbenchStoreSchema>;
   StartMonitoringVideo!: IpcMainEventListener<string>;

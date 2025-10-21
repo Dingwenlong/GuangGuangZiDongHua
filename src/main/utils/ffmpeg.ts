@@ -310,4 +310,26 @@ export class FFmpegUtil extends EventEmitter {
         .run();
     });
   }
+
+  /**
+   * 提取视频音频
+   */
+  public extractAudio(
+    inputPath: string,
+    outputPath: string,
+    operationName = '音频分离'
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const command = ffmpeg(inputPath)
+        .outputOptions([
+          '-acodec mp3', // 使用MP3编码器
+          '-b:a 192k' // 设置音频比特率
+        ])
+        .output(outputPath);
+
+      this.runCommand(command, operationName)
+        .then(() => resolve())
+        .catch(reject);
+    });
+  }
 }
