@@ -4,9 +4,7 @@
  * IpcChannelMainClass 和 IpcChannelRendererClass 是主进程和渲染进程的IPC通道事件监听
  */
 
-import type { ProgressInfo } from "electron-updater";
-import type { UserData, Auth } from "@main/services/auth-manager";
-import type { WorkbenchStoreSchema } from "@main/services/workbench-manager";
+import type { ProgressInfo } from 'electron-updater';
 
 /**
  * 主进程的IPC通道事件监听
@@ -60,17 +58,16 @@ export class IpcChannelMainCustomClass {
     token?: string;
     refreshToken?: string;
   }>;
-  Test!: IpcMainEventListener;
   Logout!: IpcMainEventListener;
-  GetLoginUserInfo!: IpcMainEventListener<void, UserData>;
-  GetAuthInfo!: IpcMainEventListener<void, Auth>;
+  GetLoginUserInfo!: IpcMainEventListener<void, any>;
+  GetAuthInfo!: IpcMainEventListener<void, any>;
   RunWatermarkRemoval!: IpcMainEventListener<{
     filePath: string;
     targetDir: string;
   }>;
   CheckLoginStatus!: IpcMainEventListener<void, boolean>;
-  UpdateWorkbenchData!: IpcMainEventListener<WorkbenchStoreSchema>;
-  GetWorkbenchData!: IpcMainEventListener<void, WorkbenchStoreSchema>;
+  UpdateWorkbenchData!: IpcMainEventListener<{ stepNo: string; sData: any }>;
+  GetWorkbenchData!: IpcMainEventListener<string, any>;
   StartMonitoringVideo!: IpcMainEventListener<string>;
   StopMonitoringVideo!: IpcMainEventListener;
   StartMonitoringDirectory!: IpcMainEventListener<string>;
@@ -93,15 +90,15 @@ export class IpcChannelMainClass extends IpcChannelMainCustomClass {
   OpenMessageBox!: IpcMainEventListener<
     Electron.MessageBoxOptions,
     Electron.MessageBoxReturnValue
-  >
-  StartDownload!: IpcMainEventListener<string>
-  OpenErrorbox!: IpcMainEventListener<{ title: string; message: string }>
-  HotUpdate!: IpcMainEventListener
+  >;
+  StartDownload!: IpcMainEventListener<string>;
+  OpenErrorbox!: IpcMainEventListener<{ title: string; message: string }>;
+  HotUpdate!: IpcMainEventListener;
 
   /**
    * 重新加载主窗口
    */
-  ReloadWin!: IpcMainEventListener
+  ReloadWin!: IpcMainEventListener;
   /**
    *
    * 打开窗口
@@ -140,18 +137,17 @@ export class IpcChannelMainClass extends IpcChannelMainCustomClass {
      * @type {unknown}
      */
     sendData?: unknown;
-  }>
-  CloseWin!: IpcMainEventListener
-  GetAppVersion!: IpcMainEventListener<void, string>
-  SelectDirectory!: IpcMainEventListener<void, string>
-  CreateDirectory!: IpcMainEventListener<any, any>
+  }>;
+  CloseWin!: IpcMainEventListener;
+  GetAppVersion!: IpcMainEventListener<void, string>;
+  SelectDirectory!: IpcMainEventListener<void, string>;
+  CreateDirectory!: IpcMainEventListener<any, any>;
 }
 
-
 export class IpcChannelRendererCustomClass {
-  MonitoringDirectoryCallback!: IpcRendererEventListener<any>
-  MonitoringVideoStatusUpdate!: IpcRendererEventListener<any>
-  LogUpdate!: IpcRendererEventListener<any>
+  MonitoringDirectoryCallback!: IpcRendererEventListener<any>;
+  MonitoringVideoStatusUpdate!: IpcRendererEventListener<any>;
+  LogUpdate!: IpcRendererEventListener<any>;
 }
 /**
  * 渲染进程的IPC通道事件
@@ -162,9 +158,9 @@ export class IpcChannelRendererCustomClass {
  */
 export class IpcChannelRendererClass extends IpcChannelRendererCustomClass {
   // ipcRenderer
-  DownloadProgress!: IpcRendererEventListener<number>
-  DownloadError!: IpcRendererEventListener<Boolean>
-  DownloadPaused!: IpcRendererEventListener<Boolean>
+  DownloadProgress!: IpcRendererEventListener<number>;
+  DownloadError!: IpcRendererEventListener<Boolean>;
+  DownloadPaused!: IpcRendererEventListener<Boolean>;
   DownloadDone!: IpcRendererEventListener<{
     /**
      * 下载的文件路径
@@ -172,19 +168,19 @@ export class IpcChannelRendererClass extends IpcChannelRendererCustomClass {
      * @type {string}
      */
     filePath: string;
-  }>
+  }>;
   UpdateMsg!: IpcRendererEventListener<{
     state: number;
     msg: string | ProgressInfo;
-  }>
+  }>;
   UpdateProcessStatus!: IpcRendererEventListener<{
     status:
-      | "init"
-      | "downloading"
-      | "moving"
-      | "finished"
-      | "failed"
-      | "download";
+      | 'init'
+      | 'downloading'
+      | 'moving'
+      | 'finished'
+      | 'failed'
+      | 'download';
     message: string;
   }>;
 

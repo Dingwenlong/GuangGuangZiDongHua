@@ -24,7 +24,7 @@ interface AuthStoreSchema {
   };
 }
 
-export type Auth = AuthStoreSchema["auth"];
+export type Auth = AuthStoreSchema['auth'];
 
 // 默认数据
 const defaultData: AuthStoreSchema = {
@@ -33,8 +33,8 @@ const defaultData: AuthStoreSchema = {
     userData: null,
     token: null,
     refreshToken: null,
-    expiresAt: null
-  }
+    expiresAt: null,
+  },
 };
 
 class AuthManager {
@@ -65,12 +65,6 @@ class AuthManager {
     if (!this.db.data) {
       this.db.data = defaultData;
       await this.db.write();
-    }
-    if(await this.isLoggedIn()) {
-      console.log('用户已登录', this.db.data.auth);
-      // this.clearLoginState()
-    } else {
-      console.log('用户未登录');
     }
   }
 
@@ -198,7 +192,7 @@ class AuthManager {
     if (this.db.data.auth.userData) {
       this.db.data.auth.userData = {
         ...this.db.data.auth.userData,
-        ...userData
+        ...userData,
       };
       await this.db.write();
     }

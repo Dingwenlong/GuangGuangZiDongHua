@@ -4,22 +4,22 @@ import axios, {
   AxiosError,
   InternalAxiosRequestConfig,
   AxiosInstance,
-} from "axios";
-import { HttpCodeConfig } from "./httpCode";
+} from 'axios';
+import { HttpCodeConfig } from './http-code';
 import {
   ResponseModel,
   UploadFileItemModel,
   UploadRequestConfig,
-} from "./types/index";
+} from './types/index';
 import {
   token_key,
   refresh_token_key,
   getToken,
   getRefreshToken,
   setToken,
-  setRefreshToken
-} from "@renderer/utils/token";
-import { messageApi } from "@renderer/hooks/message";
+  setRefreshToken,
+} from '@renderer/utils/token';
+import { messageApi } from '@renderer/hooks/message';
 
 class HttpRequest {
   service: AxiosInstance;
@@ -46,7 +46,7 @@ class HttpRequest {
         return config;
       },
       (error: AxiosError) => {
-        console.log("requestError: ", error);
+        console.log('requestError: ', error);
         return Promise.reject(error);
       },
       {
@@ -68,40 +68,40 @@ class HttpRequest {
             switch (statusCode) {
               case HttpCodeConfig.notFound:
                 // the method to handle this code
-                messageApi.error('404')
+                messageApi.error('404');
                 break;
               case HttpCodeConfig.noPermission:
                 // the method to handle this code
-                messageApi.error('没有权限')
+                messageApi.error('没有权限');
                 break;
               case HttpCodeConfig.serverError:
                 // the method to handle this code
-                messageApi.error(data.errors)
+                messageApi.error(data.errors);
                 break;
               default:
                 break;
             }
             return Promise.reject(data.errors);
           } else {
-            if (headers["access-token"]) {
-              setToken(headers["access-token"]);
+            if (headers['access-token']) {
+              setToken(headers['access-token']);
             }
-            if (headers["x-access-token"]) {
-              setRefreshToken(headers["x-access-token"]);
+            if (headers['x-access-token']) {
+              setRefreshToken(headers['x-access-token']);
             }
             return response;
           }
         } else {
-          return Promise.reject("Error! code missing!");
+          return Promise.reject('Error! code missing!');
         }
       },
       (error: any) => {
         // 判断请求异常信息中是否含有超时timeout字符串
-        if (error.message.includes("timeout")) {
-          console.log("错误回调", error);
+        if (error.message.includes('timeout')) {
+          console.log('错误回调', error);
         }
-        if (error.message.includes("Network Error")) {
-          console.log("错误回调", error);
+        if (error.message.includes('Network Error')) {
+          console.log('错误回调', error);
         }
         return Promise.reject(error);
       }
@@ -116,7 +116,7 @@ class HttpRequest {
           .then((res: AxiosResponse<ResponseModel<T>>) => {
             resolve(res.data);
           })
-          .catch((err) => {
+          .catch(err => {
             reject(err);
           });
       } catch (err) {
@@ -138,7 +138,7 @@ class HttpRequest {
               headers: res.headers,
             });
           })
-          .catch((err) => {
+          .catch(err => {
             reject(err);
           });
       } catch (err) {
@@ -148,16 +148,16 @@ class HttpRequest {
   }
 
   get<T = any>(config: AxiosRequestConfig): Promise<ResponseModel<T>> {
-    return this.request({ method: "GET", ...config });
+    return this.request({ method: 'GET', ...config });
   }
   post<T = any>(config: AxiosRequestConfig): Promise<ResponseModel<T>> {
-    return this.request({ method: "POST", ...config });
+    return this.request({ method: 'POST', ...config });
   }
   put<T = any>(config: AxiosRequestConfig): Promise<ResponseModel<T>> {
-    return this.request({ method: "PUT", ...config });
+    return this.request({ method: 'PUT', ...config });
   }
   delete<T = any>(config: AxiosRequestConfig): Promise<ResponseModel<T>> {
-    return this.request({ method: "DELETE", ...config });
+    return this.request({ method: 'DELETE', ...config });
   }
   upload<T = string>(
     fileItem: UploadFileItemModel,
@@ -171,11 +171,11 @@ class HttpRequest {
     if (!config) {
       configCopy = {
         headers: {
-          "Content-Type": "multipart/form-data",
+          'Content-Type': 'multipart/form-data',
         },
       };
     } else {
-      config.headers!["Content-Type"] = "multipart/form-data";
+      config.headers!['Content-Type'] = 'multipart/form-data';
       configCopy = config;
     }
     return this.request({

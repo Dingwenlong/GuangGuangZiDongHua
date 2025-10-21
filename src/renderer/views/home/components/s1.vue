@@ -1,46 +1,78 @@
 <template>
-  <div class="w-full h-full grid overflow-auto" style="grid-template-rows: minmax(min-content, 120px) minmax(200px, 1fr)">
+  <div
+    class="w-full h-full grid overflow-auto"
+    style="grid-template-rows: minmax(min-content, 120px) minmax(200px, 1fr)">
     <div class="mb-15 flex flex-row items-center flex-wrap gap-10">
       <div class="w-full flex justify-between flex-row items-center gap-10">
-        <Input class="w-6/12!" readonly v-model:value="s1.taskDirectory" placeholder="点击选择任务监听目录文件夹" @click="selectDirectoryHandler" />
-        <div class="w-3/12 h-32 text-[12px] text-gray-400 content-center text-center">
+        <Input
+          class="w-6/12!"
+          readonly
+          v-model:value="s1.taskDirectory"
+          placeholder="点击选择任务监听目录文件夹"
+          @click="selectDirectoryHandler" />
+        <div
+          class="w-3/12 h-32 text-[12px] text-gray-400 content-center text-center">
           商品素材时长
-          <Input class="w-60! h-20! text-center" readonly v-model:value="s1.materialDuration" />
+          <Input
+            class="w-60! h-20! text-center"
+            readonly
+            v-model:value="s1.materialDuration" />
           秒
         </div>
-        <div class="w-3/12 h-32 text-[12px] leading-35 text-gray-400 content-center text-right">
-          自动持续检测{{s1.autoMonitoring ? '开启' : '关闭' }}
-          <Switch v-model:checked="s1.autoMonitoring" size="small" />
+        <div
+          class="w-3/12 h-32 text-[12px] text-gray-400 content-center text-right">
+          自动持续检测{{ s1.autoMonitoring ? '开启' : '关闭' }}
+          <Switch
+            v-model:checked="s1.autoMonitoring"
+            class="mt-[-3px]"
+            size="small" />
         </div>
       </div>
       <div class="w-full flex flex-row justify-end gap-10">
-        <Button type="primary" :disabled="!s1.taskDirectory" @click="batchCreationFolderHandler">批量创建商品文件夹</Button>
-        <Button type="primary" @click="() => startOrStopTaskHandler(!videoMonitoringRunning)">{{ !videoMonitoringRunning ? '开始' : '结束' }}执行自动工作流任务</Button>
+        <Button
+          type="primary"
+          :disabled="!s1.taskDirectory"
+          @click="batchCreationFolderHandler"
+          >批量创建商品文件夹</Button
+        >
+        <Button
+          type="primary"
+          @click="() => startOrStopTaskHandler(!videoMonitoringRunning)"
+          >{{
+            !videoMonitoringRunning ? '开始' : '结束'
+          }}执行自动工作流任务</Button
+        >
       </div>
     </div>
     <div class="mb-15 h-full overflow-auto">
       <Table
         :columns="columns"
-        :data-source="data"
+        :data-source="tableData"
         :pagination="false"
         size="small"
         :scroll="{
-          scrollToFirstRowOnChange: true
+          scrollToFirstRowOnChange: true,
         }"
-        bordered
-      >
+        bordered>
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'videoMaterial'">
             <p
               v-for="(item, index) in record.videoMaterial"
               :key="index"
-              style="margin: 4px 0"
-            >
+              style="margin: 4px 0">
               {{ item }}
             </p>
           </template>
           <template v-else-if="column.key === 'action'" class="text-center">
-            <Button type="primary"@click="openFolderHandler(s1.taskDirectory + '\\' + record.productDirectory)">打开文件夹</Button>
+            <Button
+              type="primary"
+              @click="
+                openFolderHandler(
+                  s1.taskDirectory + '\\' + record.productDirectory
+                )
+              "
+              >打开文件夹</Button
+            >
           </template>
         </template>
       </Table>
@@ -49,74 +81,71 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted ,reactive, watch } from 'vue';
+import { ref, onMounted, onUnmounted, reactive, watch } from 'vue';
 import {
   Switch,
   Input,
   Table,
   Button,
-  type TableColumnType
+  type TableColumnType,
 } from 'ant-design-vue';
-import Timer from '@shared/utils/timer'
 import { nanoid } from 'nanoid';
 
-const { shell, ipcRendererChannel } = window
+const { shell, ipcRendererChannel } = window;
 
 const s1 = reactive({
-  taskDirectory: 'test',
+  taskDirectory: '',
   materialDuration: '20',
   autoMonitoring: false,
-  intervalSeconds: 5
+  intervalSeconds: 5,
 });
-
-const data = ref<any>([]);
+const tableData = ref<any>([]);
 const videoMonitoringRunning = ref(false);
 
-watch(s1, async (val, _) => {
-  await ipcRendererChannel.UpdateWorkbenchData.invoke({ ...val } as any);
-  // 监听视频
-  // if(!val.autoMonitoring) {
-  //   videoMonitoringRunning.value = false;
-  //   ipcRendererChannel.StopMonitoringVideo.invoke();
-  // }
+watch(s1, val => {
+  ipcRendererChannel.UpdateWorkbenchData.invoke({
+    stepNo: 's1',
+    sData: { ...val },
+  });
   // 监听文件夹
-  if(val.taskDirectory && !videoMonitoringRunning.value) {
+  if (val.taskDirectory) {
     ipcRendererChannel.StartMonitoringDirectory.invoke(val.taskDirectory);
   }
 });
 
-onMounted(async () => {
+onMounted(() => {
   // 获取历史缓存
-  const workbench = await ipcRendererChannel.GetWorkbenchData.invoke();
-  s1.taskDirectory = workbench.taskDirectory ?? '';
-  s1.autoMonitoring = workbench.autoMonitoring ?? true;
-  Timer.interval(s1.intervalSeconds * 1000, () => {
-    if(s1.autoMonitoring) {
-      startOrStopTaskHandler();
-    }
+  ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbench => {
+    s1.taskDirectory = workbench.taskDirectory ?? '';
+    s1.autoMonitoring = workbench.autoMonitoring ?? true;
   });
+
   // 绑定文件夹变化监听事件
-  ipcRendererChannel.MonitoringDirectoryCallback.on((event, arg: { root: string, structure: any[]}) => {
-    data.value = arg.structure
-    .filter(dir => {
-      const [first, ..._] = dir.name
-      return dir.type === 'directory' && first === 'S'
-    })
-    .map(dir => {
-      return {
-        taskDirectory: s1.taskDirectory,
-        productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
-        videoMaterial: dir.children
-          .filter((file: any) => file.isVideo && file.type === 'file')
-          .map((file: any) => file.name)
-      };
-    });
-  });
-})
+  ipcRendererChannel.MonitoringDirectoryCallback.on(
+    (_, arg: { root: string; structure: any[] }) => {
+      if (arg.root === s1.taskDirectory) {
+        tableData.value = arg.structure
+          .filter(dir => {
+            const [first, seconds, ..._] = dir.name;
+            return dir.type === 'directory' && first === 'S' && seconds === '1';
+          })
+          .map(dir => {
+            return {
+              taskDirectory: s1.taskDirectory,
+              productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
+              videoMaterial: dir.children
+                .filter((file: any) => file.isVideo && file.type === 'file')
+                .map((file: any) => file.name),
+            };
+          });
+      }
+    }
+  );
+});
 onUnmounted(() => {
   // 移除文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.removeAllListeners();
-})
+});
 
 function startOrStopTaskHandler(start = true) {
   if (start && s1.taskDirectory && !videoMonitoringRunning.value) {
@@ -152,15 +181,15 @@ const columns: TableColumnType[] = [
     key: 'action',
     align: 'center',
     width: '20%',
-  }
+  },
 ];
 
 function openFolderHandler(dir: any) {
-  shell.openPath(dir)
+  shell.openPath(dir);
 }
 
 async function selectDirectoryHandler() {
-  s1.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke()
+  s1.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
 }
 
 async function batchCreationFolderHandler() {
@@ -168,16 +197,22 @@ async function batchCreationFolderHandler() {
   const directoryNames = clipboardText
     .split('\n')
     .map(row => row.split('\t'))
-    .filter(([title, productId]) => title && productId && title !== "商品名称")
-    .map(([title, productId]) =>
-      `S1---${title.replace(/\r/g, '')}---${productId.replace(/\r/g, '')}---${nanoid(8)}`
+    .filter(([title, productId]) => title && productId && title !== '商品名称')
+    .map(
+      ([title, productId]) =>
+        `S1---${title.replace(/\r/g, '')}---${productId.replace(
+          /\r/g,
+          ''
+        )}---${nanoid(8)}`
     );
 
-  await Promise.all(directoryNames.map(name =>
-    ipcRendererChannel.CreateDirectory.invoke({
-      dirPath: s1.taskDirectory,
-      dirName: name
-    })
-  ));
+  await Promise.all(
+    directoryNames.map(name =>
+      ipcRendererChannel.CreateDirectory.invoke({
+        dirPath: s1.taskDirectory,
+        dirName: name,
+      })
+    )
+  );
 }
 </script>
