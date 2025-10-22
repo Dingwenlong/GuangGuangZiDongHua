@@ -1355,6 +1355,11 @@
   dependencies:
     undici-types "~6.21.0"
 
+"@types/path-browserify@^1.0.3":
+  version "1.0.3"
+  resolved "https://registry.npmmirror.com/@types/path-browserify/-/path-browserify-1.0.3.tgz#25de712d4def94b3901f033c30d3d3bd16eba8d3"
+  integrity sha512-ZmHivEbNCBtAfcrFeBCiTjdIc2dey0l7oCGNGpSuRTy8jP6UVND7oUowlvDujBy8r2Hoa8bfFUOCiPWfmtkfxw==
+
 "@types/plist@^3.0.1":
   version "3.0.5"
   resolved "https://registry.npmmirror.com/@types/plist/-/plist-3.0.5.tgz#9a0c49c0f9886c8c8696a7904dd703f6284036e0"

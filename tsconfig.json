@@ -18,8 +18,7 @@
       "@config/*": ["config/*"],
       "@ipcManager/*": ["src/ipc/*"],
       "@renderer/*": ["src/renderer/*"],
-      "@main/*": ["src/main/*"],
-      "@shared/*": ["src/shared/*"]
+      "@main/*": ["src/main/*"]
     },
     "types": ["node", "chokidar"],
     "typeRoots": ["node_modules/@types"],

@@ -2,6 +2,8 @@ import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 import { join } from 'path';
 import { app } from 'electron';
+import { merge } from 'lodash-es';
+import config from '@config/index';
 
 // 定义存储的数据结构
 export interface WorkbenchStoreSchema {
@@ -25,22 +27,25 @@ export interface WorkbenchStoreSchema {
 }
 
 // 默认数据
-const defaultData: WorkbenchStoreSchema = {
-  s1: {
-    taskDirectory: '',
-    materialDuration: 20,
-    autoMonitoring: true,
-    intervalSeconds: 5,
+const defaultData: WorkbenchStoreSchema = merge(
+  {
+    s1: {
+      taskDirectory: '',
+      materialDuration: 20,
+      autoMonitoring: true,
+      intervalSeconds: 5,
+    },
+    s3: {
+      productMaterialNum: 4,
+      storyboardSceneThreshold: 0.3,
+      storyboardDuration1: 4,
+      storyboardDuration2: 6,
+      autoHandOnWorkflow: true,
+    },
+    subtitleRemoveRunningTasks: [],
   },
-  s3: {
-    productMaterialNum: 4,
-    storyboardSceneThreshold: 0.3,
-    storyboardDuration1: 4,
-    storyboardDuration2: 6,
-    autoHandOnWorkflow: true,
-  },
-  subtitleRemoveRunningTasks: [],
-};
+  config.workBenchDefault
+);
 
 class WorkbenchManager {
   private db: Low<WorkbenchStoreSchema>;

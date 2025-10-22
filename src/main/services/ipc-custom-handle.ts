@@ -135,19 +135,19 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     },
     {
       channel: 'UpdateWorkbenchData',
-      handler: async (_, arg: any) => {
-        return await workbenchManager.updateData(arg);
+      handler: async (_, args: { stepNo: any; sData: any }) => {
+        return await workbenchManager.updateData(args.stepNo, args.sData);
       },
     },
     {
       channel: 'GetWorkbenchData',
-      handler: async () => {
-        return await workbenchManager.getInfo();
+      handler: async (_, stepNo: any) => {
+        return await workbenchManager.getInfo(stepNo);
       },
     },
     {
       channel: 'StartMonitoringDirectory',
-      handler: async (event, directory: string) => {
+      handler: async (_, directory: string) => {
         if (dirMonitor) {
           dirMonitor.stop();
         }
