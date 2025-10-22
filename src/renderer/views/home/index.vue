@@ -18,9 +18,9 @@
       </div>
     </div>
     <div class="w-full bg-white p-15">
-      <S1 v-if="menus[0].checked" />
-      <S2 v-if="menus[1].checked" />
-      <S3 v-show="menus[2].checked" />
+      <S1 v-show="menus.find(x => x.id === 1)!.checked" />
+      <S2 v-if="menus.find(x => x.id === 2)!.checked" />
+      <S3 v-show="menus.find(x => x.id === 3)!.checked" />
     </div>
     <div class="min-w-3/12 max-w-3/12 bg-gray-100">
       <LogPanel :logs="logData" />
@@ -29,7 +29,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, onUnmounted } from 'vue';
+import { onMounted, ref, onUnmounted, computed } from 'vue';
 import LogPanel from './components/log-panel.vue';
 import S1 from './components/s1.vue';
 import S2 from './components/s2.vue';
@@ -37,8 +37,9 @@ import S3 from './components/s3.vue';
 import MoFang from '@renderer/assets/icons/webp/mo-fang.webp';
 
 const { ipcRendererChannel } = window;
-
 const logData = ref<any[]>([]);
+const getMenuChecked = (id: number) =>
+  computed(() => menus.value.find(x => x.id == id)?.checked ?? false);
 
 onMounted(() => {
   ipcRendererChannel.LogUpdate.on((_, arg) => {
@@ -76,7 +77,7 @@ const menus = ref<MenuItem[]>([
   { id: 1, title: 'S1 - 素材合并', checked: false },
   { id: 2, title: 'S2 - 开拍去水印', checked: false },
   { id: 3, title: 'S3 - 视频分割 - 商品', checked: true },
-  { id: 4, title: 'S4 - 视频分割 - 分镜', checked: false },
+  { id: 4, title: 'S4 - 视频分割 - 分镜', checked: true },
   { id: 5, title: 'S5 - 自动混剪', checked: false },
   { id: 6, title: 'S6 - 高清放大', checked: false },
   { id: 7, title: 'S7 - 光合发布', checked: false },

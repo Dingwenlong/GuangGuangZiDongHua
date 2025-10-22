@@ -1,6 +1,6 @@
 import type MainInit from './window-manager';
-import authManager from './auth-manager';
-import workbenchManager from './workbench-manager';
+import authManager from '../lib/auth-manager';
+import workbenchManager from '../lib/workbench-manager';
 // import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
 import config from '@config/index';
 import { BrowserWindow } from 'electron';
@@ -136,13 +136,13 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       channel: 'UpdateWorkbenchData',
       handler: async (_, args: { stepNo: any; sData: any }) => {
-        return await workbenchManager.updateData(args.stepNo, args.sData);
+        return await workbenchManager.updateStep(args.stepNo, args.sData);
       },
     },
     {
       channel: 'GetWorkbenchData',
       handler: async (_, stepNo: any) => {
-        return await workbenchManager.getInfo(stepNo);
+        return await workbenchManager.getByKey(stepNo);
       },
     },
     {
@@ -158,6 +158,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
           debounceDelay: 500, // 500ms防抖延迟
         });
         dirMonitor.on('directoryStructure', ({ root, structure }) => {
+          console.log('dirMonitor.directoryStructure');
           if (mainInit.mainWindow)
             webContentSend.MonitoringDirectoryCallback(
               mainInit.mainWindow.webContents,
@@ -210,52 +211,41 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         });
         videoProcessor.on(
           'addToSubtitleRemoveQueue',
-          async (
-            videoPath: string,
-            subtitleRemoveQueue: Array<string>,
-            videosTable: string[][]
-          ) => {
-            // 保存视频链条用于第三步拆解
-            let task: { [k: string]: any } = {};
-            task[videoPath] = videosTable;
-            workbenchManager.pushTask('subtitleRemoveRunningTasks', task);
-
-            if (videoPath) {
-              try {
-                // 初始化PlaywrightScript实例
-                if (playwrightScript) {
-                  playwrightScript = null;
-                }
-                playwrightScript = new PlaywrightScript();
-                playwrightScript.on('log', ({ message, type }) => {
-                  if (mainInit.mainWindow)
-                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                      message,
-                      type,
-                    });
-                });
-
-                // 提取文件所在目录作为目标目录
-                const targetDir = path.dirname(videoPath);
-
-                // 调用runWatermarkRemoval处理视频
-                const result = await playwrightScript.runWatermarkRemoval(
-                  videoPath,
-                  targetDir
-                );
-
-                // 处理完成后从队列中删除该元素
-                if (result.success && videoProcessor) {
-                  videoProcessor.removeToSubtitleRemoveQueue(videoPath);
-                }
-              } catch (error: any) {
-                console.error('处理视频去水印失败:', error);
+          async (videoPath: string, subtitleRemoveQueue: Array<string>) => {
+            try {
+              // 初始化PlaywrightScript实例
+              if (playwrightScript) {
+                playwrightScript = null;
+              }
+              playwrightScript = new PlaywrightScript();
+              playwrightScript.on('log', ({ message, type }) => {
                 if (mainInit.mainWindow)
                   webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                    message: `处理视频去水印失败: ${error.message}`,
-                    type: 'error',
+                    message,
+                    type,
                   });
+              });
+              // 提取文件所在目录作为目标目录
+              const targetDir = path.dirname(videoPath);
+              // 调用runWatermarkRemoval处理视频
+              const result = await playwrightScript.runWatermarkRemoval(
+                videoPath,
+                targetDir
+              );
+
+              // 处理完成后
+              // 从队列中删除该元素 & 拆分视频
+              if (result.success && videoProcessor) {
+                videoProcessor.removeToSubtitleRemoveQueue(videoPath);
+                videoProcessor.splitVideo(videoPath);
               }
+            } catch (error: any) {
+              console.error('处理视频去水印失败:', error);
+              if (mainInit.mainWindow)
+                webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                  message: `处理视频去水印失败: ${error.message}`,
+                  type: 'error',
+                });
             }
           }
         );

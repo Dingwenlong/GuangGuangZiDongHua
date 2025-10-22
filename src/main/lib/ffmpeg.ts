@@ -9,6 +9,11 @@ export interface FFmpegProgressEvent {
   operation: string;
 }
 
+export interface VideoSegment {
+  fragmentDuration: number;
+  filePath: string;
+}
+
 export class FFmpegUtil extends EventEmitter {
   private static instance: FFmpegUtil;
   private ffmpegPath!: string;
@@ -108,15 +113,15 @@ export class FFmpegUtil extends EventEmitter {
     return new Promise((resolve, reject) => {
       const command = ffmpeg(inputPath)
         .outputOptions([
-          `-vf setpts=${1/speed}*PTS`,
+          `-vf setpts=${1 / speed}*PTS`,
           `-af atempo=${speed > 2 ? 2 : speed}`,
-          ...(speed > 2 ? ['-af', `atempo=${speed/2}`] : []),
+          ...(speed > 2 ? ['-af', `atempo=${speed / 2}`] : []),
           '-t 20',
           '-c:v libx264',
           '-preset fast',
           '-crf 23',
           '-c:a aac',
-          '-b:a 128k'
+          '-b:a 128k',
         ])
         .output(outputPath);
 
@@ -142,7 +147,7 @@ export class FFmpegUtil extends EventEmitter {
           '-preset fast',
           '-crf 23',
           '-c:a aac',
-          '-b:a 128k'
+          '-b:a 128k',
         ])
         .output(outputPath);
 
@@ -180,25 +185,25 @@ export class FFmpegUtil extends EventEmitter {
           // 转码为统一参数
           ffmpeg(file)
             .outputOptions([
-              '-c:v libx264',      // 视频编码器
-              '-preset fast',      // 编码速度
-              '-crf 23',           // 质量参数
-              '-c:a aac',          // 音频编码器
-              '-b:a 128k',         // 音频比特率
+              '-c:v libx264', // 视频编码器
+              '-preset fast', // 编码速度
+              '-crf 23', // 质量参数
+              '-c:a aac', // 音频编码器
+              '-b:a 128k', // 音频比特率
               '-vf scale=1280:720', // 统一分辨率
-              '-r 30',             // 统一帧率
-              '-movflags +faststart' // 优化网络播放
+              '-r 30', // 统一帧率
+              '-movflags +faststart', // 优化网络播放
             ])
             .output(transcodedPath)
             .on('end', () => {
               processedCount++;
               this.emit('progress', {
                 progress: (processedCount / videoFiles.length) * 50, // 转码占50%进度
-                operation: `${operationName} - 转码中`
+                operation: `${operationName} - 转码中`,
               });
               resolveTranscode();
             })
-            .on('error', (err) => {
+            .on('error', err => {
               rejectTranscode(new Error(`转码视频失败: ${err.message}`));
             })
             .run();
@@ -210,7 +215,9 @@ export class FFmpegUtil extends EventEmitter {
         .then(() => {
           // 创建 concat 列表文件
           const listPath = path.join(tempDir, `concat_list_${Date.now()}.txt`);
-          const listContent = transcodedFiles.map(file => `file '${path.resolve(file)}'`).join('\n');
+          const listContent = transcodedFiles
+            .map(file => `file '${path.resolve(file)}'`)
+            .join('\n');
 
           try {
             fs.writeFileSync(listPath, listContent);
@@ -243,7 +250,7 @@ export class FFmpegUtil extends EventEmitter {
               }
               resolve();
             })
-            .catch((error) => {
+            .catch(error => {
               // 清理临时文件
               try {
                 if (fs.existsSync(listPath)) {
@@ -260,6 +267,222 @@ export class FFmpegUtil extends EventEmitter {
               reject(error);
             });
         })
+        .catch(reject);
+    });
+  }
+
+  /**
+   * 拆解视频文件 - 将长视频拆分为多个短视频
+   * @param inputPath 输入视频路径
+   * @param outputDir 输出目录
+   * @param segmentDuration 每个片段的时长（秒），默认为20秒
+   * @param operationName 操作名称
+   * @returns Promise<string[]> 返回拆分后的视频文件路径数组
+   */
+  public splitVideo(
+    inputPath: string,
+    outputDir: string,
+    segmentDuration: number = 20,
+    operationName = '视频拆解'
+  ): Promise<string[]> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // 1. 获取视频总时长
+        const totalDuration = await this.getVideoDuration(inputPath);
+
+        // 2. 计算需要拆分成多少段
+        const segmentCount = Math.ceil(totalDuration / segmentDuration);
+
+        // 3. 创建输出目录
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        // 4. 准备输出文件路径数组
+        const outputFiles: string[] = [];
+
+        // 5. 创建临时目录
+        const tempDir = path.join(outputDir, 'temp');
+        if (!fs.existsSync(tempDir)) {
+          fs.mkdirSync(tempDir, { recursive: true });
+        }
+
+        // 6. 循环处理每一段
+        for (let i = 0; i < segmentCount; i++) {
+          const startTime = i * segmentDuration;
+          // 最后一段使用剩余时长
+          const duration =
+            i === segmentCount - 1
+              ? totalDuration - startTime
+              : segmentDuration;
+
+          // 生成输出文件名，使用3位数字序号
+          const fileName = `part_${String(i + 1).padStart(3, '0')}.mp4`;
+          const outputPath = path.join(outputDir, fileName);
+          outputFiles.push(outputPath);
+
+          // 截取当前段
+          await this.trimSegment(
+            inputPath,
+            outputPath,
+            startTime,
+            duration,
+            `${operationName} - 段 ${i + 1}/${segmentCount}`
+          );
+
+          // 更新进度
+          const progress = ((i + 1) / segmentCount) * 100;
+          this.emit('progress', {
+            progress,
+            operation: operationName,
+          });
+        }
+
+        // 7. 清理临时目录
+        try {
+          if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          }
+        } catch (e) {
+          console.warn('清理临时目录失败:', e);
+        }
+
+        resolve(outputFiles);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 根据片段信息拆解视频文件 - 将长视频按照指定的片段信息拆分为多个短视频
+   * @param inputPath 输入视频路径
+   * @param segments 片段信息数组，包含每个片段的时长和输出路径
+   * @param operationName 操作名称
+   * @returns Promise<string[]> 返回拆分后的视频文件路径数组
+   */
+  public splitVideoBySegments(
+    inputPath: string,
+    segments: VideoSegment[],
+    operationName = '按片段拆解视频'
+  ): Promise<string[]> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // 1. 验证输入视频是否存在
+        if (!fs.existsSync(inputPath)) {
+          reject(new Error(`输入视频文件不存在: ${inputPath}`));
+          return;
+        }
+
+        // 2. 获取视频总时长
+        const totalDuration = await this.getVideoDuration(inputPath);
+
+        // 3. 验证片段信息
+        if (!segments || segments.length === 0) {
+          reject(new Error('片段信息数组不能为空'));
+          return;
+        }
+
+        // 4. 计算所有片段的总时长
+        const segmentsTotalDuration = segments.reduce(
+          (sum, segment) => sum + segment.fragmentDuration,
+          0
+        );
+
+        // 5. 验证片段总时长是否超过视频总时长
+        if (segmentsTotalDuration > totalDuration) {
+          console.warn(
+            `片段总时长(${segmentsTotalDuration}秒)超过视频总时长(${totalDuration}秒)，将只处理视频时长范围内的部分`
+          );
+        }
+
+        // 6. 准备输出文件路径数组
+        const outputFiles: string[] = [];
+
+        // 7. 循环处理每个片段
+        let currentStartTime = 0;
+        for (let i = 0; i < segments.length; i++) {
+          const segment = segments[i];
+
+          // 如果当前开始时间已经超过视频总时长，则停止处理
+          if (currentStartTime >= totalDuration) {
+            console.warn(`已达到视频总时长，停止处理剩余片段`);
+            break;
+          }
+
+          // 计算当前片段的实际时长（不超过剩余视频时长）
+          const remainingDuration = totalDuration - currentStartTime;
+          const actualDuration = Math.min(
+            segment.fragmentDuration,
+            remainingDuration
+          );
+
+          // 确保输出目录存在
+          const outputDir = path.dirname(segment.filePath);
+          if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+          }
+
+          // 截取当前片段
+          await this.trimSegment(
+            inputPath,
+            segment.filePath,
+            currentStartTime,
+            actualDuration,
+            `${operationName} - 片段 ${i + 1}/${segments.length}`
+          );
+
+          // 添加到输出文件列表
+          outputFiles.push(segment.filePath);
+
+          // 更新开始时间
+          currentStartTime += actualDuration;
+
+          // 更新进度
+          const progress = ((i + 1) / segments.length) * 100;
+          this.emit('progress', {
+            progress,
+            operation: operationName,
+          });
+        }
+
+        resolve(outputFiles);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 截取视频片段
+   * @param inputPath 输入视频路径
+   * @param outputPath 输出视频路径
+   * @param startTime 开始时间（秒）
+   * @param duration 时长（秒）
+   * @param operationName 操作名称
+   */
+  private trimSegment(
+    inputPath: string,
+    outputPath: string,
+    startTime: number,
+    duration: number,
+    operationName: string
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const command = ffmpeg(inputPath)
+        .outputOptions([
+          `-ss ${startTime}`,
+          `-t ${duration}`,
+          '-c:v libx264',
+          '-preset fast',
+          '-crf 23',
+          '-c:a aac',
+          '-b:a 128k',
+        ])
+        .output(outputPath);
+
+      this.runCommand(command, operationName)
+        .then(() => resolve())
         .catch(reject);
     });
   }
@@ -284,27 +507,30 @@ export class FFmpegUtil extends EventEmitter {
   /**
    * 执行FFmpeg命令并处理进度
    */
-  private runCommand(command: ffmpeg.FfmpegCommand, operationName: string): Promise<void> {
+  private runCommand(
+    command: ffmpeg.FfmpegCommand,
+    operationName: string
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       command
-        .on('start', (commandLine) => {
+        .on('start', commandLine => {
           this.emit('log', {
             message: `执行FFmpeg命令: ${commandLine}`,
-            type: 'debug'
+            type: 'debug',
           });
         })
-        .on('progress', (progress) => {
+        .on('progress', progress => {
           // 计算进度百分比
           const percent = progress.percent || 0;
           this.emit('progress', {
             progress: percent,
-            operation: operationName
+            operation: operationName,
           });
         })
         .on('end', () => {
           resolve();
         })
-        .on('error', (err) => {
+        .on('error', err => {
           reject(new Error(`FFmpeg处理失败: ${err.message}`));
         })
         .run();
@@ -323,7 +549,7 @@ export class FFmpegUtil extends EventEmitter {
       const command = ffmpeg(inputPath)
         .outputOptions([
           '-acodec mp3', // 使用MP3编码器
-          '-b:a 192k' // 设置音频比特率
+          '-b:a 192k', // 设置音频比特率
         ])
         .output(outputPath);
 

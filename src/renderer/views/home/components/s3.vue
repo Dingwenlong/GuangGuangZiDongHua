@@ -58,15 +58,27 @@
         bordered>
         <template #bodyCell="{ column, record }">
           <template v-if="column.dataIndex === 'videoMaterial'">
-            <p
-              v-for="(item, index) in record.videoMaterial"
-              :key="index"
-              style="margin: 4px 0">
-              {{ item }}
+            <p>
+              {{ record.videoMaterial }}
             </p>
           </template>
           <template v-else-if="column.key === 'action'" class="text-center">
-            操作
+            <div class="flex flex-row gap-4">
+              <Button
+                type="text"
+                @click="
+                  openFolderHandler(
+                    record.taskDirectory + '\\' + record.videoMaterial
+                  )
+                "
+                >打开</Button
+              >
+              <Button
+                type="text"
+                @click="openFolderHandler(record.taskDirectory + '\\')"
+                >打开文件夹</Button
+              >
+            </div>
           </template>
         </template>
       </Table>
@@ -76,11 +88,18 @@
 
 <script lang="ts" setup>
 import { ref, onMounted, onUnmounted, reactive, watch, computed } from 'vue';
-import { Switch, Input, Table, type TableColumnType } from 'ant-design-vue';
+import {
+  Switch,
+  Input,
+  Table,
+  Button,
+  type TableColumnType,
+} from 'ant-design-vue';
 import path from 'path-browserify';
 
-const { ipcRendererChannel } = window;
+const { shell, ipcRendererChannel } = window;
 
+const workDir = '视频去字幕任务';
 const s1 = reactive({
   taskDirectory: 'test',
 });
@@ -93,15 +112,8 @@ const s3 = ref({
 });
 const tableData = ref<any>([]);
 const monitorDirectory = computed(() =>
-  path.join(s1.taskDirectory, '视频去字幕任务')
+  path.join(s1.taskDirectory, workDir).replace(/\//g, '\\')
 );
-
-watch(s1, val => {
-  // 监听文件夹
-  if (val.taskDirectory) {
-    ipcRendererChannel.StartMonitoringDirectory.invoke(monitorDirectory.value);
-  }
-});
 
 watch(s3.value, val => {
   ipcRendererChannel.UpdateWorkbenchData.invoke({
@@ -122,18 +134,14 @@ onMounted(() => {
   // 绑定文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
-      if (arg.root === monitorDirectory.value) {
-        tableData.value = arg.structure
-          .filter(dir => {
-            const [first, seconds, ..._] = dir.name;
-            return dir.type === 'directory' && first === 'S' && seconds === '3';
-          })
-          .map(dir => {
+      if (arg.root === s1.taskDirectory) {
+        const dir = arg.structure.find(x => x.name === workDir);
+        tableData.value = dir.children
+          .filter((file: any) => file.isVideo)
+          .map((file: any) => {
             return {
-              taskDirectory: s1.taskDirectory,
-              videoMaterial: dir.children
-                .filter((file: any) => file.isVideo && file.type === 'file')
-                .map((file: any) => file.name),
+              taskDirectory: monitorDirectory.value,
+              videoMaterial: file.name,
             };
           });
       }
@@ -165,4 +173,8 @@ const columns: TableColumnType[] = [
     width: '20%',
   },
 ];
+
+function openFolderHandler(dir: any) {
+  shell.openPath(dir);
+}
 </script>
