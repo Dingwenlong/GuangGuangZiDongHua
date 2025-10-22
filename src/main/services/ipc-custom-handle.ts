@@ -210,47 +210,51 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         });
         videoProcessor.on(
           'addToSubtitleRemoveQueue',
-          async (subtitleRemoveQueue: Array<string>) => {
-            // 队列内容元素新增事件触发
-            if (subtitleRemoveQueue.length > 0) {
-              // 从队列头部取出第一个待处理的视频
-              const item = subtitleRemoveQueue[0];
-              if (item) {
-                try {
-                  // 初始化PlaywrightScript实例
-                  if (playwrightScript) {
-                    playwrightScript = null;
-                  }
-                  playwrightScript = new PlaywrightScript();
-                  playwrightScript.on('log', ({ message, type }) => {
-                    if (mainInit.mainWindow)
-                      webContentSend.LogUpdate(
-                        mainInit.mainWindow.webContents,
-                        { message, type }
-                      );
-                  });
+          async (
+            videoPath: string,
+            subtitleRemoveQueue: Array<string>,
+            videosTable: string[][]
+          ) => {
+            // 保存视频链条用于第三步拆解
+            let task: { [k: string]: any } = {};
+            task[videoPath] = videosTable;
+            workbenchManager.pushTask('subtitleRemoveRunningTasks', task);
 
-                  // 提取文件所在目录作为目标目录
-                  const targetDir = path.dirname(item);
-
-                  // 调用runWatermarkRemoval处理视频
-                  const result = await playwrightScript.runWatermarkRemoval(
-                    item,
-                    targetDir
-                  );
-
-                  // 处理完成后从队列中删除该元素
-                  if (result.success && videoProcessor) {
-                    videoProcessor.removeToSubtitleRemoveQueue(item);
-                  }
-                } catch (error: any) {
-                  console.error('处理视频去水印失败:', error);
+            if (videoPath) {
+              try {
+                // 初始化PlaywrightScript实例
+                if (playwrightScript) {
+                  playwrightScript = null;
+                }
+                playwrightScript = new PlaywrightScript();
+                playwrightScript.on('log', ({ message, type }) => {
                   if (mainInit.mainWindow)
                     webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                      message: `处理视频去水印失败: ${error.message}`,
-                      type: 'error',
+                      message,
+                      type,
                     });
+                });
+
+                // 提取文件所在目录作为目标目录
+                const targetDir = path.dirname(videoPath);
+
+                // 调用runWatermarkRemoval处理视频
+                const result = await playwrightScript.runWatermarkRemoval(
+                  videoPath,
+                  targetDir
+                );
+
+                // 处理完成后从队列中删除该元素
+                if (result.success && videoProcessor) {
+                  videoProcessor.removeToSubtitleRemoveQueue(videoPath);
                 }
+              } catch (error: any) {
+                console.error('处理视频去水印失败:', error);
+                if (mainInit.mainWindow)
+                  webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                    message: `处理视频去水印失败: ${error.message}`,
+                    type: 'error',
+                  });
               }
             }
           }
