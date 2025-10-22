@@ -1,25 +1,41 @@
 <template>
   <div class="mb-15 flex flex-row items-center flex-wrap gap-10">
     <div class="w-full flex justify-between flex-row items-center gap-10">
-      <Input class="w-6/12!" readonly v-model:value="s2.taskDirectory" placeholder="点击选择任务监听目录文件夹" @click="selectDirectoryHandler" :disabled="s2.taskDirectory !== ''" />
-      <div class="w-3/12 h-32 text-[12px] leading-35 text-gray-400 content-center text-right">
-        自动持续检测{{s2.autoMonitoring ? '开启' : '关闭' }}
+      <Input
+        class="w-6/12!"
+        readonly
+        v-model:value="s2.taskDirectory"
+        placeholder="点击选择任务监听目录文件夹"
+        @click="selectDirectoryHandler"
+        :disabled="s2.taskDirectory !== ''" />
+      <div
+        class="w-3/12 h-32 text-[12px] leading-35 text-gray-400 content-center text-right">
+        自动持续检测{{ s2.autoMonitoring ? '开启' : '关闭' }}
         <Switch v-model:checked="s2.autoMonitoring" size="small" />
       </div>
     </div>
     <div class="w-full flex flex-row justify-end gap-10">
-      <Button type="primary" @click="() => startOrStopTaskHandler(!s2.autoMonitoring)">{{ !s2.autoMonitoring ? '开始' : '结束' }}执行素材去水印任务</Button>
+      <Button
+        type="primary"
+        @click="() => startOrStopTaskHandler(!s2.autoMonitoring)"
+        >{{ !s2.autoMonitoring ? '开始' : '结束' }}执行素材去水印任务</Button
+      >
     </div>
   </div>
   <div class="list" style="margin-top: 20px; padding: 0 10px">
-    <Table :columns="columns" :data-source="data" size="small" :scroll="{ scrollToFirstRowOnChange: true }" bordered :pagination="false">
+    <Table
+      :columns="columns"
+      :data-source="data"
+      size="small"
+      :scroll="{ scrollToFirstRowOnChange: true }"
+      bordered
+      :pagination="false">
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'videoMaterial'">
           <p
             v-for="(item, index) in record.videoMaterial"
             :key="index"
-            style="margin: 4px 0"
-          >
+            style="margin: 4px 0">
             {{ item }}
           </p>
         </template>
@@ -27,14 +43,19 @@
           <p
             v-for="(item, index) in record.address.split(',')"
             :key="index"
-            style="margin: 4px 0"
-          >
+            style="margin: 4px 0">
             {{ item }}
           </p>
         </template>
         <template v-else-if="column.key === 'action'">
           <span>
-            <Button type="primary" @click="openFolder(s2.taskDirectory + '\\' + record.productDirectory)">打开文件夹</Button>
+            <Button
+              type="primary"
+              @click="
+                openFolder(s2.taskDirectory + '\\' + record.productDirectory)
+              "
+              >打开文件夹</Button
+            >
           </span>
         </template>
       </template>
@@ -44,14 +65,19 @@
 
 <script lang="ts" setup>
 import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { Switch, Input, Table, Button, type TableColumnType } from 'ant-design-vue';
-import Timer from '@shared/utils/timer'
+import {
+  Switch,
+  Input,
+  Table,
+  Button,
+  type TableColumnType,
+} from 'ant-design-vue';
 const { shell, ipcRendererChannel } = window;
 
 const s2 = ref({
   taskDirectory: 'test',
   autoMonitoring: false,
-  intervalSeconds: 5
+  intervalSeconds: 5,
 });
 
 const columns: TableColumnType[] = [
@@ -72,18 +98,17 @@ const columns: TableColumnType[] = [
     key: 'action',
     align: 'center',
     width: '20%',
-  }
+  },
 ];
 
 const data = ref<any>([]);
 
 async function selectDirectoryHandler() {
-  s2.value.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke()
+  s2.value.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
 }
 
 function openFolder(path: string) {
-
-  shell.openPath(path)
+  shell.openPath(path);
 }
 
 const videoMonitoringRunning = ref(false);
@@ -109,97 +134,104 @@ function setCookie() {
     // 调用去水印脚本
     ipcRendererChannel.RunWatermarkRemoval.invoke({
       filePath: firstFilePath,
-      targetDir: 'C:/Users/ASUS/Downloads/kaipai_output'
-    }).then((result: any) => {
-      // 直接处理返回结果
-      if (result && result.success) {
-        console.log('去水印成功:', result.message);
-        console.log('处理后的文件路径:', result.filePath);
-        // 日志信息会通过IPC事件自动显示在页面上
-      } else {
-        console.error('去水印失败:', result?.message || '未知错误');
-      }
-    }).catch(error => {
-      console.error('调用去水印脚本时出错:', error);
-    });
+      targetDir: 'C:/Users/ASUS/Downloads/kaipai_output',
+    })
+      .then((result: any) => {
+        // 直接处理返回结果
+        if (result && result.success) {
+          console.log('去水印成功:', result.message);
+          console.log('处理后的文件路径:', result.filePath);
+          // 日志信息会通过IPC事件自动显示在页面上
+        } else {
+          console.error('去水印失败:', result?.message || '未知错误');
+        }
+      })
+      .catch(error => {
+        console.error('调用去水印脚本时出错:', error);
+      });
   } catch (error: any) {
     console.error('执行去水印脚本时出错:', error.message);
   }
 }
 
 // 调用登录检测脚本
-function checkLogin() {
-  console.log('开始检测登录状态');
+// function checkLogin() {
+//   console.log('开始检测登录状态');
 
-  try {
-    // 调用登录检测脚本
-    ipcRendererChannel.CheckKaipaiLoginStatus.invoke().then(result => {
-      console.log('登录检测结果:', result);
-      // 日志信息会通过IPC事件自动显示在页面上
-    }).catch(error => {
-      console.error('检测登录状态时出错:', error);
-    });
-  } catch (error: any) {
-    console.error('检测登录状态时出错:', error.message);
-  }
-}
-
+//   try {
+//     // 调用登录检测脚本
+//     ipcRendererChannel.CheckKaipaiLoginStatus.invoke()
+//       .then(result => {
+//         console.log('登录检测结果:', result);
+//         // 日志信息会通过IPC事件自动显示在页面上
+//       })
+//       .catch(error => {
+//         console.error('检测登录状态时出错:', error);
+//       });
+//   } catch (error: any) {
+//     console.error('检测登录状态时出错:', error.message);
+//   }
+// }
 
 watch(s2.value, async (val, _) => {
-  await ipcRendererChannel.UpdateWorkbenchData.invoke({ ...val } as any);
+  ipcRendererChannel.UpdateWorkbenchData.invoke({
+    stepNo: 's1',
+    sData: { ...val },
+  });
   // 监听视频
   // if(!val.autoMonitoring) {
   //   videoMonitoringRunning.value = false;
   //   ipcRendererChannel.StopMonitoringVideo.invoke();
   // }
   // 监听文件夹
-  if(val.taskDirectory && !videoMonitoringRunning.value) {
+  if (val.taskDirectory && !videoMonitoringRunning.value) {
     ipcRendererChannel.StartMonitoringDirectory.invoke(val.taskDirectory);
   }
 });
 
 onMounted(async () => {
-  const workbench = await ipcRendererChannel.GetWorkbenchData.invoke();
+  const workbench = await ipcRendererChannel.GetWorkbenchData.invoke('s2');
   s2.value.taskDirectory = workbench.taskDirectory ?? '';
   s2.value.autoMonitoring = workbench.autoMonitoring ?? true;
 
-  Timer.interval(s2.value.intervalSeconds * 1000, () => {
-    if(s2.value.autoMonitoring) {
-      startOrStopTaskHandler();
-    }
-  });
-
   // 获取历史缓存数据
-  await ipcRendererChannel.GetWorkbenchData.invoke().then((workbench: any) => {
-    s2.value = workbench ?? {
-      taskDirectory: '',
-      autoMonitoring: false,
-      intervalSeconds: 5
-    };
-  });
-
-    // 绑定文件夹变化监听事件
-  ipcRendererChannel.MonitoringDirectoryCallback.on((event, arg: { root: string, structure: any[]}) => {
-    data.value = arg.structure
-    .filter(dir => {
-      return dir.type === 'directory' && dir.name === '视频去字幕任务'
-    })
-    .map(dir => {
-      return {
-        taskDirectory: s2.value.taskDirectory,
-        productDirectory: dir.path.replace(s2.value.taskDirectory + '\\', ''),
-        videoMaterial: dir.children
-          .filter((file: any) => file.isVideo && file.type === 'file')
-          .map((file: any) => file.name)
+  await ipcRendererChannel.GetWorkbenchData.invoke('s2').then(
+    (workbench: any) => {
+      s2.value = workbench ?? {
+        taskDirectory: '',
+        autoMonitoring: false,
+        intervalSeconds: 5,
       };
-    });
-  });
+    }
+  );
+
+  // 绑定文件夹变化监听事件
+  ipcRendererChannel.MonitoringDirectoryCallback.on(
+    (event, arg: { root: string; structure: any[] }) => {
+      data.value = arg.structure
+        .filter(dir => {
+          return dir.type === 'directory' && dir.name === '视频去字幕任务';
+        })
+        .map(dir => {
+          return {
+            taskDirectory: s2.value.taskDirectory,
+            productDirectory: dir.path.replace(
+              s2.value.taskDirectory + '\\',
+              ''
+            ),
+            videoMaterial: dir.children
+              .filter((file: any) => file.isVideo && file.type === 'file')
+              .map((file: any) => file.name),
+          };
+        });
+    }
+  );
 });
 
 onUnmounted(() => {
   // 移除文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.removeAllListeners();
-})
+});
 </script>
 
 <style scoped>

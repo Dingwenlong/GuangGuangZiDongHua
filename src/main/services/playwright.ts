@@ -5,210 +5,239 @@ import path from 'path';
 import os from 'os';
 import { EventEmitter } from 'events';
 
-
 class PlaywrightScript extends EventEmitter {
   /**
    * 视频去水印处理
    */
   public async runWatermarkRemoval(filePath?: string, targetDir?: string) {
-      let browser;
+    let browser;
+
+    try {
+      // 获取当前系统用户名
+      const username = os.userInfo().username;
+      const userDataDir = path.join('C:\\', `kaipai_${username}_data`);
+
+      // 确定下载目录
+      const defaultDownloadDir = path.join(
+        os.homedir(),
+        'Downloads',
+        'kaipai_output'
+      );
+      const downloadDir = targetDir
+        ? path.resolve(targetDir)
+        : defaultDownloadDir;
+
+      this.emit('log', { message: '开始处理视频去水印', type: 'info' });
+
+      // 确保目录存在
+      if (!fs.existsSync(downloadDir)) {
+        fs.mkdirSync(downloadDir, { recursive: true });
+      }
+
+      if (!fs.existsSync(userDataDir)) {
+        fs.mkdirSync(userDataDir, { recursive: true });
+      } else {
+        console.log(`使用用户 ${username} 的现有数据目录: ${userDataDir}`);
+      }
+
+      // 启动浏览器
+      browser = await chromium.launchPersistentContext(userDataDir, {
+        channel: 'chrome',
+        headless: false,
+        viewport: null,
+        acceptDownloads: true,
+        downloadsPath: downloadDir,
+      });
+
+      // 获取页面实例
+      const page =
+        browser.pages().length > 0
+          ? browser.pages()[0]
+          : await browser.newPage();
+
+      // 打开网页并等待加载
+      await page.goto('https://www.kaipai.com/video-tool/remove-watermark');
+      await page.waitForLoadState('networkidle');
+
+      // 验证文件路径
+      if (!filePath || !fs.existsSync(filePath)) {
+        const errorMsg = filePath
+          ? `文件不存在，请检查路径: ${filePath}`
+          : '未提供有效的文件路径';
+        throw new Error(errorMsg);
+      }
+
+      // 上传文件
+      const uploadArea = await page.waitForSelector(
+        '.UploadContentV2_cardRightBox__s8gmc',
+        {
+          timeout: 30000,
+        }
+      );
+
+      const [fileChooser] = await Promise.all([
+        page.waitForEvent('filechooser', { timeout: 15000 }),
+        uploadArea.click(),
+      ]);
+
+      await fileChooser.setFiles(filePath);
+      this.emit('log', { message: `${filePath}上传成功`, type: 'success' });
+
+      // 处理分类选择
+      await page.waitForSelector('.index_categorgList__dF7ji', {
+        timeout: 60000,
+      });
+
+      const secondCategorySelector =
+        '.index_categorgList__dF7ji > .index_categoryItem__pPv2U:nth-child(1)';
+
+      const secondCategory = await page.waitForSelector(
+        secondCategorySelector,
+        {
+          timeout: 30000,
+        }
+      );
+      await secondCategory.click();
+
+      // 开始处理
+      const startBtnSelector = '.index_button__WWpyb';
+      const startButton = await page.waitForSelector(startBtnSelector, {
+        timeout: 30000,
+      });
+      // await startButton.click();
+
+      // 处理登录
+      const loginPopupSelector = '.meitu-account-quick-login-popup-container';
 
       try {
-          // 获取当前系统用户名
-          const username = os.userInfo().username;
-          const userDataDir = path.join('C:\\', `kaipai_${username}_data`);
+        await page.waitForSelector(loginPopupSelector, {
+          state: 'visible',
+          timeout: 5000,
+        });
 
-          // 确定下载目录
-          const defaultDownloadDir = path.join(os.homedir(), 'Downloads', 'kaipai_output');
-          const downloadDir = targetDir ? path.resolve(targetDir) : defaultDownloadDir;
-
-          this.emit('log', { message: '开始处理视频去水印', type: 'info' });
-
-          // 确保目录存在
-          if (!fs.existsSync(downloadDir)) {
-              fs.mkdirSync(downloadDir, { recursive: true });
-          }
-
-          if (!fs.existsSync(userDataDir)) {
-              fs.mkdirSync(userDataDir, { recursive: true });
-          } else {
-              console.log(`使用用户 ${username} 的现有数据目录: ${userDataDir}`);
-          }
-
-          // 启动浏览器
-          browser = await chromium.launchPersistentContext(userDataDir, {
-              channel: 'chrome',
-              headless: false,
-              viewport: null,
-              acceptDownloads: true,
-              downloadsPath: downloadDir
-          });
-
-          // 获取页面实例
-          const page = browser.pages().length > 0 ? browser.pages()[0] : await browser.newPage();
-
-          // 打开网页并等待加载
-          await page.goto('https://www.kaipai.com/video-tool/remove-watermark');
-          await page.waitForLoadState('networkidle');
-
-          // 验证文件路径
-          if (!filePath || !fs.existsSync(filePath)) {
-              const errorMsg = filePath ? `文件不存在，请检查路径: ${filePath}` : '未提供有效的文件路径';
-              throw new Error(errorMsg);
-          }
-
-          // 上传文件
-          const uploadArea = await page.waitForSelector('.UploadContentV2_cardRightBox__s8gmc', {
-              timeout: 30000
-          });
-
-          const [fileChooser] = await Promise.all([
-              page.waitForEvent('filechooser', { timeout: 15000 }),
-              uploadArea.click()
-          ]);
-
-          await fileChooser.setFiles(filePath);
-          this.emit('log', { message: `${filePath}上传成功`, type: 'success' });
-
-          // 处理分类选择
-          await page.waitForSelector('.index_categorgList__dF7ji', { timeout: 60000 });
-
-          const secondCategorySelector =
-              '.index_categorgList__dF7ji > .index_categoryItem__pPv2U:nth-child(1)';
-
-          const secondCategory = await page.waitForSelector(secondCategorySelector, {
-              timeout: 30000
-          });
-          await secondCategory.click();
-
-          // 开始处理
-          const startBtnSelector = '.index_button__WWpyb';
-          const startButton = await page.waitForSelector(startBtnSelector, {
-              timeout: 30000
-          });
-          // await startButton.click();
-
-          // 处理登录
-          const loginPopupSelector = '.meitu-account-quick-login-popup-container';
-
-          try {
-              await page.waitForSelector(loginPopupSelector, {
-                  state: 'visible',
-                  timeout: 5000
-              });
-
-              await page.waitForSelector(loginPopupSelector, {
-                  state: 'hidden',
-                  timeout: 120000
-              });
-          } catch (error) {
-              // 未检测到登录弹窗，继续执行
-          }
-          this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
-
-          // 等待处理完成（修正后的轮询逻辑，解决类型报错）
-          const exportButtonSelector = '.index_buttonBox__-1roP .index_exportButton__4OdAj';
-          const maxWaitTime = 120 * 60 * 1000; // 最大等待时间（2小时）
-          const checkInterval = 60 * 1000; // 检查间隔（1分钟）
-
-          try {
-              await page.waitForFunction(
-                  (selector) => {
-                      const btn = document.querySelector(selector);
-                      return btn && !btn.classList.contains('index_disabled__Xu0Xz');
-                  },
-                  exportButtonSelector,
-                  {
-                      timeout: maxWaitTime,
-                      polling: checkInterval
-                  }
-              );
-          } catch (error) {
-              return {
-                  success: false,
-                  message: `超过最大等待时间(${maxWaitTime / 60000}分钟)，导出按钮仍不可用`
-              };
-          }
-
-          // 监听下载事件
-          const downloads: any = [];
-          const downloadPromise = new Promise((resolve) => {
-              const listener = (download: any) => {
-                  downloads.push(download);
-                  // 等待5秒确认是否有更多文件
-                  setTimeout(() => {
-                      page.off('download', listener);
-                      resolve(downloads);
-                  }, 5000);
-              };
-
-              page.on('download', listener);
-              page.click(exportButtonSelector);
-          });
-
-          const allDownloads: any = await downloadPromise;
-
-          if (allDownloads.length === 0) {
-              return { success: false, message: '未捕获到任何下载文件' };
-          }
-
-          // 处理下载的文件
-          let targetPath = null;
-          const uuidPattern =
-              /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
-
-          for (const download of allDownloads) {
-              const downloadPath = await download.path();
-              if (!downloadPath) continue;
-
-              const fileName = download.suggestedFilename();
-              const isUuidFile = uuidPattern.test(fileName);
-
-              if (!isUuidFile) {
-                  let processedName = fileName;
-                  if (processedName.startsWith('S1')) {
-                      processedName = processedName.replace('S1', 'S2');
-                  }
-
-                  if (!processedName.endsWith('.mp4')) {
-                      processedName = `${processedName}.mp4`;
-                  }
-
-                  targetPath = path.join(downloadDir, processedName);
-                  if (fs.existsSync(targetPath)) {
-                      fs.unlinkSync(targetPath);
-                  }
-                  await download.saveAs(targetPath);
-                  this.emit('log', { message: `${filePath}处理完成`, type: 'success' });
-              } else {
-                  const tempPath = path.join(downloadDir, fileName);
-                  await download.saveAs(tempPath);
-                  if (fs.existsSync(tempPath)) {
-                      fs.unlinkSync(tempPath);
-                      this.emit('log', { message: `${filePath}处理完成`, type: 'success' });
-                  }
-              }
-          }
-
-          if (!targetPath) {
-              return { success: false, message: '未找到有效的下载文件' };
-          }
-
-          await browser.close();
-
-          return {
-              success: true,
-              message: `文件已成功处理并保存至: ${targetPath}`,
-              filePath: targetPath
-          };
-
-      } catch (error: any) {
-          console.error('操作过程中出现错误:', error.message);
-          this.emit('log', { message: `操作过程中出现错误: ${error.message}`, type: 'error' });
-          return { success: false, message: `操作过程中出现错误: ${error.message}` };
-      } finally {
-          console.log('操作完成');
+        await page.waitForSelector(loginPopupSelector, {
+          state: 'hidden',
+          timeout: 120000,
+        });
+      } catch (error) {
+        // 未检测到登录弹窗，继续执行
       }
+      this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
+
+      // 等待处理完成（修正后的轮询逻辑，解决类型报错）
+      const exportButtonSelector =
+        '.index_buttonBox__-1roP .index_exportButton__4OdAj';
+      const maxWaitTime = 120 * 60 * 1000; // 最大等待时间（2小时）
+      const checkInterval = 60 * 1000; // 检查间隔（1分钟）
+
+      try {
+        await page.waitForFunction(
+          selector => {
+            const btn = document.querySelector(selector);
+            return btn && !btn.classList.contains('index_disabled__Xu0Xz');
+          },
+          exportButtonSelector,
+          {
+            timeout: maxWaitTime,
+            polling: checkInterval,
+          }
+        );
+      } catch (error) {
+        return {
+          success: false,
+          message: `超过最大等待时间(${
+            maxWaitTime / 60000
+          }分钟)，导出按钮仍不可用`,
+        };
+      }
+
+      // 监听下载事件
+      const downloads: any = [];
+      const downloadPromise = new Promise(resolve => {
+        const listener = (download: any) => {
+          downloads.push(download);
+          // 等待5秒确认是否有更多文件
+          setTimeout(() => {
+            page.off('download', listener);
+            resolve(downloads);
+          }, 5000);
+        };
+
+        page.on('download', listener);
+        page.click(exportButtonSelector);
+      });
+
+      const allDownloads: any = await downloadPromise;
+
+      if (allDownloads.length === 0) {
+        return { success: false, message: '未捕获到任何下载文件' };
+      }
+
+      // 处理下载的文件
+      let targetPath = null;
+      const uuidPattern =
+        /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+
+      for (const download of allDownloads) {
+        const downloadPath = await download.path();
+        if (!downloadPath) continue;
+
+        const fileName = download.suggestedFilename();
+        const isUuidFile = uuidPattern.test(fileName);
+
+        if (!isUuidFile) {
+          let processedName = fileName;
+          if (processedName.startsWith('S1')) {
+            processedName = processedName.replace('S1', 'S2');
+          }
+
+          if (!processedName.endsWith('.mp4')) {
+            processedName = `${processedName}.mp4`;
+          }
+
+          targetPath = path.join(downloadDir, processedName);
+          if (fs.existsSync(targetPath)) {
+            fs.unlinkSync(targetPath);
+          }
+          await download.saveAs(targetPath);
+          this.emit('log', { message: `${filePath}处理完成`, type: 'success' });
+        } else {
+          const tempPath = path.join(downloadDir, fileName);
+          await download.saveAs(tempPath);
+          if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+            this.emit('log', {
+              message: `${filePath}处理完成`,
+              type: 'success',
+            });
+          }
+        }
+      }
+
+      if (!targetPath) {
+        return { success: false, message: '未找到有效的下载文件' };
+      }
+
+      await browser.close();
+
+      return {
+        success: true,
+        message: `文件已成功处理并保存至: ${targetPath}`,
+        filePath: targetPath,
+      };
+    } catch (error: any) {
+      console.error('操作过程中出现错误:', error.message);
+      this.emit('log', {
+        message: `操作过程中出现错误: ${error.message}`,
+        type: 'error',
+      });
+      return {
+        success: false,
+        message: `操作过程中出现错误: ${error.message}`,
+      };
+    } finally {
+      console.log('操作完成');
+    }
   }
 
   /**
@@ -239,7 +268,7 @@ class PlaywrightScript extends EventEmitter {
         channel: 'chrome',
         headless: false,
         viewport: null, // 使用默认窗口大小
-        acceptDownloads: true
+        acceptDownloads: true,
       });
 
       // 创建新页面
@@ -262,25 +291,26 @@ class PlaywrightScript extends EventEmitter {
       // 关闭浏览器
       await browser.close();
 
-      this.emit('log', { message: `开拍登录状态检测结果: ${isLoggedIn ? '已登录' : '未登录'}`, type: 'info' });
+      this.emit('log', {
+        message: `开拍登录状态检测结果: ${isLoggedIn ? '已登录' : '未登录'}`,
+        type: 'info',
+      });
 
       return {
         success: isLoggedIn,
         message: isLoggedIn
           ? '检测到用户已登录（发现账户头像元素）'
           : '未检测到用户登录状态（未发现账户头像元素）',
-        isLoggedIn: isLoggedIn // 明确返回登录状态
+        isLoggedIn: isLoggedIn, // 明确返回登录状态
       };
-
     } catch (error: any) {
       // console.error('登录状态检测过程中出现错误:', error.message);
 
       return {
         success: false,
         message: `登录状态检测失败: ${error.message}`,
-        isLoggedIn: null // 错误情况下登录状态为null
+        isLoggedIn: null, // 错误情况下登录状态为null
       };
-
     } finally {
       // 确保浏览器被关闭
       if (browser) {
@@ -294,7 +324,6 @@ class PlaywrightScript extends EventEmitter {
     }
   }
 }
-
 
 /**
  * 视频画质修复

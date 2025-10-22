@@ -515,28 +515,6 @@
   resolved "https://registry.npmmirror.com/@esbuild/win32-x64/-/win32-x64-0.25.10.tgz"
   integrity sha512-9KpxSVFCu0iK1owoez6aC/s/EdUQLDN3adTxGCqxMVhrPDj6bt5dbrHDXUuq+Bs2vATFBBrQS5vdQ/Ed2P+nbw==
 
-"@ffmpeg/core@^0.12.10":
-  version "0.12.10"
-  resolved "https://registry.npmmirror.com/@ffmpeg/core/-/core-0.12.10.tgz#3177e88852bfbfaad5d258e9e0ac1fd9dffd3223"
-  integrity sha512-dzNplnn2Nxle2c2i2rrDhqcB19q9cglCkWnoMTDN9Q9l3PvdjZWd1HfSPjCNWc/p8Q3CT+Es9fWOR0UhAeYQZA==
-
-"@ffmpeg/ffmpeg@^0.12.15":
-  version "0.12.15"
-  resolved "https://registry.npmmirror.com/@ffmpeg/ffmpeg/-/ffmpeg-0.12.15.tgz#e5b05c2b5c946f3464b3aa85461e4654a4649d80"
-  integrity sha512-1C8Obr4GsN3xw+/1Ww6PFM84wSQAGsdoTuTWPOj2OizsRDLT4CXTaVjPhkw6ARyDus1B9X/L2LiXHqYYsGnRFw==
-  dependencies:
-    "@ffmpeg/types" "^0.12.4"
-
-"@ffmpeg/types@^0.12.4":
-  version "0.12.4"
-  resolved "https://registry.npmmirror.com/@ffmpeg/types/-/types-0.12.4.tgz#aecd9b1a035882ee0bdf8853af37271a3b447473"
-  integrity sha512-k9vJQNBGTxE5AhYDtOYR5rO5fKsspbg51gbcwtbkw2lCdoIILzklulcjJfIDwrtn7XhDeF2M+THwJ2FGrLeV6A==
-
-"@ffmpeg/util@^0.12.2":
-  version "0.12.2"
-  resolved "https://registry.npmmirror.com/@ffmpeg/util/-/util-0.12.2.tgz#6bab9d8022a5bed9a6ff0933e5235b9b38698599"
-  integrity sha512-ouyoW+4JB7WxjeZ2y6KpRvB+dLp7Cp4ro8z0HIVpZVCM7AwFlHa0c4R8Y/a4M3wMqATpYKhC7lSFHQ0T11MEDw==
-
 "@iconify-vue/material-symbols@^1.0.3":
   version "1.0.3"
   resolved "https://registry.npmmirror.com/@iconify-vue/material-symbols/-/material-symbols-1.0.3.tgz"
@@ -555,11 +533,6 @@
   version "2.0.0"
   resolved "https://registry.npmmirror.com/@iconify/types/-/types-2.0.0.tgz"
   integrity sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==
-
-"@ikaros-cli/prettier-config@^0.1.0":
-  version "0.1.0"
-  resolved "https://registry.npmmirror.com/@ikaros-cli/prettier-config/-/prettier-config-0.1.0.tgz"
-  integrity sha512-i/0LJkwe5zcXF3A6GDLJrwcmrPjiuac5G25BDcYslBUUxt+qqG9wHCWUzRArBPrURFidRFRDKOc9eqxku+JLRg==
 
 "@inquirer/ansi@^1.0.0":
   version "1.0.0"
@@ -4111,6 +4084,11 @@ package-json-from-dist@^1.0.0:
   version "1.0.1"
   resolved "https://registry.npmmirror.com/package-json-from-dist/-/package-json-from-dist-1.0.1.tgz"
   integrity sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==
+
+path-browserify@^1.0.1:
+  version "1.0.1"
+  resolved "https://registry.npmmirror.com/path-browserify/-/path-browserify-1.0.1.tgz#d98454a9c3753d5790860f16f68867b9e46be1fd"
+  integrity sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==
 
 path-is-absolute@^1.0.0:
   version "1.0.1"

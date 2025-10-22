@@ -5,18 +5,41 @@ import { app } from 'electron';
 
 // 定义存储的数据结构
 export interface WorkbenchStoreSchema {
-  taskDirectory?: string,
-  materialDuration: number,
-  autoMonitoring: boolean,
-  intervalSeconds: number
+  s1: {
+    taskDirectory?: string;
+    materialDuration: number;
+    autoMonitoring: boolean;
+    intervalSeconds: number;
+  };
+  s3: {
+    productMaterialNum: number;
+    storyboardSceneThreshold: number;
+    storyboardDuration1: number;
+    storyboardDuration2: number;
+    autoHandOnWorkflow: boolean;
+  };
+  // { '视频路径': ['片段1'，'片段2'] }
+  subtitleRemoveRunningTasks: {
+    [key: string]: string[][];
+  }[];
 }
 
 // 默认数据
 const defaultData: WorkbenchStoreSchema = {
-  taskDirectory: '',
-  materialDuration: 20,
-  autoMonitoring: true,
-  intervalSeconds: 5
+  s1: {
+    taskDirectory: '',
+    materialDuration: 20,
+    autoMonitoring: true,
+    intervalSeconds: 5,
+  },
+  s3: {
+    productMaterialNum: 4,
+    storyboardSceneThreshold: 0.3,
+    storyboardDuration1: 4,
+    storyboardDuration2: 6,
+    autoHandOnWorkflow: true,
+  },
+  subtitleRemoveRunningTasks: [],
 };
 
 class WorkbenchManager {
@@ -52,20 +75,36 @@ class WorkbenchManager {
 
   /**
    * 获取
-   * @returns {Promise<WorkbenchData | null>} 数据
    */
-  public async getInfo(): Promise<WorkbenchStoreSchema | null> {
+  public async getInfo<K extends keyof WorkbenchStoreSchema>(
+    stepNo: K
+  ): Promise<WorkbenchStoreSchema[K]> {
     await this.db.read();
-    return this.db.data;
+    console.log(stepNo, this.db.data[stepNo]);
+    return this.db.data[stepNo];
   }
 
   /**
    * 更新信息
-   * @param {Partial<WorkbenchData>} workbenchData - 数据
    */
-  public async updateData(workbenchData: WorkbenchStoreSchema): Promise<void> {
+  public async updateData<
+    K extends keyof Omit<WorkbenchStoreSchema, 'subtitleRemoveRunningTasks'>
+  >(stepNo: K, sData: WorkbenchStoreSchema[K]): Promise<void> {
     await this.db.read();
-    this.db.data = workbenchData;
+    this.db.data[stepNo] = sData;
+    console.log(stepNo, this.db.data[stepNo]);
+    await this.db.write();
+  }
+
+  /**
+   * 新增任务
+   */
+  public async pushTask<
+    K extends keyof Pick<WorkbenchStoreSchema, 'subtitleRemoveRunningTasks'>
+  >(key: K, sData: WorkbenchStoreSchema[K][number]): Promise<void> {
+    await this.db.read();
+    this.db.data[key] = [...this.db.data[key], sData];
+    console.log(key, this.db.data[key]);
     await this.db.write();
   }
 }
