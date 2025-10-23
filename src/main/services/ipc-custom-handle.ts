@@ -1,6 +1,6 @@
 import type MainInit from './window-manager';
-import authManager from './auth-manager';
-import workbenchManager from './workbench-manager';
+import authManager from '../lib/auth-manager';
+import workbenchManager from '../lib/workbench-manager';
 // import { runWatermarkRemoval, checkLoginStatus } from "./playwright";
 import config from '@config/index';
 import { BrowserWindow } from 'electron';
@@ -158,13 +158,13 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       channel: 'UpdateWorkbenchData',
       handler: async (_, args: { stepNo: any; sData: any }) => {
-        return await workbenchManager.updateData(args.stepNo, args.sData);
+        return await workbenchManager.updateStep(args.stepNo, args.sData);
       },
     },
     {
       channel: 'GetWorkbenchData',
       handler: async (_, stepNo: any) => {
-        return await workbenchManager.getInfo(stepNo);
+        return await workbenchManager.getByKey(stepNo);
       },
     },
     {
@@ -180,6 +180,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
           debounceDelay: 500, // 500ms防抖延迟
         });
         dirMonitor.on('directoryStructure', ({ root, structure }) => {
+          console.log('dirMonitor.directoryStructure');
           if (mainInit.mainWindow)
             webContentSend.MonitoringDirectoryCallback(
               mainInit.mainWindow.webContents,
@@ -232,117 +233,58 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         });
         videoProcessor.on(
           'addToSubtitleRemoveQueue',
-          async (
-            videoPath: string,
-            subtitleRemoveQueue: Array<string>,
-            videosTable: string[][]
-          ) => {
-            // 检查是否已有任务在执行，如果有则不处理新任务
+          async (videoPath: string, subtitleRemoveQueue: Array<string>) => {
+            // 检查是否有任务正在运行，如果有则跳过当前任务
             if (isWatermarkRemovalRunning) {
-              console.log('已有去水印任务在执行，跳过当前视频:', videoPath);
-
+              console.log('有视频去水印任务正在运行，当前任务将等待后续处理');
               if (mainInit.mainWindow)
                 webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                  message: `已有去水印任务在执行，跳过当前视频: ${path.basename(
-                    videoPath
-                  )}`,
-                  type: 'warning',
+                  message: '有视频去水印任务正在运行，当前任务将等待后续处理',
+                  type: 'info',
                 });
               return;
             }
 
-            // 保存视频链条用于第三步拆解
-            let task: { [k: string]: any } = {};
-            task[videoPath] = videosTable;
-            workbenchManager.pushTask('subtitleRemoveRunningTasks', task);
+            try {
+              // 设置任务正在运行的状态
+              isWatermarkRemovalRunning = true;
 
-            if (videoPath) {
-              try {
-                // 设置任务执行状态为正在运行
-                isWatermarkRemovalRunning = true;
-
-                // 初始化PlaywrightScript实例
-                if (playwrightScript) {
-                  playwrightScript = null;
-                }
-                playwrightScript = new PlaywrightScript();
-                playwrightScript.on('log', ({ message, type }) => {
-                  if (mainInit.mainWindow)
-                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                      message,
-                      type,
-                    });
-                });
-
-                // 提取文件所在目录作为目标目录
-                const targetDir = path.dirname(videoPath);
-
-                // 调用runWatermarkRemoval处理视频
-                const result = await playwrightScript.runWatermarkRemoval(
-                  videoPath,
-                  targetDir
-                );
-
-                // 处理完成后从队列中删除该元素
-                if (result.success && videoProcessor) {
-                  videoProcessor.removeToSubtitleRemoveQueue(videoPath);
-                }
-              } catch (error: any) {
-                console.error('处理视频去水印失败:', error);
+              // 初始化PlaywrightScript实例
+              if (playwrightScript) {
+                playwrightScript = null;
+              }
+              playwrightScript = new PlaywrightScript();
+              playwrightScript.on('log', ({ message, type }) => {
                 if (mainInit.mainWindow)
                   webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                    message: `处理视频去水印失败: ${error.message}`,
-                    type: 'error',
+                    message,
+                    type,
                   });
-              } finally {
-                // 无论成功失败，都设置任务执行状态为空闲
-                isWatermarkRemovalRunning = false;
-              }
-            }
-          }
-        );
-
-        videoProcessor.on(
-          'audioExtractComplete',
-          ({ outputPath }: { outputPath: string }) => {
-            if (mainInit.mainWindow) {
-              webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                message: `音频提取完成: ${path.basename(outputPath)}`,
-                type: 'info',
               });
+              // 提取文件所在目录作为目标目录
+              const targetDir = path.dirname(videoPath);
+              // 调用runWatermarkRemoval处理视频
+              const result = await playwrightScript.runWatermarkRemoval(
+                videoPath,
+                targetDir
+              );
 
-              // 触发ProcessAudio事件处理提取的音频，ProcessAudio会自动识别同文件夹下的同名视频文件
-              if (audioProcessor) {
-                audioProcessor.processAudio(outputPath).catch(error => {
-                  console.error('处理音频失败:', error);
-                  if (mainInit.mainWindow) {
-                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                      message: `处理音频失败: ${error.message}`,
-                      type: 'error',
-                    });
-                  }
-                });
-              } else {
-                // 初始化audioProcessor并处理音频
-                audioProcessor = new AudioProcessor();
-                audioProcessor.on('log', ({ message, type }) => {
-                  if (mainInit.mainWindow) {
-                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                      message,
-                      type,
-                    });
-                  }
-                });
-                audioProcessor.processAudio(outputPath).catch(error => {
-                  console.error('处理音频失败:', error);
-                  if (mainInit.mainWindow) {
-                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-                      message: `处理音频失败: ${error.message}`,
-                      type: 'error',
-                    });
-                  }
-                });
+              // 处理完成后
+              // 从队列中删除该元素 & 拆分视频
+              if (result.success && videoProcessor) {
+                videoProcessor.removeToSubtitleRemoveQueue(videoPath);
+                videoProcessor.splitVideo(videoPath);
               }
+            } catch (error: any) {
+              console.error('处理视频去水印失败:', error);
+              if (mainInit.mainWindow)
+                webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                  message: `处理视频去水印失败: ${error.message}`,
+                  type: 'error',
+                });
+            } finally {
+              // 无论成功失败，都将任务状态重置为未运行
+              isWatermarkRemovalRunning = false;
             }
           }
         );

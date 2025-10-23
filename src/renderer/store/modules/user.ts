@@ -1,14 +1,13 @@
 import { defineStore } from 'pinia';
 import pinia from '@renderer/store';
 import { login, changePwd } from '@renderer/api/account';
-import type { UserData } from '@main/services/auth-manager';
-import { onMounted, ref } from 'vue';
+import type { UserData } from '@main/lib/auth-manager';
+import { ref } from 'vue';
 import { setToken, setRefreshToken } from '@renderer/utils/token';
 
 interface TokenData {
   token?: string;
   refreshToken?: string;
-  expiresAt?: string; // 存储为ISO字符串
 }
 
 const { ipcRendererChannel } = window;
@@ -16,10 +15,6 @@ export const useStoreUser = defineStore('user', () => {
   const loginAccountKey = 'client_app_login_account';
   const userData = ref<UserData | null>();
   const tokenData = ref<TokenData | null>();
-
-  onMounted(() => {
-    init();
-  });
 
   const loginAction = async (loginData: any) => {
     try {
@@ -68,7 +63,9 @@ export const useStoreUser = defineStore('user', () => {
   };
   const changeAccountPwd = (data: { password: string }) => {
     const res = changePwd(data);
-    //成功后更新本地登录账号缓存
+    const localAccount = getLocalAccount();
+    localAccount.password = '';
+    saveLocalAccount(localAccount);
     return res;
   };
 

@@ -1,8 +1,13 @@
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as chokidar from 'chokidar';
-import { FFmpegUtil, FFmpegProgressEvent } from '../utils/ffmpeg';
+import FileWatcher from '../lib/file-watcher';
+import { isVideoFile, isProcessedVideoFile } from '../utils/file';
+import { FFmpegUtil, FFmpegProgressEvent, VideoSegment } from '../lib/ffmpeg';
+import workbenchManager, {
+  OrderedVideosChunk,
+  type VideoStoryboard,
+} from '../lib/workbench-manager';
 
 // 类型定义
 interface VideoProcessorOptions {
@@ -33,14 +38,13 @@ interface LogEvent {
 
 class VideoProcessor extends EventEmitter {
   private monitorDirectory: string;
-  private watcher: chokidar.FSWatcher | null;
+  private watcher: FileWatcher | null;
   private options: VideoProcessorOptions;
   private currentlyProcessing: Set<string>;
   private recentlyProcessed: Map<string, number>;
   private recentlyProcessedCleanup: NodeJS.Timeout | null;
   private processingQueue: Map<string, ProcessingQueueItem>;
   private status: StatusObject;
-  private videoExtensions: Set<string>;
   private queueProcessInterval!: NodeJS.Timeout | null;
   private ffmpegUtil: FFmpegUtil;
 
@@ -93,30 +97,9 @@ class VideoProcessor extends EventEmitter {
       queueSize: 0,
     };
 
-    // 支持的视频格式
-    this.videoExtensions = new Set<string>([
-      '.mp4',
-      '.avi',
-      '.mov',
-      '.mkv',
-      '.wmv',
-      '.flv',
-      '.webm',
-      '.m4v',
-      '.3gp',
-      '.ogg',
-    ]);
-
     // 初始化FFmpeg工具
     this.ffmpegUtil = FFmpegUtil.getInstance();
     this.setupFFmpegEvents();
-
-    // 测试音频提取队列
-    setTimeout(() => {
-      this.addToAudioExtractQueue(
-        'C:\\Users\\ASUS\\Downloads\\ces\\S2-aaa\\S1---33019725083-1-192.mp4'
-      );
-    }, 2000);
   }
 
   /**
@@ -200,7 +183,7 @@ class VideoProcessor extends EventEmitter {
    */
   public stop(): void {
     if (this.watcher) {
-      this.watcher.close();
+      this.watcher.stop();
       this.emit('log', { message: '文件监控已停止', type: 'info' } as LogEvent);
     }
 
@@ -249,7 +232,7 @@ class VideoProcessor extends EventEmitter {
    * 启动文件监控
    */
   private startFileWatching(): void {
-    this.watcher = chokidar.watch(this.monitorDirectory, {
+    this.watcher = new FileWatcher(this.monitorDirectory, {
       ignored: [
         /(^|[\/\\])\../, // 忽略隐藏文件
         /.*---\d+\.mp4$/, // 忽略已处理的视频文件
@@ -257,7 +240,6 @@ class VideoProcessor extends EventEmitter {
         /temp/, // 忽略临时目录
         /node_modules/,
       ],
-      persistent: true,
       depth: 3, // 监控深度增加到3层
       ignoreInitial: false, // 不忽略初始文件
       awaitWriteFinish: {
@@ -285,12 +267,14 @@ class VideoProcessor extends EventEmitter {
         // 扫描现有文件
         setTimeout(() => this.scanExistingFiles(), 5000);
       })
-      .on('error', (error: any) => {
+      .on('error', (error: Error) => {
         this.emit('log', {
           message: `文件监控错误: ${error.message}`,
           type: 'error',
         } as LogEvent);
       });
+
+    this.watcher.start();
   }
 
   /**
@@ -577,7 +561,7 @@ class VideoProcessor extends EventEmitter {
    * 合并视频
    */
   private async mergeVideos(): Promise<void> {
-    let videosTable: string[][] = [];
+    const videosChunk: OrderedVideosChunk = [];
     this.status.processingStatus = '开始合并视频';
     this.updateStatus();
 
@@ -589,7 +573,15 @@ class VideoProcessor extends EventEmitter {
         const videos = this.getProcessedVideos(dir);
         const videosPart = videos.slice(0, 4);
         videoFiles.push(...videosPart);
-        videosTable.push(videosPart);
+        videosChunk.push({
+          folderName: dir,
+          videos: videosPart.map(video => {
+            return {
+              fragmentDuration: 20,
+              fileName: video.replace(dir, ''),
+            } satisfies VideoStoryboard;
+          }),
+        });
       });
 
       if (videoFiles.length !== 20) {
@@ -615,8 +607,28 @@ class VideoProcessor extends EventEmitter {
         type: 'success',
       } as LogEvent);
 
+      // 保存视频链路用于拆解
+      workbenchManager.pushTask(
+        'subtitleRemoveRunningTasks',
+        outputPath,
+        videosChunk
+      );
+
       // 将合并后的视频加入去字幕处理队列
-      this.addToSubtitleRemoveQueue(outputPath, videosTable);
+      this.subtitleRemoveQueue.push(outputPath);
+      this.emit('log', {
+        message: `已加入去字幕队列: ${path.basename(outputPath)} (队列长度: ${
+          this.subtitleRemoveQueue.length
+        })`,
+        type: 'info',
+      } as LogEvent);
+
+      // 触发队列处理
+      this.emit(
+        'addToSubtitleRemoveQueue',
+        outputPath,
+        this.subtitleRemoveQueue
+      );
     } catch (error) {
       this.emit('log', {
         message: `视频合并失败: ${(error as Error).message}`,
@@ -629,30 +641,50 @@ class VideoProcessor extends EventEmitter {
   }
 
   /**
-   * 添加到去字幕处理队列
+   * 分解视频
    */
-  private addToSubtitleRemoveQueue(
-    videoPath: string,
-    videosTable: string[][]
-  ): void {
-    this.subtitleRemoveQueue.push(videoPath);
-    // 存储视频路径对应的videosTable
-    this.videoToVideosTableMap.set(videoPath, videosTable);
+  public async splitVideo(videoPath: string): Promise<void> {
+    this.status.processingStatus = '开始拆分视频';
+    this.updateStatus();
 
-    this.emit('log', {
-      message: `已加入去字幕队列: ${path.basename(videoPath)} (队列长度: ${
-        this.subtitleRemoveQueue.length
-      })`,
-      type: 'info',
-    } as LogEvent);
+    try {
+      const task = await workbenchManager.getTaskByKey(
+        'subtitleRemoveRunningTasks',
+        'videoPath'
+      );
+      if (!task) {
+        throw new Error('视频任务不存在');
+      }
+      const VideoSegment: VideoSegment[] = [];
+      task.forEach(item => {
+        item.videos.forEach(video => {
+          VideoSegment.push({
+            fragmentDuration: video.fragmentDuration,
+            filePath: item.folderName + video.fileName,
+          });
+        });
+      });
 
-    // 触发队列处理
-    this.emit(
-      'addToSubtitleRemoveQueue',
-      videoPath,
-      this.subtitleRemoveQueue,
-      videosTable
-    );
+      this.emit('log', {
+        message: `视频 ${videoPath} 开始拆分`,
+        type: 'info',
+      } as LogEvent);
+
+      await this.ffmpegUtil.splitVideoBySegments(videoPath, VideoSegment);
+
+      this.emit('log', {
+        message: `视频拆分成功: ${videoPath}`,
+        type: 'success',
+      } as LogEvent);
+    } catch (error) {
+      this.emit('log', {
+        message: `视频拆分失败: ${(error as Error).message}`,
+        type: 'error',
+      } as LogEvent);
+    } finally {
+      this.status.processingStatus = '空闲';
+      this.updateStatus();
+    }
   }
 
   /**
@@ -864,8 +896,7 @@ class VideoProcessor extends EventEmitter {
 
   // 判断是否为视频文件
   private isVideoFile(filePath: string): boolean {
-    const ext = path.extname(filePath).toLowerCase();
-    return this.videoExtensions.has(ext);
+    return isVideoFile(filePath);
   }
 
   // 判断是否在商品目录中
@@ -880,9 +911,7 @@ class VideoProcessor extends EventEmitter {
 
   // 判断是否为已处理的视频文件
   private isProcessedVideoFile(filePath: string): boolean {
-    const fileName = path.basename(filePath);
-    const processedPattern = /^.+\-\-\-\d+\.mp4$/;
-    return processedPattern.test(fileName);
+    return isProcessedVideoFile(filePath);
   }
 
   // 检查文件是否正在处理

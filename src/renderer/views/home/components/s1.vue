@@ -65,10 +65,10 @@
           </template>
           <template v-else-if="column.key === 'action'" class="text-center">
             <Button
-              type="primary"
+              type="text"
               @click="
                 openFolderHandler(
-                  s1.taskDirectory + '\\' + record.productDirectory
+                  record.taskDirectory + '\\' + record.productDirectory
                 )
               "
               >打开文件夹</Button
@@ -123,6 +123,7 @@ onMounted(() => {
   // 绑定文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
+      console.log('s1.MonitoringDirectoryCallback', arg);
       if (arg.root === s1.taskDirectory) {
         tableData.value = arg.structure
           .filter(dir => {
