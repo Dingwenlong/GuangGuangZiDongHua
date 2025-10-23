@@ -47,6 +47,11 @@ class VideoProcessor extends EventEmitter {
   // 去字幕任务队列
   private subtitleRemoveQueue: string[];
 
+  // 存储视频路径对应的videosTable映射yong
+  private videoToVideosTableMap: Map<string, string[][]>;
+  // 字幕处理状态标记
+  private isSubtitleProcessing: boolean;
+
   // 音频提取任务队列
   private audioExtractQueue: string[];
   private audioExtractInterval: NodeJS.Timeout | null;
@@ -70,6 +75,10 @@ class VideoProcessor extends EventEmitter {
 
     // 去字幕任务队列
     this.subtitleRemoveQueue = [];
+    // 初始化视频路径到videosTable的映射
+    this.videoToVideosTableMap = new Map<string, string[][]>();
+    // 初始化字幕处理状态
+    this.isSubtitleProcessing = false;
 
     // 音频提取任务队列
     this.audioExtractQueue = [];
@@ -168,14 +177,17 @@ class VideoProcessor extends EventEmitter {
     // 启动文件监控
     this.startFileWatching();
 
-    // 启动音频提取队列处理
-    this.startAudioExtractQueueProcessing();
-
     // 定期检查合并条件
     this.startChecking();
 
     // 启动处理队列检查
     this.startQueueProcessing();
+
+    // 启动去字幕队列检查
+    this.startSubtitleQueueChecking();
+
+    // 启动音频提取队列处理
+    this.startAudioExtractQueueProcessing();
 
     this.emit('log', {
       message: `视频处理器已启动，监控目录: ${this.monitorDirectory}，文件标识方法: ${this.options.fileKeyMethod}`,
@@ -624,6 +636,9 @@ class VideoProcessor extends EventEmitter {
     videosTable: string[][]
   ): void {
     this.subtitleRemoveQueue.push(videoPath);
+    // 存储视频路径对应的videosTable
+    this.videoToVideosTableMap.set(videoPath, videosTable);
+
     this.emit('log', {
       message: `已加入去字幕队列: ${path.basename(videoPath)} (队列长度: ${
         this.subtitleRemoveQueue.length
@@ -647,12 +662,56 @@ class VideoProcessor extends EventEmitter {
     this.subtitleRemoveQueue = this.subtitleRemoveQueue.filter(
       x => x !== videoPath
     );
+    // 同时从映射中删除对应的videosTable
+    if (this.videoToVideosTableMap.has(videoPath)) {
+      this.videoToVideosTableMap.delete(videoPath);
+    }
+
     this.emit('log', {
       message: `已删除去字幕队列项: ${path.basename(
         videoPath
       )} (剩余队列长度: ${this.subtitleRemoveQueue.length})`,
       type: 'info',
     } as LogEvent);
+  }
+
+  /**
+   * 启动去字幕队列检查
+   */
+  private async startSubtitleQueueChecking(): Promise<void> {
+    try {
+      // 执行检查
+      if (this.subtitleRemoveQueue.length > 0 && !this.isSubtitleProcessing) {
+        const videoPath = this.subtitleRemoveQueue[0]; // 获取队列中的第一个视频路径
+
+        // 从映射中获取对应的videosTable，如果不存在则使用空二维数组
+        const videosTable: string[][] =
+          this.videoToVideosTableMap.get(videoPath) || [];
+
+        this.emit('log', {
+          message: `准备处理字幕队列中的视频: ${path.basename(videoPath)}`,
+          type: 'info',
+        } as LogEvent);
+
+        // 触发队列处理事件，传递正确的参数
+        this.emit(
+          'addToSubtitleRemoveQueue',
+          videoPath,
+          [...this.subtitleRemoveQueue], // 传递队列副本
+          videosTable
+        );
+      }
+    } catch (error) {
+      this.emit('log', {
+        message: `检查字幕队列时出错: ${(error as Error).message}`,
+        type: 'error',
+      } as LogEvent);
+    } finally {
+      // 等待3秒后再次执行
+      setTimeout(() => {
+        this.startSubtitleQueueChecking();
+      }, 3000);
+    }
   }
 
   /**
@@ -746,6 +805,9 @@ class VideoProcessor extends EventEmitter {
 
       // 触发提取完成事件
       this.emit('audioExtractComplete', { inputPath: videoPath, outputPath });
+
+      // 从队列中移除
+      this.removeFromAudioExtractQueue(videoPath);
     } catch (error) {
       this.emit('log', {
         message: `音频提取失败: ${path.basename(videoPath)} - ${

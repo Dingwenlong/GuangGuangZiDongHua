@@ -6,6 +6,7 @@ import config from '@config/index';
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import VideoProcessor from './video-processor';
+import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
 import DirectoryMonitor from './directory-monitor';
 import { webContentSend } from './web-content-send';
@@ -59,8 +60,11 @@ export const ipcCustomLoginHandlers = (mainInit: MainInit): IpcHandler[] => {
 };
 
 let videoProcessor: VideoProcessor | null = null;
+let audioProcessor: AudioProcessor | null = null;
 let playwrightScript: PlaywrightScript | null = null;
 let dirMonitor: DirectoryMonitor | null = null;
+// 控制脚本串行执行的状态变量
+let isWatermarkRemovalRunning = false;
 
 /**
  * 自定义主窗口
@@ -114,6 +118,24 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
             });
         });
         return await playwrightScript.runWatermarkRemoval(filePath, targetDir);
+      },
+    },
+    {
+      channel: 'RunVideoQualityFix',
+      handler: async (event, arg: { filePath: string; targetDir: string }) => {
+        const { filePath, targetDir } = arg;
+        if (playwrightScript) {
+          playwrightScript = null;
+        }
+        playwrightScript = new PlaywrightScript();
+        playwrightScript.on('log', ({ message, type }) => {
+          if (mainInit.mainWindow)
+            webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+              message,
+              type,
+            });
+        });
+        return await playwrightScript.RunVideoQualityFix(filePath, targetDir);
       },
     },
     {
@@ -215,6 +237,20 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
             subtitleRemoveQueue: Array<string>,
             videosTable: string[][]
           ) => {
+            // 检查是否已有任务在执行，如果有则不处理新任务
+            if (isWatermarkRemovalRunning) {
+              console.log('已有去水印任务在执行，跳过当前视频:', videoPath);
+
+              if (mainInit.mainWindow)
+                webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                  message: `已有去水印任务在执行，跳过当前视频: ${path.basename(
+                    videoPath
+                  )}`,
+                  type: 'warning',
+                });
+              return;
+            }
+
             // 保存视频链条用于第三步拆解
             let task: { [k: string]: any } = {};
             task[videoPath] = videosTable;
@@ -222,6 +258,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
 
             if (videoPath) {
               try {
+                // 设置任务执行状态为正在运行
+                isWatermarkRemovalRunning = true;
+
                 // 初始化PlaywrightScript实例
                 if (playwrightScript) {
                   playwrightScript = null;
@@ -255,6 +294,54 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
                     message: `处理视频去水印失败: ${error.message}`,
                     type: 'error',
                   });
+              } finally {
+                // 无论成功失败，都设置任务执行状态为空闲
+                isWatermarkRemovalRunning = false;
+              }
+            }
+          }
+        );
+
+        videoProcessor.on(
+          'audioExtractComplete',
+          ({ outputPath }: { outputPath: string }) => {
+            if (mainInit.mainWindow) {
+              webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                message: `音频提取完成: ${path.basename(outputPath)}`,
+                type: 'info',
+              });
+
+              // 触发ProcessAudio事件处理提取的音频，ProcessAudio会自动识别同文件夹下的同名视频文件
+              if (audioProcessor) {
+                audioProcessor.processAudio(outputPath).catch(error => {
+                  console.error('处理音频失败:', error);
+                  if (mainInit.mainWindow) {
+                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                      message: `处理音频失败: ${error.message}`,
+                      type: 'error',
+                    });
+                  }
+                });
+              } else {
+                // 初始化audioProcessor并处理音频
+                audioProcessor = new AudioProcessor();
+                audioProcessor.on('log', ({ message, type }) => {
+                  if (mainInit.mainWindow) {
+                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                      message,
+                      type,
+                    });
+                  }
+                });
+                audioProcessor.processAudio(outputPath).catch(error => {
+                  console.error('处理音频失败:', error);
+                  if (mainInit.mainWindow) {
+                    webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                      message: `处理音频失败: ${error.message}`,
+                      type: 'error',
+                    });
+                  }
+                });
               }
             }
           }
@@ -272,6 +359,42 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
           return { success: true };
         }
         return { success: false };
+      },
+    },
+
+    {
+      channel: 'ProcessAudio',
+      handler: async (event, arg: { audioPath: string }) => {
+        const { audioPath } = arg;
+        if (!audioProcessor) {
+          audioProcessor = new AudioProcessor();
+          audioProcessor.on('log', ({ message, type }) => {
+            if (mainInit.mainWindow) {
+              webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                message,
+                type,
+              });
+            }
+          });
+        }
+        return await audioProcessor.processAudio(audioPath);
+      },
+    },
+    {
+      channel: 'GetAudioProcessingStats',
+      handler: async () => {
+        if (!audioProcessor) {
+          audioProcessor = new AudioProcessor();
+          audioProcessor.on('log', ({ message, type }) => {
+            if (mainInit.mainWindow) {
+              webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
+                message,
+                type,
+              });
+            }
+          });
+        }
+        return audioProcessor.getProcessingStats();
       },
     },
   ];

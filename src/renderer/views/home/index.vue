@@ -21,6 +21,8 @@
       <S1 v-if="menus[0].checked" />
       <S2 v-if="menus[1].checked" />
       <S3 v-show="menus[2].checked" />
+      <S5 v-if="menus[4].checked" />
+      <S6 v-if="menus[5].checked" />
     </div>
     <div class="min-w-3/12 max-w-3/12 bg-gray-100">
       <LogPanel :logs="logData" />
@@ -34,6 +36,8 @@ import LogPanel from './components/log-panel.vue';
 import S1 from './components/s1.vue';
 import S2 from './components/s2.vue';
 import S3 from './components/s3.vue';
+import S5 from './components/s5.vue';
+import S6 from './components/s6.vue';
 import MoFang from '@renderer/assets/icons/webp/mo-fang.webp';
 
 const { ipcRendererChannel } = window;
