@@ -91,7 +91,7 @@ export interface WorkbenchStoreSchema {
   /**
    * 第四步任务队列
    */
-  s4TasksQueue: string[];
+  s4TasksQueue: OrderedFolderItem[];
 }
 
 // 默认数据
@@ -295,7 +295,11 @@ class WorkbenchManager {
   ): Promise<void> {
     await this.db.read();
 
-    if (key !== 's3TasksQueue' && typeof data === 'string') {
+    if (
+      key !== 's3TasksQueue' &&
+      key !== 's4TasksQueue' &&
+      typeof data === 'string'
+    ) {
       this.db.data[key].push(data);
     } else if (key === 's3TasksQueue' && typeof data !== 'string') {
       this.db.data[key].push(data);
@@ -318,7 +322,7 @@ class WorkbenchManager {
       WorkbenchStoreSchema,
       's2TasksQueue' | 's3TasksQueue' | 's4TasksQueue'
     >
-  ): Promise<string | OrderedVideosChunk | undefined> {
+  ): Promise<string | OrderedVideosChunk | OrderedFolderItem | undefined> {
     await this.db.read();
 
     // 检查队列是否为空
@@ -328,7 +332,11 @@ class WorkbenchManager {
     }
 
     let array = this.db.data[key];
-    let removedTask: string | OrderedVideosChunk | undefined;
+    let removedTask:
+      | string
+      | OrderedVideosChunk
+      | OrderedFolderItem
+      | undefined;
 
     if (key === 's3TasksQueue') {
       // 找到第一个字幕处理完的任务
