@@ -37,7 +37,7 @@ declare interface DirectoryMonitor {
 }
 
 class DirectoryMonitor extends EventEmitter {
-  private monitorDirectory: string;
+  public monitorDirectory: string;
   private watcher: FileWatcher | null;
   private updateInterval: NodeJS.Timeout | null;
   private maxDepth: number;

@@ -33,7 +33,9 @@
               {{ log.type }}
             </span>
           </div>
-          <div class="mt-1 text-gray-600">{{ log.message }}</div>
+          <div class="mt-1 text-gray-600 overflow-ellipsis overflow-hidden">
+            {{ log.message }}
+          </div>
         </li>
       </ul>
     </div>

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import pinia from '@renderer/store';
 import { login, changePwd } from '@renderer/api/account';
-import type { UserData } from '@main/lib/auth-manager';
+import type { UserData } from '@main/services/auth-manager';
 import { ref } from 'vue';
 import { setToken, setRefreshToken } from '@renderer/utils/token';
 

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { EventEmitter } from 'events';
 import { platform } from 'os';
+import { spawn, spawnSync } from 'child_process';
 
 export interface FFmpegProgressEvent {
   progress: number;
@@ -18,6 +19,7 @@ export class FFmpegUtil extends EventEmitter {
   private static instance: FFmpegUtil;
   private ffmpegPath!: string;
   private ffprobePath!: string;
+  private debug: boolean = false;
 
   private constructor() {
     super();
@@ -29,6 +31,10 @@ export class FFmpegUtil extends EventEmitter {
       FFmpegUtil.instance = new FFmpegUtil();
     }
     return FFmpegUtil.instance;
+  }
+
+  public setDebugMode(debug: boolean): void {
+    this.debug = debug;
   }
 
   private setupPaths(): void {
@@ -80,6 +86,19 @@ export class FFmpegUtil extends EventEmitter {
   }
 
   /**
+   * 标准化Windows路径，避免MAX_PATH限制问题
+   */
+  private normalizeWindowsPath(filePath: string): string {
+    if (process.platform === 'win32') {
+      // Windows绝对路径添加\\?\前缀
+      if (/^[a-zA-Z]:\\/.test(filePath) && !filePath.startsWith('\\\\?\\')) {
+        return '\\\\?\\' + filePath;
+      }
+    }
+    return filePath;
+  }
+
+  /**
    * 获取视频时长
    */
   public getVideoDuration(filePath: string): Promise<number> {
@@ -98,6 +117,238 @@ export class FFmpegUtil extends EventEmitter {
 
         resolve(duration);
       });
+    });
+  }
+
+  /**
+   * 检查视频是否包含音频流
+   */
+  public hasAudioStream(videoPath: string): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      const normalizedPath = this.normalizeWindowsPath(path.resolve(videoPath));
+      const args = [
+        '-v',
+        'error',
+        '-select_streams',
+        'a',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'csv=p=0',
+        normalizedPath,
+      ];
+
+      if (this.debug) {
+        console.log(
+          `[FFmpegUtil] 执行音频流检查命令: ${this.ffprobePath} ${args.join(
+            ' '
+          )}`
+        );
+      }
+
+      const result = spawnSync(this.ffprobePath, args, {
+        encoding: 'utf8',
+        windowsHide: true,
+      });
+
+      if (result.error || result.status !== 0) {
+        if (this.debug) {
+          console.warn(`[FFmpegUtil] 音频流检查失败: ${result.stderr}`);
+        }
+        resolve(false);
+        return;
+      }
+
+      const hasAudio = (result.stdout || '').trim().includes('audio');
+
+      if (this.debug) {
+        console.log(`[FFmpegUtil] 视频包含音频: ${hasAudio}`);
+      }
+
+      resolve(hasAudio);
+    });
+  }
+
+  /**
+   * 检测指定时间范围内是否有场景变化
+   */
+  public detectSceneChange(
+    videoPath: string,
+    startTime: number,
+    checkDuration: number,
+    threshold: number
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      const normalizedPath = this.normalizeWindowsPath(path.resolve(videoPath));
+
+      // 构建滤镜：选择在指定时间范围内且场景变化超过阈值的帧
+      const videoFilter = `select='between(t,${startTime},${
+        startTime + checkDuration
+      })*gt(scene,${threshold})',showinfo`;
+
+      const args = [
+        '-hide_banner',
+        '-i',
+        normalizedPath,
+        '-vf',
+        videoFilter,
+        '-an', // 禁用音频处理
+        '-f',
+        'null',
+        '-', // 输出到空
+      ];
+
+      if (this.debug) {
+        console.log(
+          `[FFmpegUtil] 场景检测命令: ${this.ffmpegPath} ${args.join(' ')}`
+        );
+      }
+
+      const ffmpegProcess = spawn(this.ffmpegPath, args, { windowsHide: true });
+
+      let stderrOutput = '';
+      ffmpegProcess.stderr.on('data', chunk => {
+        stderrOutput += chunk.toString();
+      });
+
+      ffmpegProcess.on('error', error => {
+        reject(new Error(`场景检测进程错误: ${error.message}`));
+      });
+
+      ffmpegProcess.on('close', code => {
+        // 在stderr输出中查找场景变化信息
+        // showinfo滤镜会输出匹配的帧信息，包含"pts_time:"字段
+        const sceneChangeDetected = /pts_time:([0-9.]+)/.test(stderrOutput);
+
+        if (this.debug) {
+          console.log(
+            `[FFmpegUtil] 场景检测结果: ${
+              sceneChangeDetected ? '有变化' : '无变化'
+            }`
+          );
+          if (sceneChangeDetected) {
+            console.log(
+              `[FFmpegUtil] 场景变化发生在: ${
+                stderrOutput.match(/pts_time:([0-9.]+)/)?.[1]
+              }秒`
+            );
+          }
+        }
+
+        resolve(sceneChangeDetected);
+      });
+    });
+  }
+
+  /**
+   * 提取视频片段
+   */
+  public extractSegment(
+    videoPath: string,
+    startTime: number,
+    duration: number,
+    outputPath: string,
+    hasAudio: boolean,
+    reencode: boolean
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // 确保输出目录存在
+      const outputDir = path.dirname(outputPath);
+      try {
+        fs.mkdirSync(outputDir, { recursive: true });
+      } catch (error) {
+        // 目录已存在或其他错误，继续执行
+      }
+
+      const normalizedInput = this.normalizeWindowsPath(
+        path.resolve(videoPath)
+      );
+      const normalizedOutput = this.normalizeWindowsPath(
+        path.resolve(outputPath)
+      );
+
+      // 基本参数：输入定位和时长
+      const args: string[] = [
+        '-y', // 覆盖输出文件
+        '-hide_banner',
+        '-ss',
+        startTime.toString(), // 输入定位（放在-i前以提高精度）
+        '-i',
+        normalizedInput,
+        '-t',
+        duration.toString(), // 片段时长
+        '-avoid_negative_ts',
+        'make_zero',
+        '-fflags',
+        '+genpts',
+      ];
+
+      if (reencode) {
+        // 重新编码确保时长准确
+        args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23');
+
+        if (hasAudio) {
+          // 视频有音频时编码音频
+          args.push('-c:a', 'aac', '-b:a', '128k');
+        } else {
+          // 视频无音频时禁用音频
+          args.push('-an');
+        }
+      } else {
+        // 流复制（快速但不保证时长准确）
+        args.push('-c', 'copy');
+      }
+
+      args.push(normalizedOutput);
+
+      if (this.debug) {
+        console.log(
+          `[FFmpegUtil] 提取片段命令: ${this.ffmpegPath} ${args.join(' ')}`
+        );
+      }
+
+      const ffmpegProcess = spawn(this.ffmpegPath, args, { windowsHide: true });
+
+      let stderrOutput = '';
+      ffmpegProcess.stderr.on('data', chunk => {
+        stderrOutput += chunk.toString();
+      });
+
+      ffmpegProcess.on('error', error => {
+        reject(new Error(`片段提取进程错误: ${error.message}`));
+      });
+
+      ffmpegProcess.on('close', code => {
+        if (code === 0) {
+          if (this.debug) {
+            console.log(`[FFmpegUtil] 成功提取片段: ${outputPath}`);
+          }
+          resolve();
+        } else {
+          const errorMessage = [
+            `FFmpeg处理失败，退出码: ${code}`,
+            `输入文件: ${videoPath}`,
+            `开始时间: ${startTime}`,
+            `持续时间: ${duration}`,
+            `输出文件: ${outputPath}`,
+            'FFmpeg错误输出:',
+            stderrOutput,
+          ].join('\n');
+          reject(new Error(errorMessage));
+        }
+      });
+    });
+  }
+
+  /**
+   * 验证生成片段的时长
+   */
+  public verifySegmentDuration(segmentPath: string): Promise<number> {
+    return this.getVideoDuration(segmentPath).catch(error => {
+      if (this.debug) {
+        console.warn(`[FFmpegUtil] 无法验证片段时长: ${segmentPath}`);
+      }
+      return 0;
     });
   }
 

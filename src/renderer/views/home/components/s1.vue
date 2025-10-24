@@ -37,9 +37,9 @@
         >
         <Button
           type="primary"
-          @click="() => startOrStopTaskHandler(!videoMonitoringRunning)"
+          @click="() => startOrStopTaskHandler(!s1.monitoringRunning)"
           >{{
-            !videoMonitoringRunning ? '开始' : '结束'
+            !s1.monitoringRunning ? '开始' : '结束'
           }}执行自动工作流任务</Button
         >
       </div>
@@ -96,13 +96,14 @@ const { shell, ipcRendererChannel } = window;
 const s1 = reactive({
   taskDirectory: '',
   materialDuration: '20',
-  autoMonitoring: false,
+  autoMonitoring: true,
   intervalSeconds: 5,
+  monitoringRunning: false,
 });
 const tableData = ref<any>([]);
-const videoMonitoringRunning = ref(false);
 
 watch(s1, val => {
+  // 监听s1数据，实时同步
   ipcRendererChannel.UpdateWorkbenchData.invoke({
     stepNo: 's1',
     sData: { ...val },
@@ -123,7 +124,6 @@ onMounted(() => {
   // 绑定文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
-      console.log('s1.MonitoringDirectoryCallback', arg);
       if (arg.root === s1.taskDirectory) {
         tableData.value = arg.structure
           .filter(dir => {
@@ -143,17 +143,18 @@ onMounted(() => {
     }
   );
 });
+
 onUnmounted(() => {
   // 移除文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.removeAllListeners();
 });
 
 function startOrStopTaskHandler(start = true) {
-  if (start && s1.taskDirectory && !videoMonitoringRunning.value) {
-    videoMonitoringRunning.value = true;
+  if (start && s1.taskDirectory && !s1.monitoringRunning) {
+    s1.monitoringRunning = true;
     ipcRendererChannel.StartMonitoringVideo.invoke(s1.taskDirectory);
-  } else if (!start && videoMonitoringRunning.value) {
-    videoMonitoringRunning.value = false;
+  } else if (!start && s1.monitoringRunning) {
+    s1.monitoringRunning = false;
     ipcRendererChannel.StopMonitoringVideo.invoke();
   }
 }
@@ -185,14 +186,23 @@ const columns: TableColumnType[] = [
   },
 ];
 
+/**
+ * 打开文件夹
+ */
 function openFolderHandler(dir: any) {
   shell.openPath(dir);
 }
 
+/**
+ * 选择文件夹
+ */
 async function selectDirectoryHandler() {
   s1.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
 }
 
+/**
+ * 批量创建文件夹
+ */
 async function batchCreationFolderHandler() {
   const clipboardText = await navigator.clipboard.readText();
   const directoryNames = clipboardText

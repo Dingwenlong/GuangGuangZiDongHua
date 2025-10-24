@@ -15,7 +15,7 @@ import {
   ipcCustomLoginHandlers,
   ipcCustomMainHandlers,
 } from '@main/services/ipc-custom-handle';
-import authManager from '@main/lib/auth-manager';
+import authManager from '@main/services/auth-manager';
 
 class MainInit {
   public winURL: string = '';
