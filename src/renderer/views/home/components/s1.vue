@@ -37,10 +37,9 @@
         >
         <Button
           type="primary"
-          @click="() => startOrStopTaskHandler(!s1.monitoringRunning)"
-          >{{
-            !s1.monitoringRunning ? '开始' : '结束'
-          }}执行自动工作流任务</Button
+          :disabled="!s1.taskDirectory"
+          @click="() => (s1.running = !s1.running)"
+          >{{ !s1.running ? '开始' : '结束' }}执行自动工作流任务</Button
         >
       </div>
     </div>
@@ -98,30 +97,32 @@ const s1 = reactive({
   materialDuration: '20',
   autoMonitoring: true,
   intervalSeconds: 5,
-  monitoringRunning: false,
+  running: false,
 });
 const tableData = ref<any>([]);
 
 watch(s1, val => {
-  // 监听s1数据，实时同步
+  console.log('s1', val);
+  // 实时持久化
   ipcRendererChannel.UpdateWorkbenchData.invoke({
     stepNo: 's1',
     sData: { ...val },
   });
   // 监听文件夹
-  if (val.taskDirectory) {
+  if (val.taskDirectory)
     ipcRendererChannel.StartMonitoringDirectory.invoke(val.taskDirectory);
-  }
 });
 
 onMounted(() => {
-  // 获取历史缓存
+  // 获取持久化数据
   ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbench => {
     s1.taskDirectory = workbench.taskDirectory ?? '';
     s1.autoMonitoring = workbench.autoMonitoring ?? true;
+    s1.running = workbench.running ?? false;
+    if (s1.taskDirectory && s1.autoMonitoring && !s1.running) s1.running = true;
   });
 
-  // 绑定文件夹变化监听事件
+  // 文件夹变化回调事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
       if (arg.root === s1.taskDirectory) {
@@ -148,16 +149,6 @@ onUnmounted(() => {
   // 移除文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.removeAllListeners();
 });
-
-function startOrStopTaskHandler(start = true) {
-  if (start && s1.taskDirectory && !s1.monitoringRunning) {
-    s1.monitoringRunning = true;
-    ipcRendererChannel.StartMonitoringVideo.invoke(s1.taskDirectory);
-  } else if (!start && s1.monitoringRunning) {
-    s1.monitoringRunning = false;
-    ipcRendererChannel.StopMonitoringVideo.invoke();
-  }
-}
 
 const columns: TableColumnType[] = [
   {

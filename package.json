@@ -68,6 +68,7 @@
     "pinia": "^3.0.3",
     "rollup-plugin-esbuild": "^6.2.1",
     "rollup-plugin-obfuscator": "^1.1.0",
+    "rxjs": "^7.8.2",
     "sass": "^1.89.1",
     "tailwindcss": "^4.1.14",
     "tslib": "^2.8.1",

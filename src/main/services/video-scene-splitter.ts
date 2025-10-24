@@ -74,7 +74,7 @@ export class VideoSceneSplitter extends EventEmitter {
    * @param options 分割配置选项
    * @returns 分割结果
    */
-  public async splitVideo(
+  public async split(
     videoPath: string,
     outputDir: string = '',
     options: VideoSceneSplitterOptions = {}
@@ -313,6 +313,8 @@ export class VideoSceneSplitter extends EventEmitter {
 
     return result;
   }
+
+  public async montage() {}
 }
 
 // 默认导出

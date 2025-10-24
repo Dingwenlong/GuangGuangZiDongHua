@@ -35,11 +35,14 @@ export interface OrderedFolderItem {
   videos: VideoStoryboard[];
 }
 
-/**
- * 视频片段 - 有序版本
- * 使用数组来保证文件夹顺序
- */
-export type OrderedVideosChunk = OrderedFolderItem[];
+export interface OrderedVideosChunk {
+  /**
+   * 去字幕文件
+   */
+  videoFilePath: string;
+  pathOfChains: OrderedFolderItem[];
+  subtitleRemoveOver: boolean;
+}
 
 // 定义存储的数据结构
 export interface WorkbenchStoreSchema {
@@ -48,10 +51,11 @@ export interface WorkbenchStoreSchema {
     materialDuration: number;
     intervalSeconds: number;
     autoMonitoring: boolean;
-    monitoringRunning: boolean;
+    running: boolean;
   };
   s2: {
     autoHandOnWorkflow: boolean;
+    running: boolean;
   };
   s3: {
     productMaterialNum: number;
@@ -59,6 +63,7 @@ export interface WorkbenchStoreSchema {
     storyboardDuration1: number;
     storyboardDuration2: number;
     autoHandOnWorkflow: boolean;
+    running: boolean;
   };
   /**
    * 第二步任务队列
@@ -66,28 +71,23 @@ export interface WorkbenchStoreSchema {
   s2TasksQueue: string[];
   /**
    * 第三步任务队列
-   * {
-      'C://去字幕任务/1.mp4': [
-        {
-          folderName: '商品文件夹1',
-          videos: [{fragmentDuration: 20, fileName: '1.mp4'}, {fragmentDuration: 20, fileName: '2.mp4'}]
-        },
-        {
-          folderName: '商品文件夹2',
-          videos: [{fragmentDuration: 20, fileName: '3.mp4'}, {fragmentDuration: 20, fileName: '4.mp4'}]
-        }
-      ],
-      'C://去字幕任务/2.mp4': [
-        {
-          folderName: '商品文件夹3',
-          videos: [{fragmentDuration: 20, fileName: '5.mp4'}, {fragmentDuration: 20, fileName: '6.mp4'}]
-        }
-      ]
-    }
+   * [
+   *  {
+   *    videoFileName: 'C://去字幕任务/1.mp4',
+        pathOfChains: [
+          {
+            folderName: '商品文件夹1',
+            videos: [{fragmentDuration: 20, fileName: '1.mp4'}, {fragmentDuration: 20, fileName: '2.mp4'}]
+          },
+          {
+            folderName: '商品文件夹2',
+            videos: [{fragmentDuration: 20, fileName: '3.mp4'}, {fragmentDuration: 20, fileName: '4.mp4'}]
+          }
+        ]
+      }
+    ]
    */
-  s3TasksQueue: {
-    [key: string]: OrderedVideosChunk;
-  };
+  s3TasksQueue: OrderedVideosChunk[];
   /**
    * 第四步任务队列
    */
@@ -102,10 +102,11 @@ const defaultData: WorkbenchStoreSchema = merge(
       materialDuration: 20,
       autoMonitoring: true,
       intervalSeconds: 5,
-      monitoringRunning: false,
+      running: false,
     },
     s2: {
       autoHandOnWorkflow: true,
+      running: false,
     },
     s3: {
       productMaterialNum: 4,
@@ -113,9 +114,10 @@ const defaultData: WorkbenchStoreSchema = merge(
       storyboardDuration1: 4,
       storyboardDuration2: 6,
       autoHandOnWorkflow: true,
+      running: false,
     },
     s2TasksQueue: [],
-    s3TasksQueue: {},
+    s3TasksQueue: [],
     s4TasksQueue: [],
   },
   config.workBenchDefault
@@ -282,25 +284,24 @@ class WorkbenchManager {
   }
 
   /**
-   * 新增任务
+   * 将任务入列
    */
-  public async pushTask(
+  public async enqueueTask(
     key: keyof Pick<
       WorkbenchStoreSchema,
       's2TasksQueue' | 's3TasksQueue' | 's4TasksQueue'
     >,
-    taskKey: string,
-    taskData?: OrderedVideosChunk
+    data: string | OrderedVideosChunk
   ): Promise<void> {
     await this.db.read();
 
-    if (key != 's3TasksQueue') this.db.data[key].push(taskKey);
-    else {
-      if (!taskData) throw new Error('taskData 不能为空');
-      this.db.data[key][taskKey] = taskData;
+    if (key !== 's3TasksQueue' && typeof data === 'string') {
+      this.db.data[key].push(data);
+    } else if (key === 's3TasksQueue' && typeof data !== 'string') {
+      this.db.data[key].push(data);
     }
 
-    console.log(`已添加任务: ${taskKey}`);
+    console.log(`已添加任务: ${data}`);
     await this.db.write();
 
     // 检查变化并触发观察者
@@ -308,95 +309,92 @@ class WorkbenchManager {
   }
 
   /**
-   * 删除任务
+   * 队列任务移除（先进先出）
+   * @param key 队列键名
+   * @returns 返回被移除的任务，如果队列为空则返回 undefined
    */
-  public async removeTask(
+  public async dequeueTask(
     key: keyof Pick<
       WorkbenchStoreSchema,
       's2TasksQueue' | 's3TasksQueue' | 's4TasksQueue'
-    >,
-    taskKey: string
-  ): Promise<void> {
+    >
+  ): Promise<string | OrderedVideosChunk | undefined> {
     await this.db.read();
 
-    let hasChanges = false;
+    // 检查队列是否为空
+    if (this.db.data[key].length === 0) {
+      console.warn(`尝试从空队列 ${key} 中移除任务`);
+      return undefined;
+    }
 
-    // 根据不同的队列类型执行不同的删除操作
+    let array = this.db.data[key];
+    let removedTask: string | OrderedVideosChunk | undefined;
+
     if (key === 's3TasksQueue') {
-      // s3TasksQueue 是对象类型，删除属性
-      if (taskKey in this.db.data[key]) {
-        delete this.db.data[key][taskKey];
-        hasChanges = true;
-        console.log(`已删除任务: ${taskKey}`);
-      } else {
-        console.warn(`尝试删除不存在的任务: ${taskKey}`);
+      // 找到第一个字幕处理完的任务
+      const index = (array as OrderedVideosChunk[]).findIndex(
+        x => x.subtitleRemoveOver
+      );
+
+      if (index !== -1) {
+        // 从原始队列中移除该任务
+        removedTask = array.splice(index, 1)[0];
       }
     } else {
-      // s2TasksQueue 和 s4TasksQueue 是数组类型，移除元素
-      const index = this.db.data[key].indexOf(taskKey);
-      if (index !== -1) {
-        this.db.data[key].splice(index, 1);
-        hasChanges = true;
-        console.log(`已从 ${key} 中删除任务: ${taskKey}`);
-      } else {
-        console.warn(`尝试删除不存在的任务: ${taskKey} 在 ${key} 中`);
-      }
+      // 其他队列直接移除第一个元素（先进先出）
+      removedTask = array.shift();
     }
 
-    // 如果有变化，写入数据库并触发观察者
-    if (hasChanges) {
+    if (removedTask) {
+      console.log(`已从 ${key} 中移除任务:`, removedTask);
       await this.db.write();
+
+      // 检查变化并触发观察者
       this.checkChanges();
+    } else {
+      console.log(`队列 ${key} 中没有找到符合条件的任务`);
     }
+
+    return removedTask;
   }
 
   /**
-   * 查询任务
+   * 根据视频文件路径更新字幕处理状态
+   * @param videoFilePath 视频文件路径
+   * @param subtitleRemoveOver 新的字幕处理状态
+   * @returns 是否成功更新
    */
-  public async getTaskByKey(
-    key: keyof Pick<WorkbenchStoreSchema, 's3TasksQueue'>,
-    taskKey: string
-  ): Promise<OrderedVideosChunk | undefined> {
-    const data = await this.getByKey(key);
-    console.log(`查询任务: ${taskKey}`);
-    return data[taskKey];
-  }
-
-  /**
-   * 添加文件夹到任务
-   */
-  public async addFolderToTask(
-    key: keyof Pick<WorkbenchStoreSchema, 's3TasksQueue'>,
-    taskKey: string,
-    folderName: string,
-    videos: VideoStoryboard[],
-    position: number = -1
-  ): Promise<void> {
+  public async updateSubtitleRemoveOver(
+    videoFilePath: string,
+    subtitleRemoveOver: boolean
+  ): Promise<boolean> {
     await this.db.read();
 
-    // 如果任务不存在，则初始化为空数组
-    if (!this.db.data[key][taskKey]) {
-      this.db.data[key][taskKey] = [];
+    // 查找匹配的任务
+    const taskIndex = this.db.data.s3TasksQueue.findIndex(
+      task => task.videoFilePath === videoFilePath
+    );
+
+    if (taskIndex === -1) {
+      console.warn(`未找到视频路径为 ${videoFilePath} 的任务`);
+      return false;
     }
 
-    const folderItem: OrderedFolderItem = {
-      folderName,
-      videos,
-    };
+    // 更新状态
+    const oldStatus = this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver;
+    this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver =
+      subtitleRemoveOver;
 
-    // 如果指定了位置且位置有效，则插入到指定位置，否则添加到末尾
-    if (position >= 0 && position < this.db.data[key][taskKey].length) {
-      this.db.data[key][taskKey].splice(position, 0, folderItem);
-    } else {
-      this.db.data[key][taskKey].push(folderItem);
-    }
+    console.log(
+      `更新字幕处理状态: ${videoFilePath} ${oldStatus} -> ${subtitleRemoveOver}`
+    );
 
-    console.log(`已为任务 ${taskKey} 添加文件夹 ${folderName}`);
-    console.log(key, this.db.data[key]);
     await this.db.write();
 
     // 检查变化并触发观察者
     this.checkChanges();
+
+    return true;
   }
 }
 
