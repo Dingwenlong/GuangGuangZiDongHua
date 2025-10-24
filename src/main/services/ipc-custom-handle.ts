@@ -11,6 +11,7 @@ import WorkbenchManager, {
 import { webContentSend } from './web-content-send';
 import DirectoryMonitor from './directory-monitor';
 import VideoProcessor from './video-processor';
+import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
 import { formatArrayDiff } from '@main/utils/array';
 import VideoSceneSplitter from './video-scene-splitter';
@@ -70,12 +71,14 @@ export const ipcCustomLoginHandlers = (mainInit: MainInit): IpcHandler[] => {
  */
 export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const mainWindow = mainInit.mainWindow!;
-  let playwrightScript = new PlaywrightScript();
-  let workbenchManager = new WorkbenchManager();
-  let videoProcessor = new VideoProcessor('');
-  let dirMonitors: DirectoryMonitor[] = [];
-  let videoSceneSplitter: VideoSceneSplitter = new VideoSceneSplitter();
+  const playwrightScript = new PlaywrightScript();
+  const workbenchManager = new WorkbenchManager();
+  const audioProcessor = new AudioProcessor();
+  const videoSceneSplitter = new VideoSceneSplitter();
+  const videoProcessor = new VideoProcessor('');
+  const dirMonitors: DirectoryMonitor[] = [];
   const isTest = true;
+  let isWatermarkRemovalRunning = false;
 
   // 初始化事件
   // s1动态执行
@@ -119,10 +122,19 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         fs.renameSync(videoPath, targetPath);
         await playwrightScript.okCallback(targetPath);
       } else {
+        if (isWatermarkRemovalRunning) {
+          webContentSend.LogUpdate(mainWindow.webContents, {
+            message: '有视频去水印任务正在运行，当前任务将等待后续处理',
+            type: 'info',
+          });
+          return;
+        }
+        isWatermarkRemovalRunning = true;
         await playwrightScript.runWatermarkRemoval(
           videoPath,
           path.dirname(videoPath)
         );
+        isWatermarkRemovalRunning = false;
       }
     }
   );
@@ -136,6 +148,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   // 第四步完成之后
   videoSceneSplitter.on('s4OkCallback', () => {});
   // ----------------------其他的---------------------
+  audioProcessor.on('log', ({ message, type }) => {
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message,
+      type,
+    });
+  });
   playwrightScript.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
       message,
@@ -187,7 +205,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       channel: 'StartMonitoringDirectory',
       handler: async (_, directory: string) => {
-        // 当前文件夹亦被监听
+        // 当前文件夹已被监听
         if (
           dirMonitors.findIndex(
             monitor => monitor.monitorDirectory === directory
@@ -204,18 +222,16 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         dirMonitors.push(dirMonitor);
 
         dirMonitor.on('directoryStructure', ({ root, structure }) => {
-          if (mainInit.mainWindow)
-            webContentSend.MonitoringDirectoryCallback(
-              mainInit.mainWindow.webContents,
-              { root, structure }
-            );
+          webContentSend.MonitoringDirectoryCallback(mainWindow.webContents, {
+            root,
+            structure,
+          });
         });
         dirMonitor.on('log', ({ message, type }) => {
-          if (mainInit.mainWindow)
-            webContentSend.LogUpdate(mainInit.mainWindow.webContents, {
-              message,
-              type,
-            });
+          webContentSend.LogUpdate(mainWindow.webContents, {
+            message,
+            type,
+          });
         });
 
         dirMonitor.start();
@@ -251,6 +267,26 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       channel: 'GetAuthInfo',
       handler: async () => {
         return await authManager.getAuthInfo();
+      },
+    },
+    {
+      channel: 'RunVideoQualityFix',
+      handler: async (event, arg: { filePath: string; targetDir: string }) => {
+        const { filePath, targetDir } = arg;
+        return await playwrightScript.RunVideoQualityFix(filePath, targetDir);
+      },
+    },
+    {
+      channel: 'ProcessAudio',
+      handler: async (event, arg: { audioPath: string }) => {
+        const { audioPath } = arg;
+        return await audioProcessor.processAudio(audioPath);
+      },
+    },
+    {
+      channel: 'GetAudioProcessingStats',
+      handler: async () => {
+        return audioProcessor.getProcessingStats();
       },
     },
   ];

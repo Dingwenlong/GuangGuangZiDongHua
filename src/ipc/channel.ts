@@ -66,11 +66,17 @@ export class IpcChannelMainCustomClass {
     filePath: string;
     targetDir: string;
   }>;
+  RunVideoQualityFix!: IpcMainEventListener<{
+    filePath: string;
+    targetDir: string;
+  }>;
   CheckLoginStatus!: IpcMainEventListener<void, boolean>;
   UpdateWorkbenchData!: IpcMainEventListener<{ stepNo: string; sData: any }>;
   GetWorkbenchData!: IpcMainEventListener<string, any>;
   StartMonitoringDirectory!: IpcMainEventListener<string>;
   StopMonitoringDirectory!: IpcMainEventListener<string>;
+  ProcessAudio!: IpcMainEventListener<{ audioPath: string }, string>;
+  GetAudioProcessingStats!: IpcMainEventListener<void, any>;
 }
 
 /**
