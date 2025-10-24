@@ -291,18 +291,18 @@ class WorkbenchManager {
       WorkbenchStoreSchema,
       's2TasksQueue' | 's3TasksQueue' | 's4TasksQueue'
     >,
-    data: string | OrderedVideosChunk
+    data: string | OrderedVideosChunk | OrderedFolderItem
   ): Promise<void> {
     await this.db.read();
 
-    if (
-      key !== 's3TasksQueue' &&
-      key !== 's4TasksQueue' &&
-      typeof data === 'string'
-    ) {
-      this.db.data[key].push(data);
-    } else if (key === 's3TasksQueue' && typeof data !== 'string') {
-      this.db.data[key].push(data);
+    if (key === 's2TasksQueue') {
+      this.db.data[key].push(data as string);
+    }
+    if (key === 's3TasksQueue') {
+      this.db.data[key].push(data as OrderedVideosChunk);
+    }
+    if (key === 's4TasksQueue') {
+      this.db.data[key].push(data as OrderedFolderItem);
     }
 
     console.log(`已添加任务: ${data}`);

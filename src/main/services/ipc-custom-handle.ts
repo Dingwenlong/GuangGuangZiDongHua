@@ -186,8 +186,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   // 第三步完成之后
   videoProcessor.on('s3OkCallback', async (videosChunk: OrderedVideosChunk) => {
-    // 增加第四步队列 （待完成）
-    await workbenchManager.enqueueTask('s4TasksQueue', videosChunk);
+    // 增加第四步队列
+    videosChunk.pathOfChains.forEach(async pathOfChain => {
+      await workbenchManager.enqueueTask('s4TasksQueue', pathOfChain);
+    });
   });
   // 第四步完成之后
   videoSceneSplitter.on('s4OkCallback', () => {});
@@ -212,6 +214,20 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     const diffMessage = formatArrayDiff(diff);
     webContentSend.LogUpdate(mainWindow.webContents, {
       message: `S3视频拆分任务队列发生变化: ${diffMessage}`,
+      type: 'info',
+    });
+    if (diff.added.length > 0) {
+      console.log('新增任务:', diff.added);
+    }
+    if (diff.removed.length > 0) {
+      console.log('删除任务:', diff.removed);
+    }
+  });
+  // s4队列监视
+  workbenchManager.watchArray('s4TasksQueue', (diff, newValue, oldValue) => {
+    const diffMessage = formatArrayDiff(diff);
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: `S4视频切割分镜任务队列发生变化: ${diffMessage}`,
       type: 'info',
     });
     if (diff.added.length > 0) {

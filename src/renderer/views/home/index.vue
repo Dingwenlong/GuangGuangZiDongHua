@@ -88,8 +88,8 @@ interface MenuItem {
 const menus = ref<MenuItem[]>([
   { title: 'S1 - 素材合并', checked: false },
   { title: 'S2 - 开拍去水印', checked: false },
-  { title: 'S3 - 视频拆分 - 分镜', checked: true },
-  { title: 'S4 - 视频混剪', checked: false },
+  { title: 'S3 - 视频拆分', checked: true },
+  { title: 'S4 - 视频分镜 - 混剪', checked: false },
   { title: 'S5 - 配音加字幕', checked: false },
   { title: 'S6 - 高清放大', checked: false },
   { title: 'S7 - 光合发布', checked: false },
