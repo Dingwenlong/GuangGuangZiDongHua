@@ -51,6 +51,7 @@ export interface IpcRendererEventListener<Send = void> {
  * 具体实现在 src/main/services/ipc-main-custom-handle.ts
  */
 export class IpcChannelMainCustomClass {
+  Test!: IpcMainEventListener;
   GetLoginState!: IpcMainEventListener<void, boolean>;
   OpenDevTools!: IpcMainEventListener;
   LoginSuccess!: IpcMainEventListener<{
@@ -68,10 +69,8 @@ export class IpcChannelMainCustomClass {
   CheckLoginStatus!: IpcMainEventListener<void, boolean>;
   UpdateWorkbenchData!: IpcMainEventListener<{ stepNo: string; sData: any }>;
   GetWorkbenchData!: IpcMainEventListener<string, any>;
-  StartMonitoringVideo!: IpcMainEventListener<string>;
-  StopMonitoringVideo!: IpcMainEventListener;
   StartMonitoringDirectory!: IpcMainEventListener<string>;
-  StopMonitoringDirectory!: IpcMainEventListener;
+  StopMonitoringDirectory!: IpcMainEventListener<string>;
 }
 
 /**

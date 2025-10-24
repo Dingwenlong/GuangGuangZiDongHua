@@ -6,6 +6,9 @@ import os from 'os';
 import { EventEmitter } from 'events';
 
 class PlaywrightScript extends EventEmitter {
+  public async okCallback(videoPath: string) {
+    this.emit('s2OkCallback', videoPath);
+  }
   /**
    * 视频去水印处理
    */
@@ -220,21 +223,13 @@ class PlaywrightScript extends EventEmitter {
 
       await browser.close();
 
-      return {
-        success: true,
-        message: `文件已成功处理并保存至: ${targetPath}`,
-        filePath: targetPath,
-      };
+      this.okCallback(targetPath);
     } catch (error: any) {
       console.error('操作过程中出现错误:', error.message);
       this.emit('log', {
         message: `操作过程中出现错误: ${error.message}`,
         type: 'error',
       });
-      return {
-        success: false,
-        message: `操作过程中出现错误: ${error.message}`,
-      };
     } finally {
       console.log('操作完成');
     }

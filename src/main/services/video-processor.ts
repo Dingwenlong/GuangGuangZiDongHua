@@ -4,10 +4,7 @@ import * as path from 'path';
 import FileWatcher from '../lib/file-watcher';
 import { isVideoFile, isProcessedVideoFile } from '../utils/file';
 import { FFmpegUtil, FFmpegProgressEvent, VideoSegment } from '../lib/ffmpeg';
-import workbenchManager, {
-  OrderedVideosChunk,
-  type VideoStoryboard,
-} from '../lib/workbench-manager';
+import { OrderedVideosChunk } from './workbench-manager';
 
 // 类型定义
 interface VideoProcessorOptions {
@@ -37,7 +34,7 @@ interface LogEvent {
 }
 
 class VideoProcessor extends EventEmitter {
-  private monitorDirectory: string;
+  public monitorDirectory: string;
   private watcher: FileWatcher | null;
   private options: VideoProcessorOptions;
   private currentlyProcessing: Set<string>;
@@ -47,9 +44,6 @@ class VideoProcessor extends EventEmitter {
   private status: StatusObject;
   private queueProcessInterval!: NodeJS.Timeout | null;
   private ffmpegUtil: FFmpegUtil;
-
-  // 去字幕任务队列
-  private subtitleRemoveQueue: string[];
 
   // 音频提取任务队列
   private audioExtractQueue: string[];
@@ -71,9 +65,6 @@ class VideoProcessor extends EventEmitter {
     this.recentlyProcessed = new Map<string, number>(); // 最近处理的文件（防重复）
     this.recentlyProcessedCleanup = null; // 清理定时器
     this.processingQueue = new Map<string, ProcessingQueueItem>(); // 处理队列
-
-    // 去字幕任务队列
-    this.subtitleRemoveQueue = [];
 
     // 音频提取任务队列
     this.audioExtractQueue = [];
@@ -561,13 +552,14 @@ class VideoProcessor extends EventEmitter {
         const videos = this.getProcessedVideos(dir);
         const videosPart = videos.slice(0, 4);
         videoFiles.push(...videosPart);
+        // 提前命名为后续铺垫
         videosChunk.push({
-          folderName: dir,
+          folderName: dir.replace('S1---', 'S2---'),
           videos: videosPart.map(video => {
             return {
               fragmentDuration: 20,
-              fileName: video.replace(dir, ''),
-            } satisfies VideoStoryboard;
+              fileName: video.replace(dir, '').replace('S1---', 'S2---'),
+            };
           }),
         });
       });
@@ -587,36 +579,20 @@ class VideoProcessor extends EventEmitter {
 
       await this.ffmpegUtil.concatVideos(videoFiles, outputPath);
 
-      // 清空商品目录并重命名
-      await this.cleanAndRenameProductDirs(productDirs);
-
       this.emit('log', {
         message: `视频合并成功: ${outputFileName} (总时长: 400秒)`,
         type: 'success',
       } as LogEvent);
 
-      // 保存视频链路用于拆解
-      workbenchManager.pushTask(
-        'subtitleRemoveRunningTasks',
-        outputPath,
-        videosChunk
-      );
-
-      // 将合并后的视频加入去字幕处理队列
-      this.subtitleRemoveQueue.push(outputPath);
+      // 清空商品目录并重命名
+      await this.cleanProductDirs(productDirs);
+      await this.renameProductDirs(productDirs, 'S1---', 'S2---');
       this.emit('log', {
-        message: `已加入去字幕队列: ${path.basename(outputPath)} (队列长度: ${
-          this.subtitleRemoveQueue.length
-        })`,
+        message: `已清空商品目录并重命名`,
         type: 'info',
       } as LogEvent);
 
-      // 触发队列处理
-      this.emit(
-        'addToSubtitleRemoveQueue',
-        outputPath,
-        this.subtitleRemoveQueue
-      );
+      this.emit('s1OkCallback', outputPath, videosChunk);
     } catch (error) {
       this.emit('log', {
         message: `视频合并失败: ${(error as Error).message}`,
@@ -629,29 +605,35 @@ class VideoProcessor extends EventEmitter {
   }
 
   /**
-   * 分解视频
+   * 拆分视频
    */
   public async splitVideo(videoPath: string): Promise<void> {
     this.status.processingStatus = '开始拆分视频';
     this.updateStatus();
 
     try {
-      const task = await workbenchManager.getTaskByKey(
-        'subtitleRemoveRunningTasks',
-        'videoPath'
-      );
-      if (!task) {
-        throw new Error('视频任务不存在');
-      }
+      // const task = await workbenchManager.getTaskByKey(
+      //   's3TasksQueue',
+      //   videoPath
+      // );
+      // if (!task) {
+      //   throw new Error(`视频 ${videoPath} 任务不存在`);
+      // }
       const VideoSegment: VideoSegment[] = [];
-      task.forEach(item => {
-        item.videos.forEach(video => {
-          VideoSegment.push({
-            fragmentDuration: video.fragmentDuration,
-            filePath: item.folderName + video.fileName,
-          });
-        });
-      });
+      // const productDirs: string[] = [];
+      // task.forEach(item => {
+      //   productDirs.push(item.folderName);
+      //   item.videos.forEach(video => {
+      //     VideoSegment.push({
+      //       fragmentDuration: video.fragmentDuration,
+      //       filePath: path.join(
+      //         item.folderName,
+      //         video.fileName.replace('S2---', 'S3---')
+      //       ),
+      //     });
+      //   });
+      // });
+      console.log('VideoSegment', VideoSegment);
 
       this.emit('log', {
         message: `视频 ${videoPath} 开始拆分`,
@@ -659,6 +641,13 @@ class VideoProcessor extends EventEmitter {
       } as LogEvent);
 
       await this.ffmpegUtil.splitVideoBySegments(videoPath, VideoSegment);
+
+      // 删除文件并清除任务
+      fs.unlinkSync(videoPath);
+      // await workbenchManager.removeTask('s3TasksQueue', videoPath);
+
+      // 重命名商品目录
+      // await this.renameProductDirs(productDirs, 'S2---', 'S3---');
 
       this.emit('log', {
         message: `视频拆分成功: ${videoPath}`,
@@ -673,21 +662,6 @@ class VideoProcessor extends EventEmitter {
       this.status.processingStatus = '空闲';
       this.updateStatus();
     }
-  }
-
-  /**
-   * 删除去字幕处理队列的某项
-   */
-  public removeToSubtitleRemoveQueue(videoPath: string): void {
-    this.subtitleRemoveQueue = this.subtitleRemoveQueue.filter(
-      x => x !== videoPath
-    );
-    this.emit('log', {
-      message: `已删除去字幕队列项: ${path.basename(
-        videoPath
-      )} (剩余队列长度: ${this.subtitleRemoveQueue.length})`,
-      type: 'info',
-    } as LogEvent);
   }
 
   /**
@@ -796,11 +770,9 @@ class VideoProcessor extends EventEmitter {
   }
 
   /**
-   * 清空并重命名商品目录
+   * 清空商品目录
    */
-  private async cleanAndRenameProductDirs(
-    productDirs: string[]
-  ): Promise<void> {
+  private async cleanProductDirs(productDirs: string[]): Promise<void> {
     for (const dir of productDirs) {
       try {
         // 清空目录中的所有文件
@@ -811,18 +783,42 @@ class VideoProcessor extends EventEmitter {
             fs.unlinkSync(filePath);
           }
         }
-
-        // 重命名目录
-        const newDirName = dir.replace('S1---', 'S2---');
-        fs.renameSync(dir, newDirName);
-
         this.emit('log', {
-          message: `已清空并重命名目录: ${path.basename(newDirName)}`,
+          message: `已清空目录: ${path.basename(dir)}`,
           type: 'info',
         } as LogEvent);
       } catch (error) {
         this.emit('log', {
-          message: `处理目录失败: ${path.basename(dir)} - ${
+          message: `处清空目录失败: ${path.basename(dir)} - ${
+            (error as Error).message
+          }`,
+          type: 'error',
+        } as LogEvent);
+      }
+    }
+  }
+
+  /**
+   * 重命名商品目录
+   */
+  private async renameProductDirs(
+    productDirs: string[],
+    searchVal: string,
+    replaceVal: string
+  ): Promise<void> {
+    for (const dir of productDirs) {
+      try {
+        // 重命名目录
+        const newDirName = dir.replace(searchVal, replaceVal);
+        fs.renameSync(dir, newDirName);
+
+        this.emit('log', {
+          message: `已重命名目录: ${path.basename(newDirName)}`,
+          type: 'info',
+        } as LogEvent);
+      } catch (error) {
+        this.emit('log', {
+          message: `重命名目录失败: ${path.basename(dir)} - ${
             (error as Error).message
           }`,
           type: 'error',
@@ -1016,14 +1012,12 @@ class VideoProcessor extends EventEmitter {
     recentlyProcessed: number;
     queueSize: number;
     productDirs: number;
-    subtitleQueueSize: number;
   } {
     return {
       currentlyProcessing: this.currentlyProcessing.size,
       recentlyProcessed: this.recentlyProcessed.size,
       queueSize: this.processingQueue.size,
       productDirs: this.getProductDirectories().length,
-      subtitleQueueSize: this.subtitleRemoveQueue.length,
     };
   }
 }
