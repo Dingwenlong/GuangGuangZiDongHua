@@ -68,7 +68,7 @@ const testProcessAudio = async () => {
   try {
     // 测试用的音频文件路径
     const testAudioPath =
-      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\示例音频\\\\S4-示例声音.MP3';
+      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\示例音频\\\\S5-示例声音.MP3';
 
     // 调用音频处理接口
     const promptId = await ipcRendererChannel.ProcessAudio.invoke({
@@ -76,10 +76,6 @@ const testProcessAudio = async () => {
     });
 
     console.log('音频处理测试结果:', promptId);
-
-    // 可选：获取音频处理统计信息
-    const stats = await ipcRendererChannel.GetAudioProcessingStats.invoke();
-    console.log('音频处理统计信息:', stats);
   } catch (error) {
     console.error('音频处理测试失败:', error);
   }

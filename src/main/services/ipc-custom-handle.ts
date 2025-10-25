@@ -11,6 +11,7 @@ import WorkbenchManager, {
 import { webContentSend } from './web-content-send';
 import DirectoryMonitor from './directory-monitor';
 import VideoProcessor from './video-processor';
+import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
 import { formatArrayDiff } from '@main/utils/array';
@@ -74,6 +75,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const mainWindow = mainInit.mainWindow!;
   const playwrightScript = new PlaywrightScript();
   const workbenchManager = new WorkbenchManager();
+  const audioExtractor = new AudioExtractor();
   const audioProcessor = new AudioProcessor();
   const videoSceneSplitter = new VideoSceneSplitter();
   const videoProcessor = new VideoProcessor('');
@@ -166,6 +168,118 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     if (!newValue.running) scheduler.disableTask('s3Task');
     else scheduler.enableTask('s3Task');
   });
+  // s5
+  // 每5秒执行一次，并发数为1
+  // 添加音频处理计数器
+  let audioProcessCount = 0;
+  const latencyTime = 3 * 60 * 1000; // 3分钟等待时间
+  let isRebooting = false; // 重启标志
+
+  scheduler.addTask(
+    {
+      name: 's5Task',
+      interval: 5000,
+      concurrency: 1,
+      enabled: true,
+    },
+    async () => {
+      // 如果正在重启，跳过当前任务
+      if (isRebooting) {
+        console.log('服务正在重启中，等待3分钟后再继续处理任务');
+        return;
+      }
+
+      const task = await workbenchManager.dequeueTask('s5TasksQueue');
+      if (!task) return;
+      console.log('执行任务s5');
+
+      try {
+        // 处理音频提取任务
+        const videoPath = task as string;
+        // 提取音频
+        const extractResult = await audioExtractor.extractAudio(videoPath);
+        console.log('音频提取完成:', extractResult);
+
+        // 检查是否需要重启服务
+        if (audioProcessCount >= 5) {
+          console.log(`已处理${audioProcessCount}个音频文件，准备重启服务`);
+
+          // 设置重启标志
+          isRebooting = true;
+
+          try {
+            // 调用重启服务方法，不需要等待返回
+            void audioProcessor.rebootService();
+            console.log('已发送重启服务请求');
+          } catch (rebootError) {
+            console.error('重启服务失败，但继续执行:', rebootError);
+          }
+
+          // 重置计数器
+          audioProcessCount = 0;
+
+          // 等待3分钟
+          console.log('等待3分钟后继续处理...');
+          await new Promise(resolve => setTimeout(resolve, latencyTime));
+          console.log('等待时间结束，继续处理任务');
+
+          // 重置重启标志
+          isRebooting = false;
+        }
+
+        // 处理音频
+        const processResult = await audioProcessor.processAudio(
+          extractResult.outputPath
+        );
+        console.log('音频处理完成:', processResult);
+
+        // 增加处理计数
+        audioProcessCount++;
+
+        // 加入S6队列
+        await workbenchManager.enqueueTask('s6TasksQueue', videoPath);
+      } catch (error) {
+        console.error('S5任务执行失败:', error);
+      }
+    }
+  );
+  workbenchManager.watch('s5', (newValue: WorkbenchStoreSchema['s5']) => {
+    if (!newValue.running) scheduler.disableTask('s5Task');
+    else scheduler.enableTask('s5Task');
+  });
+
+  // s6
+  // 每5秒执行一次，并发数为1
+  scheduler.addTask(
+    {
+      name: 's6Task',
+      interval: 5000,
+      concurrency: 1,
+      enabled: true,
+    },
+    async () => {
+      const task = await workbenchManager.dequeueTask('s6TasksQueue');
+      if (!task) return;
+      console.log('执行任务s6');
+
+      const videoFilePath = task as string;
+      if (isTest) {
+        // 测试过程直接重命名文件为S6
+        const targetPath = videoFilePath.replace('S6---', 'S7---');
+        fs.renameSync(videoFilePath, targetPath);
+        await playwrightScript.okCallback(targetPath);
+      } else {
+        await playwrightScript.RunVideoQualityFix(
+          videoFilePath,
+          path.dirname(videoFilePath)
+        );
+      }
+    }
+  );
+  workbenchManager.watch('s6', (newValue: WorkbenchStoreSchema['s6']) => {
+    if (!newValue.running) scheduler.disableTask('s6Task');
+    else scheduler.enableTask('s6Task');
+  });
   // 启动所有任务
   scheduler.startAllTasks();
   // ----------------------执行完每一步之后的回调处理---------------------
@@ -193,6 +307,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   // 第四步完成之后
   videoSceneSplitter.on('s4OkCallback', () => {});
+
+  // 第五步完成之后
+  audioExtractor.on('s5OkCallback', result => {
+    // 增加第六步队列
+    workbenchManager.enqueueTask('s6TasksQueue', result.inputPath);
+  });
   // ----------------------其他的---------------------
   // 输出日志
   // s2队列监视
@@ -237,6 +357,20 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       console.log('删除任务:', diff.removed);
     }
   });
+  // s5队列监视
+  workbenchManager.watchArray('s5TasksQueue', (diff, newValue, oldValue) => {
+    const diffMessage = formatArrayDiff(diff);
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: `S5任务队列发生变化: ${diffMessage}`,
+      type: 'info',
+    });
+    if (diff.added.length > 0) {
+      console.log('新增任务:', diff.added);
+    }
+    if (diff.removed.length > 0) {
+      console.log('删除任务:', diff.removed);
+    }
+  });
   videoProcessor.on('status', data => {
     webContentSend.LogUpdate(mainWindow.webContents, {
       message: JSON.stringify(data),
@@ -256,6 +390,14 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     });
   });
   playwrightScript.on('log', ({ message, type }) => {
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message,
+      type,
+    });
+  });
+
+  // 音频提取器日志监听
+  audioExtractor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
       message,
       type,
@@ -362,13 +504,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       },
     },
     {
-      channel: 'RunVideoQualityFix',
-      handler: async (event, arg: { filePath: string; targetDir: string }) => {
-        const { filePath, targetDir } = arg;
-        return await playwrightScript.RunVideoQualityFix(filePath, targetDir);
-      },
-    },
-    {
       channel: 'ProcessAudio',
       handler: async (event, arg: { audioPath: string }) => {
         const { audioPath } = arg;
@@ -376,9 +511,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       },
     },
     {
-      channel: 'GetAudioProcessingStats',
-      handler: async () => {
-        return audioProcessor.getProcessingStats();
+      channel: 'ProcessAudioExtract',
+      handler: async (event, arg: { videoPath: string }) => {
+        const { videoPath } = arg;
+        return await audioExtractor.extractAudio(videoPath);
       },
     },
   ];

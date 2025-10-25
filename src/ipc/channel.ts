@@ -76,7 +76,6 @@ export class IpcChannelMainCustomClass {
   StartMonitoringDirectory!: IpcMainEventListener<string>;
   StopMonitoringDirectory!: IpcMainEventListener<string>;
   ProcessAudio!: IpcMainEventListener<{ audioPath: string }, string>;
-  GetAudioProcessingStats!: IpcMainEventListener<void, any>;
 }
 
 /**

@@ -274,7 +274,7 @@ class AudioProcessor extends EventEmitter {
 
       this.emit('log', {
         message: `开始处理${
-          isVideoProcessing ? '视频1' : '音频'
+          isVideoProcessing ? '视频' : '音频'
         }: ${path.basename(targetPath)}`,
         type: 'info',
       } as LogEvent);
@@ -645,6 +645,37 @@ class AudioProcessor extends EventEmitter {
   }
 
   /**
+   * 重启服务的方法
+   */
+  public async rebootService(): Promise<void> {
+    try {
+      const url = 'http://192.168.31.222:9001/api/easyuse/reboot';
+      this.emit('log', {
+        message: `正在调用重启服务API: ${url}`,
+        type: 'info',
+      } as LogEvent);
+
+      const response = await this.httpGetRequest(url);
+
+      this.emit('log', {
+        message: `重启服务API调用成功，响应: ${response}`,
+        type: 'success',
+      } as LogEvent);
+
+      this.emit('serviceRebooted', { success: true, response });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.emit('log', {
+        message: `重启服务API调用失败: ${errorMessage}`,
+        type: 'error',
+      } as LogEvent);
+      this.emit('serviceRebooted', { success: false, error: errorMessage });
+      throw error;
+    }
+  }
+
+  /**
    * 下载文件到指定路径
    * @param fileUrl 文件URL
    * @param savePath 保存路径
@@ -816,47 +847,6 @@ class AudioProcessor extends EventEmitter {
 
       req.end();
     });
-  }
-
-  /**
-   * 获取处理统计信息
-   */
-  public getProcessingStats(): {
-    initialized: boolean;
-    processingStatus: string;
-    activeConfig: AudioConfig | null;
-    processedCount: number;
-  } {
-    return {
-      initialized: this.status.initialized,
-      processingStatus: this.status.processingStatus,
-      activeConfig: this.status.activeConfig,
-      processedCount: this.processedPrompts.size,
-    };
-  }
-
-  /**
-   * 获取指定音频的prompt_id
-   */
-  public getPromptId(audioPath: string): string | undefined {
-    return this.processedPrompts.get(audioPath);
-  }
-
-  /**
-   * 清除指定音频的处理记录
-   */
-  public clearProcessedRecord(audioPath: string): void {
-    if (this.processedPrompts.has(audioPath)) {
-      this.processedPrompts.delete(audioPath);
-    }
-  }
-
-  /**
-   * 清除所有处理记录
-   */
-  public clearAllProcessedRecords(): void {
-    const count = this.processedPrompts.size;
-    this.processedPrompts.clear();
   }
 
   /**
