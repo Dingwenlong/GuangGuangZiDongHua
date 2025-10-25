@@ -151,7 +151,6 @@ export class IpcChannelMainClass extends IpcChannelMainCustomClass {
 
 export class IpcChannelRendererCustomClass {
   MonitoringDirectoryCallback!: IpcRendererEventListener<any>;
-  MonitoringVideoStatusUpdate!: IpcRendererEventListener<any>;
   LogUpdate!: IpcRendererEventListener<any>;
 }
 /**

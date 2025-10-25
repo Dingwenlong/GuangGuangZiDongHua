@@ -15,6 +15,7 @@ import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
 import { formatArrayDiff } from '@main/utils/array';
 import VideoSceneSplitter from './video-scene-splitter';
+import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
 
 /**
  * 自定义全局
@@ -77,26 +78,128 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const videoSceneSplitter = new VideoSceneSplitter();
   const videoProcessor = new VideoProcessor('');
   const dirMonitors: DirectoryMonitor[] = [];
+  const scheduler = new TaskScheduler();
   const isTest = true;
-  let isWatermarkRemovalRunning = false;
 
-  // 初始化事件
-  // s1动态执行
-  workbenchManager.watch('s1', (newValue: WorkbenchStoreSchema['s1']) => {
-    if (!newValue.taskDirectory || !newValue.monitoringRunning) {
-      videoProcessor?.stop();
+  // ----------------------执行每一步---------------------
+  // s1
+  workbenchManager.watch('s1', async (newValue: WorkbenchStoreSchema['s1']) => {
+    const status = videoProcessor.getStatus();
+    if (!newValue.taskDirectory || !newValue.running) {
+      if (status.monitoring) videoProcessor.stop();
       return;
     }
-    if (videoProcessor) videoProcessor.stop();
-    if (videoProcessor.monitorDirectory !== newValue.taskDirectory)
-      videoProcessor.monitorDirectory = newValue.taskDirectory;
-    if (newValue.monitoringRunning) videoProcessor.start();
+    if (newValue.taskDirectory !== videoProcessor.monitorDirectory)
+      await videoProcessor.updateWatchedDirectory(newValue.taskDirectory);
+
+    if (!status.monitoring) videoProcessor.start();
   });
+  // s2
+  // 每5秒执行一次，并发数为1
+  scheduler.addTask(
+    {
+      name: 's2Task',
+      interval: 5000,
+      concurrency: 1,
+      enabled: true,
+    },
+    async () => {
+      const task = await workbenchManager.dequeueTask('s2TasksQueue');
+      if (!task) return;
+      console.log('执行任务s2');
+
+      const videoFilePath = task as string;
+      if (isTest) {
+        // 测试过程直接重命名文件为S2
+        const targetPath = videoFilePath.replace('S1---', 'S2---');
+        fs.renameSync(videoFilePath, targetPath);
+        await playwrightScript.okCallback(targetPath);
+      } else {
+        await playwrightScript.runWatermarkRemoval(
+          videoFilePath,
+          path.dirname(videoFilePath)
+        );
+      }
+    }
+  );
+  workbenchManager.watch('s2', (newValue: WorkbenchStoreSchema['s2']) => {
+    if (!newValue.running) scheduler.disableTask('s2Task');
+    else scheduler.enableTask('s2Task');
+  });
+  // s3
+  // 每5秒执行一次，并发数为1
+  scheduler.addTask(
+    {
+      name: 's3Task',
+      interval: 5000,
+      concurrency: 1,
+      enabled: true,
+    },
+    async () => {
+      const task = await workbenchManager.dequeueTask('s3TasksQueue');
+      if (!task) return;
+      console.log('执行任务s3');
+
+      videoProcessor.splitVideo(task as OrderedVideosChunk);
+    }
+  );
+  workbenchManager.watch('s3', (newValue: WorkbenchStoreSchema['s3']) => {
+    if (!newValue.running) scheduler.disableTask('s3Task');
+    else scheduler.enableTask('s3Task');
+  });
+  // s4
+  // 每5秒执行一次，并发数为1
+  scheduler.addTask(
+    {
+      name: 's4Task',
+      interval: 5000,
+      concurrency: 1,
+      enabled: true,
+    },
+    async () => {
+      const task = await workbenchManager.dequeueTask('s4TasksQueue');
+      if (!task) return;
+      console.log('执行任务s4');
+    }
+  );
+  workbenchManager.watch('s3', (newValue: WorkbenchStoreSchema['s3']) => {
+    if (!newValue.running) scheduler.disableTask('s3Task');
+    else scheduler.enableTask('s3Task');
+  });
+  // 启动所有任务
+  scheduler.startAllTasks();
+  // ----------------------执行完每一步之后的回调处理---------------------
+  // 第一步完成之后
+  videoProcessor.on('s1OkCallback', async (videosChunk: OrderedVideosChunk) => {
+    // 增加第二步队列
+    await workbenchManager.enqueueTask(
+      's2TasksQueue',
+      videosChunk.videoFilePath
+    );
+    // 增加第三步队列 videosChunk 内部有参数控制不会直接执行
+    await workbenchManager.enqueueTask('s3TasksQueue', videosChunk);
+  });
+  // 第二步完成之后
+  playwrightScript.on('s2OkCallback', videoPath => {
+    // 通知 workbenchManager 去字幕任务完成
+    workbenchManager.updateSubtitleRemoveOver(videoPath, true);
+  });
+  // 第三步完成之后
+  videoProcessor.on('s3OkCallback', async (videosChunk: OrderedVideosChunk) => {
+    // 增加第四步队列
+    videosChunk.pathOfChains.forEach(async pathOfChain => {
+      await workbenchManager.enqueueTask('s4TasksQueue', pathOfChain);
+    });
+  });
+  // 第四步完成之后
+  videoSceneSplitter.on('s4OkCallback', () => {});
+  // ----------------------其他的---------------------
+  // 输出日志
   // s2队列监视
   workbenchManager.watchArray('s2TasksQueue', (diff, newValue, oldValue) => {
     const diffMessage = formatArrayDiff(diff);
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message: `任务队列发生变化: ${diffMessage}`,
+      message: `S2去字幕任务队列发生变化: ${diffMessage}`,
       type: 'info',
     });
     if (diff.added.length > 0) {
@@ -106,48 +209,46 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       console.log('删除任务:', diff.removed);
     }
   });
-  // ----------------------执行完每一步之后的回调处理---------------------
-  // 第一步完成之后
-  videoProcessor.on(
-    's1OkCallback',
-    async (videoPath: string, videosChunk: OrderedVideosChunk) => {
-      const targetPath = videoPath.replace('S1---', 'S2---');
-      // 保存到工作区队列
-      workbenchManager.pushTask('s2TasksQueue', videoPath);
-      // 保存视频链路用于后续拆解
-      await workbenchManager.pushTask('s3TasksQueue', targetPath, videosChunk);
-
-      if (isTest) {
-        // 测试过程直接重命名文件为S2
-        fs.renameSync(videoPath, targetPath);
-        await playwrightScript.okCallback(targetPath);
-      } else {
-        if (isWatermarkRemovalRunning) {
-          webContentSend.LogUpdate(mainWindow.webContents, {
-            message: '有视频去水印任务正在运行，当前任务将等待后续处理',
-            type: 'info',
-          });
-          return;
-        }
-        isWatermarkRemovalRunning = true;
-        await playwrightScript.runWatermarkRemoval(
-          videoPath,
-          path.dirname(videoPath)
-        );
-        isWatermarkRemovalRunning = false;
-      }
+  // s3队列监视
+  workbenchManager.watchArray('s3TasksQueue', (diff, newValue, oldValue) => {
+    const diffMessage = formatArrayDiff(diff);
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: `S3视频拆分任务队列发生变化: ${diffMessage}`,
+      type: 'info',
+    });
+    if (diff.added.length > 0) {
+      console.log('新增任务:', diff.added);
     }
-  );
-  // 第二步完成之后
-  playwrightScript.on('s2OkCallback', videoPath => {
-    workbenchManager.removeTask('s2TasksQueue', videoPath);
-    videoProcessor.splitVideo(videoPath);
+    if (diff.removed.length > 0) {
+      console.log('删除任务:', diff.removed);
+    }
   });
-  // 第三步完成之后
-  videoProcessor.on('s3OkCallback', () => {});
-  // 第四步完成之后
-  videoSceneSplitter.on('s4OkCallback', () => {});
-  // ----------------------其他的---------------------
+  // s4队列监视
+  workbenchManager.watchArray('s4TasksQueue', (diff, newValue, oldValue) => {
+    const diffMessage = formatArrayDiff(diff);
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: `S4视频切割分镜任务队列发生变化: ${diffMessage}`,
+      type: 'info',
+    });
+    if (diff.added.length > 0) {
+      console.log('新增任务:', diff.added);
+    }
+    if (diff.removed.length > 0) {
+      console.log('删除任务:', diff.removed);
+    }
+  });
+  videoProcessor.on('status', data => {
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: JSON.stringify(data),
+      type: 'debug',
+    });
+  });
+  videoProcessor.on('log', ({ message, type }) => {
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message,
+      type,
+    });
+  });
   audioProcessor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
       message,
@@ -159,15 +260,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       message,
       type,
     });
-  });
-  videoProcessor.on('log', ({ message, type }) => {
-    webContentSend.LogUpdate(mainWindow.webContents, {
-      message,
-      type,
-    });
-  });
-  videoProcessor.on('status', data => {
-    webContentSend.MonitoringVideoStatusUpdate(mainWindow.webContents, data);
   });
 
   return [
