@@ -4,10 +4,10 @@
       <Input
         class="w-6/12!"
         readonly
-        v-model:value="s2.taskDirectory"
+        v-model:value="s1.taskDirectory"
         placeholder="点击选择任务监听目录文件夹"
         @click="selectDirectoryHandler"
-        :disabled="s2.taskDirectory !== ''" />
+        :disabled="s1.taskDirectory !== ''" />
       <div
         class="w-3/12 h-32 text-[12px] leading-35 text-gray-400 content-center text-right">
         自动持续检测{{ s2.autoMonitoring ? '开启' : '关闭' }}
@@ -52,7 +52,7 @@
             <Button
               type="primary"
               @click="
-                openFolder(s2.taskDirectory + '\\' + record.productDirectory)
+                openFolder(s1.taskDirectory + '\\' + record.productDirectory)
               "
               >打开文件夹</Button
             >
@@ -64,7 +64,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   Switch,
   Input,
@@ -74,8 +74,10 @@ import {
 } from 'ant-design-vue';
 const { shell, ipcRendererChannel } = window;
 
-const s2 = ref({
+const s1 = reactive({
   taskDirectory: 'test',
+});
+const s2 = ref({
   autoMonitoring: false,
   intervalSeconds: 5,
 });
@@ -104,7 +106,7 @@ const columns: TableColumnType[] = [
 const data = ref<any>([]);
 
 async function selectDirectoryHandler() {
-  s2.value.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
+  s1.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
 }
 
 function openFolder(path: string) {
@@ -114,12 +116,12 @@ function openFolder(path: string) {
 const videoMonitoringRunning = ref(false);
 
 function startOrStopTaskHandler(start = true) {
-  if (start && s2.value.taskDirectory && !videoMonitoringRunning.value) {
+  if (start && s1.taskDirectory && !videoMonitoringRunning.value) {
     videoMonitoringRunning.value = true;
-    ipcRendererChannel.StartMonitoringVideo.invoke(s2.value.taskDirectory);
+    ipcRendererChannel.StartMonitoringDirectory.invoke(s1.taskDirectory);
   } else if (!start && videoMonitoringRunning.value) {
     videoMonitoringRunning.value = false;
-    ipcRendererChannel.StopMonitoringVideo.invoke();
+    ipcRendererChannel.StopMonitoringDirectory.invoke();
   }
   setCookie();
 }
@@ -185,22 +187,21 @@ watch(s2.value, async (val, _) => {
   //   videoMonitoringRunning.value = false;
   //   ipcRendererChannel.StopMonitoringVideo.invoke();
   // }
-  // 监听文件夹
-  if (val.taskDirectory && !videoMonitoringRunning.value) {
-    ipcRendererChannel.StartMonitoringDirectory.invoke(val.taskDirectory);
-  }
 });
 
 onMounted(async () => {
-  const workbench = await ipcRendererChannel.GetWorkbenchData.invoke('s2');
-  s2.value.taskDirectory = workbench.taskDirectory ?? '';
-  s2.value.autoMonitoring = workbench.autoMonitoring ?? true;
+  // 获取历史缓存
+  ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbenchS1 => {
+    s1.taskDirectory = workbenchS1.taskDirectory ?? '';
+  });
+  ipcRendererChannel.GetWorkbenchData.invoke('s2').then(workbenchS2 => {
+    s2.value = { ...workbenchS2 };
+  });
 
   // 获取历史缓存数据
   await ipcRendererChannel.GetWorkbenchData.invoke('s2').then(
     (workbench: any) => {
       s2.value = workbench ?? {
-        taskDirectory: '',
         autoMonitoring: false,
         intervalSeconds: 5,
       };
@@ -210,17 +211,15 @@ onMounted(async () => {
   // 绑定文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (event, arg: { root: string; structure: any[] }) => {
+      console.log(arg);
       data.value = arg.structure
         .filter(dir => {
           return dir.type === 'directory' && dir.name === '视频去字幕任务';
         })
         .map(dir => {
           return {
-            taskDirectory: s2.value.taskDirectory,
-            productDirectory: dir.path.replace(
-              s2.value.taskDirectory + '\\',
-              ''
-            ),
+            taskDirectory: s1.taskDirectory,
+            productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
             videoMaterial: dir.children
               .filter((file: any) => file.isVideo && file.type === 'file')
               .map((file: any) => file.name),

@@ -22,7 +22,7 @@
       <S2 v-if="menus.find(x => x.id === 2)!.checked" />
       <S3 v-show="menus.find(x => x.id === 3)!.checked" />
       <S5 v-show="menus.find(x => x.id === 5)!.checked" />
-      <S6 v-show="menus.find(x => x.id === 6)!.checked" />
+      <S6 v-if="menus.find(x => x.id === 6)!.checked" />
     </div>
     <div class="min-w-3/12 max-w-3/12 bg-gray-100">
       <LogPanel :logs="logData" />
