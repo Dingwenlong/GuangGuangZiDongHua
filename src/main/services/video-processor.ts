@@ -8,7 +8,7 @@ import {
   OrderedVideosChunk,
   type OrderedFolderItem,
 } from './workbench-manager';
-import { reject } from 'lodash';
+import { writeLog, type LogEvent } from '@main/utils/log';
 
 // 类型定义
 interface VideoProcessorOptions {
@@ -30,11 +30,6 @@ interface StatusObject {
   readyCount: number;
   processingStatus: string;
   queueSize: number;
-}
-
-interface LogEvent {
-  message: string;
-  type: 'info' | 'error' | 'success' | 'warning' | 'debug';
 }
 
 class VideoProcessor extends EventEmitter {
@@ -148,10 +143,7 @@ class VideoProcessor extends EventEmitter {
    */
   public start(): void {
     if (!this.monitorDirectory || !fs.existsSync(this.monitorDirectory)) {
-      this.emit('log', {
-        message: '监控目录不存在',
-        type: 'error',
-      } as LogEvent);
+      this.writeLog('监控目录不存在', 'error');
       return;
     }
 
@@ -173,10 +165,10 @@ class VideoProcessor extends EventEmitter {
     // 启动音频提取队列处理
     this.startAudioExtractQueueProcessing();
 
-    this.emit('log', {
-      message: `视频处理器已启动，监控目录: ${this.monitorDirectory}，文件标识方法: ${this.options.fileKeyMethod}`,
-      type: 'success',
-    } as LogEvent);
+    this.writeLog(
+      `视频处理器已启动，监控目录: ${this.monitorDirectory}，文件标识方法: ${this.options.fileKeyMethod}`,
+      'success'
+    );
   }
 
   /**
@@ -185,7 +177,7 @@ class VideoProcessor extends EventEmitter {
   public stop(): void {
     if (this.watcher) {
       this.watcher.stop();
-      this.emit('log', { message: '文件监控已停止', type: 'info' } as LogEvent);
+      this.writeLog('文件监控已停止');
     }
 
     if (this.recentlyProcessedCleanup) {
@@ -204,10 +196,7 @@ class VideoProcessor extends EventEmitter {
     this.status.processingStatus = '已停止';
     this.updateStatus();
 
-    this.emit('log', {
-      message: '视频处理器已完全停止',
-      type: 'info',
-    } as LogEvent);
+    this.writeLog('视频处理器已完全停止');
   }
 
   public async updateWatchedDirectory(newDirectory: string): Promise<void> {
@@ -217,10 +206,7 @@ class VideoProcessor extends EventEmitter {
       this.watcher = null;
       this.startFileWatching();
     }
-    this.emit('log', {
-      message: `目录切换 ${this.monitorDirectory} --> ${newDirectory}`,
-      type: 'info',
-    } as LogEvent);
+    this.writeLog(`目录切换 ${this.monitorDirectory} --> ${newDirectory}`);
 
     await new Promise(resolve => {
       setTimeout(resolve, 1000);
@@ -234,14 +220,12 @@ class VideoProcessor extends EventEmitter {
     const subtitleTaskDir = path.join(this.monitorDirectory, '视频去字幕任务');
     const tempDir = path.join(this.monitorDirectory, 'temp');
     const audioOutputDir = path.join(this.monitorDirectory, '音频输出');
+    const storyboardDir = path.join(this.monitorDirectory, '视频分镜');
 
-    [subtitleTaskDir, tempDir, audioOutputDir].forEach(dir => {
+    [subtitleTaskDir, tempDir, audioOutputDir, storyboardDir].forEach(dir => {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
-        this.emit('log', {
-          message: `创建目录: ${dir}`,
-          type: 'info',
-        } as LogEvent);
+        this.writeLog(`创建目录: ${dir}`);
       }
     });
   }
@@ -277,19 +261,13 @@ class VideoProcessor extends EventEmitter {
       .on('ready', () => {
         this.status.monitoring = true;
         this.updateStatus();
-        this.emit('log', {
-          message: '文件监控系统就绪',
-          type: 'success',
-        } as LogEvent);
+        this.writeLog('文件监控系统就绪', 'success');
 
         // 扫描现有文件
         setTimeout(() => this.scanExistingFiles(), 5000);
       })
       .on('error', (error: Error) => {
-        this.emit('log', {
-          message: `文件监控错误: ${error.message}`,
-          type: 'error',
-        } as LogEvent);
+        this.writeLog(`文件监控错误: ${error.message}`, 'error');
       });
 
     this.watcher.start();
@@ -327,12 +305,12 @@ class VideoProcessor extends EventEmitter {
       // 添加到处理队列
       this.addToProcessingQueue(filePath, fileKey, eventType);
     } catch (error) {
-      this.emit('log', {
-        message: `处理文件事件失败: ${path.basename(filePath)} - ${
+      this.writeLog(
+        `处理文件事件失败: ${path.basename(filePath)} - ${
           (error as Error).message
         }`,
-        type: 'error',
-      } as LogEvent);
+        'error'
+      );
     }
   }
 
@@ -353,17 +331,14 @@ class VideoProcessor extends EventEmitter {
 
       this.updateQueueStatus();
 
-      this.emit('log', {
-        message: `文件已删除，清理处理状态: ${path.basename(filePath)}`,
-        type: 'info',
-      } as LogEvent);
+      this.writeLog(`文件已删除，清理处理状态: ${path.basename(filePath)}`);
     } catch (error) {
-      this.emit('log', {
-        message: `处理文件删除时出错: ${path.basename(filePath)} - ${
+      this.writeLog(
+        `处理文件删除时出错: ${path.basename(filePath)} - ${
           (error as Error).message
         }`,
-        type: 'warning',
-      } as LogEvent);
+        'warning'
+      );
     }
   }
 
@@ -408,12 +383,11 @@ class VideoProcessor extends EventEmitter {
 
     this.updateQueueStatus();
 
-    this.emit('log', {
-      message: `已加入处理队列: ${path.basename(filePath)} (队列长度: ${
+    this.writeLog(
+      `已加入处理队列: ${path.basename(filePath)} (队列长度: ${
         this.processingQueue.size
-      })`,
-      type: 'info',
-    } as LogEvent);
+      })`
+    );
   }
 
   /**
@@ -427,11 +401,7 @@ class VideoProcessor extends EventEmitter {
     queueItem.processing = true;
     this.currentlyProcessing.add(queueItem.key);
 
-    this.emit('log', {
-      message: `开始处理视频: ${path.basename(filePath)}`,
-      type: 'info',
-    } as LogEvent);
-
+    this.writeLog(`开始处理视频: ${path.basename(filePath)}`);
     try {
       await this.processVideo(filePath);
 
@@ -447,18 +417,18 @@ class VideoProcessor extends EventEmitter {
       this.currentlyProcessing.delete(queueItem.key);
 
       if (queueItem.retryCount >= 3) {
-        this.emit('log', {
-          message: `视频处理失败，已达到重试次数: ${path.basename(filePath)}`,
-          type: 'error',
-        } as LogEvent);
+        this.writeLog(
+          `视频处理失败，已达到重试次数: ${path.basename(filePath)}`,
+          'error'
+        );
         this.processingQueue.delete(filePath);
       } else {
-        this.emit('log', {
-          message: `视频处理失败，等待重试: ${path.basename(filePath)} (${
+        this.writeLog(
+          `视频处理失败，等待重试: ${path.basename(filePath)} (${
             queueItem.retryCount
           }/3)`,
-          type: 'warning',
-        } as LogEvent);
+          'warning'
+        );
       }
     } finally {
       this.updateQueueStatus();
@@ -474,28 +444,19 @@ class VideoProcessor extends EventEmitter {
 
     try {
       duration = await this.ffmpegUtil.getVideoDuration(inputPath);
-      this.emit('log', {
-        message: `视频时长: ${duration.toFixed(2)}秒`,
-        type: 'info',
-      } as LogEvent);
+      this.writeLog(`视频时长: ${duration.toFixed(2)}秒`);
     } catch (error) {
       throw new Error(`无法获取视频时长: ${(error as Error).message}`);
     }
 
     // 根据时长处理视频
     if (Math.abs(duration - 20) < 0.1) {
-      this.emit('log', {
-        message: '视频时长正好20秒，无需处理',
-        type: 'info',
-      } as LogEvent);
+      this.writeLog('视频时长正好20秒，无需处理');
       return;
     }
 
     if (duration < 16) {
-      this.emit('log', {
-        message: '视频时长小于16秒，无法处理',
-        type: 'warning',
-      } as LogEvent);
+      this.writeLog('视频时长小于16秒，无法处理', 'warning');
       return;
     }
 
@@ -520,12 +481,10 @@ class VideoProcessor extends EventEmitter {
       // 删除原视频
       fs.unlinkSync(inputPath);
 
-      this.emit('log', {
-        message: `视频处理完成: ${outputFileName} (${duration.toFixed(
-          2
-        )}秒 → 20.00秒)`,
-        type: 'success',
-      } as LogEvent);
+      this.writeLog(
+        `视频处理完成: ${outputFileName} (${duration.toFixed(2)}秒 → 20.00秒)`,
+        'success'
+      );
     } catch (error) {
       // 清理可能生成的不完整输出文件
       if (fs.existsSync(outputPath)) {
@@ -567,10 +526,9 @@ class VideoProcessor extends EventEmitter {
     this.updateStatus();
 
     if (productDirs.length >= 5 && readyDirs.length >= 5) {
-      this.emit('log', {
-        message: `满足合并条件: 商品目录${productDirs.length}个, 就绪目录${readyDirs.length}个`,
-        type: 'info',
-      } as LogEvent);
+      this.writeLog(
+        `满足合并条件: 商品目录${productDirs.length}个, 就绪目录${readyDirs.length}个`
+      );
       await this.mergeVideos();
     }
   }
@@ -614,36 +572,26 @@ class VideoProcessor extends EventEmitter {
         throw new Error(`视频数量不足20个，当前: ${allVideoFiles.length}`);
       }
 
-      this.emit('log', {
-        message: `开始合并 ${allVideoFiles.length} 个视频`,
-        type: 'info',
-      } as LogEvent);
-
+      this.writeLog(`开始合并 ${allVideoFiles.length} 个视频`);
       await this.ffmpegUtil.concatVideos(
         allVideoFiles,
         videosChunk.videoFilePath
       );
 
-      this.emit('log', {
-        message: `视频合并成功: ${outputFileName} (总时长: 400秒)`,
-        type: 'success',
-      } as LogEvent);
+      this.writeLog(
+        `视频合并成功: ${outputFileName} (总时长: 400秒)`,
+        'success'
+      );
 
       // 清空S1商品目录并重命名为S2
       await this.cleanProductDirs(productDirs);
+      this.writeLog(`已清空S1目录商品`);
       await this.renameProductDirs(productDirs, 'S1---', 'S2---');
-
-      this.emit('log', {
-        message: `已清空S1商品目录并重命名为S2`,
-        type: 'info',
-      } as LogEvent);
+      this.writeLog(`目录重命名为S2`);
 
       this.emit('s1OkCallback', videosChunk);
     } catch (error) {
-      this.emit('log', {
-        message: `视频合并失败: ${(error as Error).message}`,
-        type: 'error',
-      } as LogEvent);
+      this.writeLog(`视频合并失败: ${(error as Error).message}`, 'error');
     } finally {
       this.status.processingStatus = '空闲';
       this.updateStatus();
@@ -658,27 +606,33 @@ class VideoProcessor extends EventEmitter {
     this.updateStatus();
 
     try {
-      const VideoSegment: VideoSegment[] = [];
       const productDirs: string[] = [];
+      const VideoSegment: VideoSegment[] = [];
+      const newPathOfChains: OrderedFolderItem[] = [];
       videosChunk.pathOfChains.forEach(item => {
-        const folderName = item.folderName.replace('S1---', 'S2---');
-        productDirs.push(folderName);
+        // 文件夹名改为S2后面执行完统一改为S3
+        item.folderName = item.folderName.replace('S1---', 'S2---');
+        productDirs.push(item.folderName);
         item.videos.forEach(video => {
           VideoSegment.push({
             fragmentDuration: video.fragmentDuration,
             filePath: path.join(
-              folderName,
-              video.fileName.replace('S2---', 'S3---')
+              item.folderName,
+              video.fileName.replace('S1---', 'S3---') // 文件名直接改为S3即可
             ),
           });
         });
+        newPathOfChains.push({
+          folderName: item.folderName.replace('S2---', 'S3---'),
+          videos: item.videos.map(video => {
+            video.fileName = video.fileName.replace('S1---', 'S3---');
+            return video;
+          }),
+        } satisfies OrderedFolderItem);
       });
       console.log('VideoSegment', VideoSegment);
 
-      this.emit('log', {
-        message: `视频 ${videosChunk.videoFilePath} 开始拆分`,
-        type: 'info',
-      } as LogEvent);
+      this.writeLog(`视频 ${videosChunk.videoFilePath} 开始拆分`);
 
       await this.ffmpegUtil.splitVideoBySegments(
         videosChunk.videoFilePath,
@@ -690,15 +644,11 @@ class VideoProcessor extends EventEmitter {
       // 重命名商品目录
       await this.renameProductDirs(productDirs, 'S2---', 'S3---');
 
-      this.emit('log', {
-        message: `视频拆分成功: ${videosChunk.videoFilePath}`,
-        type: 'success',
-      } as LogEvent);
+      this.writeLog(`视频拆分成功: ${videosChunk.videoFilePath}`, 'success');
+
+      this.emit('s3OkCallback', newPathOfChains);
     } catch (error) {
-      this.emit('log', {
-        message: `视频拆分失败: ${(error as Error).message}`,
-        type: 'error',
-      } as LogEvent);
+      this.writeLog(`视频拆分失败: ${(error as Error).message}`, 'error');
     } finally {
       this.status.processingStatus = '空闲';
       this.updateStatus();
@@ -717,12 +667,11 @@ class VideoProcessor extends EventEmitter {
       this.videoToVideosTableMap.delete(videoPath);
     }
 
-    this.emit('log', {
-      message: `已删除去字幕队列项: ${path.basename(
-        videoPath
-      )} (剩余队列长度: ${this.subtitleRemoveQueue.length})`,
-      type: 'info',
-    } as LogEvent);
+    this.writeLog(
+      `已删除去字幕队列项: ${path.basename(videoPath)} (剩余队列长度: ${
+        this.subtitleRemoveQueue.length
+      })`
+    );
   }
 
   /**
@@ -738,10 +687,7 @@ class VideoProcessor extends EventEmitter {
         const videosTable: string[][] =
           this.videoToVideosTableMap.get(videoPath) || [];
 
-        this.emit('log', {
-          message: `准备处理字幕队列中的视频: ${path.basename(videoPath)}`,
-          type: 'info',
-        } as LogEvent);
+        this.writeLog(`准备处理字幕队列中的视频: ${path.basename(videoPath)}`);
 
         // 触发队列处理事件，传递正确的参数
         this.emit(
@@ -752,10 +698,7 @@ class VideoProcessor extends EventEmitter {
         );
       }
     } catch (error) {
-      this.emit('log', {
-        message: `检查字幕队列时出错: ${(error as Error).message}`,
-        type: 'error',
-      } as LogEvent);
+      this.writeLog(`检查字幕队列时出错: ${(error as Error).message}`, 'error');
     } finally {
       // 等待3秒后再次执行
       setTimeout(() => {
@@ -788,12 +731,11 @@ class VideoProcessor extends EventEmitter {
     // 检查是否已经在队列中
     if (!this.audioExtractQueue.includes(normalizedPath)) {
       this.audioExtractQueue.push(normalizedPath);
-      this.emit('log', {
-        message: `已加入音频提取队列: ${path.basename(
-          normalizedPath
-        )} (队列长度: ${this.audioExtractQueue.length})`,
-        type: 'info',
-      } as LogEvent);
+      this.writeLog(
+        `已加入音频提取队列: ${path.basename(normalizedPath)} (队列长度: ${
+          this.audioExtractQueue.length
+        })`
+      );
     }
   }
 
@@ -805,12 +747,11 @@ class VideoProcessor extends EventEmitter {
     this.audioExtractQueue = this.audioExtractQueue.filter(
       path => path !== normalizedPath
     );
-    this.emit('log', {
-      message: `已从音频提取队列移除: ${path.basename(
-        normalizedPath
-      )} (剩余队列长度: ${this.audioExtractQueue.length})`,
-      type: 'info',
-    } as LogEvent);
+    this.writeLog(
+      `已从音频提取队列移除: ${path.basename(normalizedPath)} (剩余队列长度: ${
+        this.audioExtractQueue.length
+      })`
+    );
   }
 
   /**
@@ -848,10 +789,7 @@ class VideoProcessor extends EventEmitter {
       // 提取音频
       await this.ffmpegUtil.extractAudio(path.resolve(videoPath), outputPath);
 
-      this.emit('log', {
-        message: `音频提取成功: ${path.basename(outputPath)}`,
-        type: 'success',
-      } as LogEvent);
+      this.writeLog(`音频提取成功: ${path.basename(outputPath)}`, 'success');
 
       // 触发提取完成事件
       this.emit('audioExtractComplete', { inputPath: videoPath, outputPath });
@@ -859,12 +797,12 @@ class VideoProcessor extends EventEmitter {
       // 从队列中移除
       this.removeFromAudioExtractQueue(videoPath);
     } catch (error) {
-      this.emit('log', {
-        message: `音频提取失败: ${path.basename(videoPath)} - ${
+      this.writeLog(
+        `音频提取失败: ${path.basename(videoPath)} - ${
           (error as Error).message
         }`,
-        type: 'error',
-      } as LogEvent);
+        'error'
+      );
     } finally {
       this.currentlyProcessing.delete(fileKey);
       this.status.processingStatus = '空闲';
@@ -886,17 +824,12 @@ class VideoProcessor extends EventEmitter {
             fs.unlinkSync(filePath);
           }
         }
-        this.emit('log', {
-          message: `已清空目录: ${path.basename(dir)}`,
-          type: 'info',
-        } as LogEvent);
+        this.writeLog(`已清空目录: ${path.basename(dir)}`);
       } catch (error) {
-        this.emit('log', {
-          message: `处清空目录失败: ${path.basename(dir)} - ${
-            (error as Error).message
-          }`,
-          type: 'error',
-        } as LogEvent);
+        this.writeLog(
+          `处清空目录失败: ${path.basename(dir)} - ${(error as Error).message}`,
+          'error'
+        );
       }
     }
   }
@@ -915,17 +848,12 @@ class VideoProcessor extends EventEmitter {
         const newDirName = dir.replace(searchVal, replaceVal);
         fs.renameSync(dir, newDirName);
 
-        this.emit('log', {
-          message: `已重命名目录: ${path.basename(newDirName)}`,
-          type: 'info',
-        } as LogEvent);
+        this.writeLog(`已重命名目录: ${path.basename(newDirName)}`);
       } catch (error) {
-        this.emit('log', {
-          message: `重命名目录失败: ${path.basename(dir)} - ${
-            (error as Error).message
-          }`,
-          type: 'error',
-        } as LogEvent);
+        this.writeLog(
+          `重命名目录失败: ${path.basename(dir)} - ${(error as Error).message}`,
+          'error'
+        );
       }
     }
   }
@@ -1055,7 +983,7 @@ class VideoProcessor extends EventEmitter {
 
   // 扫描现有文件
   private scanExistingFiles(): void {
-    this.emit('log', { message: '开始扫描现有文件', type: 'info' } as LogEvent);
+    this.writeLog('开始扫描现有文件');
 
     const productDirs = this.getProductDirectories();
     let foundCount = 0;
@@ -1073,11 +1001,7 @@ class VideoProcessor extends EventEmitter {
         }
       });
     });
-
-    this.emit('log', {
-      message: `扫描完成，发现 ${foundCount} 个待处理文件`,
-      type: 'info',
-    } as LogEvent);
+    this.writeLog(`扫描完成，发现 ${foundCount} 个待处理文件`);
   }
 
   // 定期清理最近处理的记录
@@ -1107,6 +1031,7 @@ class VideoProcessor extends EventEmitter {
   // 更新系统状态
   private updateStatus(): void {
     this.emit('status', this.status);
+    this.emit('log', `当前状态：${this.status.processingStatus}`);
   }
 
   // 获取系统状态
@@ -1127,6 +1052,10 @@ class VideoProcessor extends EventEmitter {
       queueSize: this.processingQueue.size,
       productDirs: this.getProductDirectories().length,
     };
+  }
+
+  private writeLog(message: string, type: LogEvent['type'] = 'info') {
+    writeLog.call(this, message, type);
   }
 }
 

@@ -57,7 +57,7 @@ export interface WorkbenchStoreSchema {
     autoHandOnWorkflow: boolean;
     running: boolean;
   };
-  s3: {
+  s3s4: {
     productMaterialNum: number;
     storyboardSceneThreshold: number;
     storyboardDuration1: number;
@@ -90,6 +90,16 @@ export interface WorkbenchStoreSchema {
   s3TasksQueue: OrderedVideosChunk[];
   /**
    * 第四步任务队列
+   * [
+      {
+        folderName: '商品文件夹1',
+        videos: [{fragmentDuration: 20, fileName: '1.mp4'}, {fragmentDuration: 20, fileName: '2.mp4'}]
+      },
+      {
+        folderName: '商品文件夹2',
+        videos: [{fragmentDuration: 20, fileName: '3.mp4'}, {fragmentDuration: 20, fileName: '4.mp4'}]
+      }
+    ]
    */
   s4TasksQueue: OrderedFolderItem[];
 }
@@ -108,7 +118,7 @@ const defaultData: WorkbenchStoreSchema = merge(
       autoHandOnWorkflow: true,
       running: false,
     },
-    s3: {
+    s3s4: {
       productMaterialNum: 4,
       storyboardSceneThreshold: 0.3,
       storyboardDuration1: 4,
@@ -264,7 +274,7 @@ class WorkbenchManager {
     key: K
   ): Promise<WorkbenchStoreSchema[K]> {
     await this.db.read();
-    console.log(`获取: ${key} ${this.db.data[key]}`);
+    console.log(`获取: ${key} ${JSON.stringify(this.db.data[key])}`);
     return this.db.data[key];
   }
 
@@ -276,7 +286,7 @@ class WorkbenchManager {
   >(key: K, sData: WorkbenchStoreSchema[K]): Promise<void> {
     await this.db.read();
     this.db.data[key] = sData;
-    console.log(`更新: ${key} ${this.db.data[key]}`);
+    console.log(`更新: ${key} ${JSON.stringify(this.db.data[key])}`);
     await this.db.write();
 
     // 检查变化并触发观察者
@@ -327,7 +337,6 @@ class WorkbenchManager {
 
     // 检查队列是否为空
     if (this.db.data[key].length === 0) {
-      console.warn(`尝试从空队列 ${key} 中移除任务`);
       return undefined;
     }
 
@@ -359,8 +368,6 @@ class WorkbenchManager {
 
       // 检查变化并触发观察者
       this.checkChanges();
-    } else {
-      console.log(`队列 ${key} 中没有找到符合条件的任务`);
     }
 
     return removedTask;

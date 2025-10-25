@@ -18,19 +18,19 @@
       </div>
     </div>
     <div class="w-full bg-white p-15">
-      <div v-show="menus[0].checked">
+      <div class="h-full" v-show="menus[0].checked">
         <S1 />
       </div>
-      <div v-show="menus[1].checked">
+      <div class="h-full" v-show="menus[1].checked">
         <S2 />
       </div>
-      <div v-show="menus[2].checked || menus[3].checked">
+      <div class="h-full" v-show="menus[2].checked || menus[3].checked">
         <S3S4 />
       </div>
-      <div v-show="menus[4].checked">
+      <div class="h-full" v-show="menus[4].checked">
         <S5 />
       </div>
-      <div v-show="menus[5].checked">
+      <div class="h-full" v-show="menus[5].checked">
         <S6 />
       </div>
     </div>
@@ -86,9 +86,9 @@ interface MenuItem {
 }
 
 const menus = ref<MenuItem[]>([
-  { title: 'S1 - 素材合并', checked: false },
+  { title: 'S1 - 素材合并', checked: true },
   { title: 'S2 - 开拍去水印', checked: false },
-  { title: 'S3 - 视频拆分', checked: true },
+  { title: 'S3 - 视频拆分', checked: false },
   { title: 'S4 - 视频分镜 - 混剪', checked: false },
   { title: 'S5 - 配音加字幕', checked: false },
   { title: 'S6 - 高清放大', checked: false },

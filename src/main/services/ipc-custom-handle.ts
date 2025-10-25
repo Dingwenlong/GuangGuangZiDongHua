@@ -5,6 +5,7 @@ import config from '@config/index';
 import type MainInit from './window-manager';
 import authManager from './auth-manager';
 import WorkbenchManager, {
+  type OrderedFolderItem,
   type OrderedVideosChunk,
   type WorkbenchStoreSchema,
 } from './workbench-manager';
@@ -14,8 +15,9 @@ import VideoProcessor from './video-processor';
 import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
 import { formatArrayDiff } from '@main/utils/array';
-import VideoSceneSplitter from './video-scene-splitter';
+import VideoSceneSplitter, { type SplitResult } from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
+import { insertDirectoryBeforeLast } from '@main/utils/file';
 
 /**
  * 自定义全局
@@ -75,8 +77,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const playwrightScript = new PlaywrightScript();
   const workbenchManager = new WorkbenchManager();
   const audioProcessor = new AudioProcessor();
-  const videoSceneSplitter = new VideoSceneSplitter();
   const videoProcessor = new VideoProcessor('');
+  const videoSceneSplitter = new VideoSceneSplitter({
+    reencode: true, // 重新编码确保时长准确
+  });
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
   const isTest = true;
@@ -89,10 +93,17 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       if (status.monitoring) videoProcessor.stop();
       return;
     }
-    if (newValue.taskDirectory !== videoProcessor.monitorDirectory)
+    const normalizedNewValue = path.normalize(newValue.taskDirectory);
+    const normalizedMonitorDir = path.normalize(
+      videoProcessor.monitorDirectory
+    );
+    if (normalizedNewValue !== normalizedMonitorDir)
       await videoProcessor.updateWatchedDirectory(newValue.taskDirectory);
 
-    if (!status.monitoring) videoProcessor.start();
+    if (!status.monitoring) {
+      videoProcessor.start();
+      console.log('执行任务s1');
+    }
   });
   // s2
   // 每5秒执行一次，并发数为1
@@ -143,7 +154,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       videoProcessor.splitVideo(task as OrderedVideosChunk);
     }
   );
-  workbenchManager.watch('s3', (newValue: WorkbenchStoreSchema['s3']) => {
+  workbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
     if (!newValue.running) scheduler.disableTask('s3Task');
     else scheduler.enableTask('s3Task');
   });
@@ -160,14 +171,34 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       const task = await workbenchManager.dequeueTask('s4TasksQueue');
       if (!task) return;
       console.log('执行任务s4');
+
+      const s3s4 = await workbenchManager.getByKey('s3s4');
+      const folderItem = task as OrderedFolderItem;
+
+      // ！------------记录一下视频切片路径，执行下一步混剪逻辑---------
+      for (const video of folderItem.videos) {
+        const videoPath = folderItem.folderName + video.fileName;
+        const outputDir =
+          insertDirectoryBeforeLast(folderItem.folderName, '视频分镜') +
+          '---' +
+          video.fileName.split('---').pop()?.split('.')[0];
+        await videoSceneSplitter.split(videoPath, outputDir, {
+          initialLength: s3s4.storyboardDuration1, // 初始
+          extendedLength: s3s4.storyboardDuration2, // 延长
+          lookahead: 2, // 检查2秒
+          maxSegments: s3s4.productMaterialNum, // 最多4个片段
+          sceneThreshold: s3s4.storyboardSceneThreshold, // 场景变化阈值
+        });
+      }
     }
   );
-  workbenchManager.watch('s3', (newValue: WorkbenchStoreSchema['s3']) => {
+  workbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
     if (!newValue.running) scheduler.disableTask('s3Task');
     else scheduler.enableTask('s3Task');
   });
   // 启动所有任务
   scheduler.startAllTasks();
+  //scheduler.stopTask('s4Task');
   // ----------------------执行完每一步之后的回调处理---------------------
   // 第一步完成之后
   videoProcessor.on('s1OkCallback', async (videosChunk: OrderedVideosChunk) => {
@@ -177,6 +208,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       videosChunk.videoFilePath
     );
     // 增加第三步队列 videosChunk 内部有参数控制不会直接执行
+    videosChunk.videoFilePath = videosChunk.videoFilePath.replace(
+      'S1---',
+      'S2---'
+    );
     await workbenchManager.enqueueTask('s3TasksQueue', videosChunk);
   });
   // 第二步完成之后
@@ -185,14 +220,19 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     workbenchManager.updateSubtitleRemoveOver(videoPath, true);
   });
   // 第三步完成之后
-  videoProcessor.on('s3OkCallback', async (videosChunk: OrderedVideosChunk) => {
-    // 增加第四步队列
-    videosChunk.pathOfChains.forEach(async pathOfChain => {
-      await workbenchManager.enqueueTask('s4TasksQueue', pathOfChain);
-    });
-  });
-  // 第四步完成之后
-  videoSceneSplitter.on('s4OkCallback', () => {});
+  videoProcessor.on(
+    's3OkCallback',
+    async (newPathOfChains: OrderedFolderItem[]) => {
+      // 增加第四步队列
+      newPathOfChains.forEach(async pathOfChain => {
+        await workbenchManager.enqueueTask('s4TasksQueue', pathOfChain);
+      });
+    }
+  );
+  // 第四步之一完成之后
+  videoSceneSplitter.on('s4-1OkCallback', (splitResult: SplitResult) => {});
+  // 第四步之二完成之后
+  videoSceneSplitter.on('s4-2OkCallback', (splitResult: SplitResult) => {});
   // ----------------------其他的---------------------
   // 输出日志
   // s2队列监视
@@ -203,10 +243,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       type: 'info',
     });
     if (diff.added.length > 0) {
-      console.log('新增任务:', diff.added);
+      console.log('新增s2任务:', diff.added);
     }
     if (diff.removed.length > 0) {
-      console.log('删除任务:', diff.removed);
+      console.log('删除s2任务:', diff.removed);
     }
   });
   // s3队列监视
@@ -217,10 +257,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       type: 'info',
     });
     if (diff.added.length > 0) {
-      console.log('新增任务:', diff.added);
+      console.log('新增s3任务:', diff.added);
     }
     if (diff.removed.length > 0) {
-      console.log('删除任务:', diff.removed);
+      console.log('删除s3任务:', diff.removed);
     }
   });
   // s4队列监视
@@ -231,17 +271,11 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       type: 'info',
     });
     if (diff.added.length > 0) {
-      console.log('新增任务:', diff.added);
+      console.log('新增s4任务:', diff.added);
     }
     if (diff.removed.length > 0) {
-      console.log('删除任务:', diff.removed);
+      console.log('删除s4任务:', diff.removed);
     }
-  });
-  videoProcessor.on('status', data => {
-    webContentSend.LogUpdate(mainWindow.webContents, {
-      message: JSON.stringify(data),
-      type: 'debug',
-    });
   });
   videoProcessor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {

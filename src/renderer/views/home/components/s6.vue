@@ -176,10 +176,10 @@ function setCookie() {
 // }
 
 watch(s6.value, async (val, _) => {
-  ipcRendererChannel.UpdateWorkbenchData.invoke({
-    stepNo: 's1',
-    sData: { ...val },
-  });
+  // ipcRendererChannel.UpdateWorkbenchData.invoke({
+  //   stepNo: 's1',
+  //   sData: { ...val },
+  // });
   // 监听视频
   // if(!val.autoMonitoring) {
   //   videoMonitoringRunning.value = false;

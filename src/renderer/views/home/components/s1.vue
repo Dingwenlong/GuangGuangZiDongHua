@@ -101,20 +101,7 @@ const s1 = reactive({
 });
 const tableData = ref<any>([]);
 
-watch(s1, val => {
-  console.log('s1', val);
-  // 实时持久化
-  ipcRendererChannel.UpdateWorkbenchData.invoke({
-    stepNo: 's1',
-    sData: { ...val },
-  });
-  // 监听文件夹
-  if (val.taskDirectory)
-    ipcRendererChannel.StartMonitoringDirectory.invoke(val.taskDirectory);
-});
-
 onMounted(() => {
-  // 获取持久化数据
   ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbench => {
     s1.taskDirectory = workbench.taskDirectory ?? '';
     s1.autoMonitoring = workbench.autoMonitoring ?? true;
@@ -122,7 +109,22 @@ onMounted(() => {
     if (s1.taskDirectory && s1.autoMonitoring && !s1.running) s1.running = true;
   });
 
-  // 文件夹变化回调事件
+  watch(s1, async (newValue, oldValue) => {
+    ipcRendererChannel.UpdateWorkbenchData.invoke({
+      stepNo: 's1',
+      sData: { ...newValue },
+    });
+
+    if (newValue.taskDirectory != oldValue.taskDirectory)
+      await ipcRendererChannel.StopMonitoringDirectory.invoke(
+        oldValue.taskDirectory
+      );
+    if (newValue.taskDirectory)
+      await ipcRendererChannel.StartMonitoringDirectory.invoke(
+        newValue.taskDirectory
+      );
+  });
+
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
       if (arg.root === s1.taskDirectory) {
