@@ -125,7 +125,7 @@ class TaskScheduler {
           // 执行任务
           return (taskFn ? taskFn() : this.executeTask(name))
             .then(result => {
-              console.log(`Task "${name}" completed successfully`, result);
+              // console.log(`Task "${name}" completed successfully`, result);
               return result;
             })
             .catch(error => {

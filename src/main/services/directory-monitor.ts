@@ -136,7 +136,7 @@ class DirectoryMonitor extends EventEmitter {
       })
       .on('error', (error: Error) => {
         this.emit('log', {
-          message: `目录监控错误: ${error.message}`,
+          message: `目录监控错误: ${error.message}, ${this.monitorDirectory}`,
           type: 'error',
         });
       });

@@ -19,7 +19,6 @@ export class FFmpegUtil extends EventEmitter {
   private static instance: FFmpegUtil;
   private ffmpegPath!: string;
   private ffprobePath!: string;
-  private debug: boolean = false;
 
   private constructor() {
     super();
@@ -31,10 +30,6 @@ export class FFmpegUtil extends EventEmitter {
       FFmpegUtil.instance = new FFmpegUtil();
     }
     return FFmpegUtil.instance;
-  }
-
-  public setDebugMode(debug: boolean): void {
-    this.debug = debug;
   }
 
   private setupPaths(): void {
@@ -138,32 +133,17 @@ export class FFmpegUtil extends EventEmitter {
         normalizedPath,
       ];
 
-      if (this.debug) {
-        console.log(
-          `[FFmpegUtil] 执行音频流检查命令: ${this.ffprobePath} ${args.join(
-            ' '
-          )}`
-        );
-      }
-
       const result = spawnSync(this.ffprobePath, args, {
         encoding: 'utf8',
         windowsHide: true,
       });
 
       if (result.error || result.status !== 0) {
-        if (this.debug) {
-          console.warn(`[FFmpegUtil] 音频流检查失败: ${result.stderr}`);
-        }
         resolve(false);
         return;
       }
 
       const hasAudio = (result.stdout || '').trim().includes('audio');
-
-      if (this.debug) {
-        console.log(`[FFmpegUtil] 视频包含音频: ${hasAudio}`);
-      }
 
       resolve(hasAudio);
     });
@@ -198,12 +178,6 @@ export class FFmpegUtil extends EventEmitter {
         '-', // 输出到空
       ];
 
-      if (this.debug) {
-        console.log(
-          `[FFmpegUtil] 场景检测命令: ${this.ffmpegPath} ${args.join(' ')}`
-        );
-      }
-
       const ffmpegProcess = spawn(this.ffmpegPath, args, { windowsHide: true });
 
       let stderrOutput = '';
@@ -219,21 +193,6 @@ export class FFmpegUtil extends EventEmitter {
         // 在stderr输出中查找场景变化信息
         // showinfo滤镜会输出匹配的帧信息，包含"pts_time:"字段
         const sceneChangeDetected = /pts_time:([0-9.]+)/.test(stderrOutput);
-
-        if (this.debug) {
-          console.log(
-            `[FFmpegUtil] 场景检测结果: ${
-              sceneChangeDetected ? '有变化' : '无变化'
-            }`
-          );
-          if (sceneChangeDetected) {
-            console.log(
-              `[FFmpegUtil] 场景变化发生在: ${
-                stderrOutput.match(/pts_time:([0-9.]+)/)?.[1]
-              }秒`
-            );
-          }
-        }
 
         resolve(sceneChangeDetected);
       });
@@ -301,12 +260,6 @@ export class FFmpegUtil extends EventEmitter {
 
       args.push(normalizedOutput);
 
-      if (this.debug) {
-        console.log(
-          `[FFmpegUtil] 提取片段命令: ${this.ffmpegPath} ${args.join(' ')}`
-        );
-      }
-
       const ffmpegProcess = spawn(this.ffmpegPath, args, { windowsHide: true });
 
       let stderrOutput = '';
@@ -320,9 +273,6 @@ export class FFmpegUtil extends EventEmitter {
 
       ffmpegProcess.on('close', code => {
         if (code === 0) {
-          if (this.debug) {
-            console.log(`[FFmpegUtil] 成功提取片段: ${outputPath}`);
-          }
           resolve();
         } else {
           const errorMessage = [
@@ -345,9 +295,6 @@ export class FFmpegUtil extends EventEmitter {
    */
   public verifySegmentDuration(segmentPath: string): Promise<number> {
     return this.getVideoDuration(segmentPath).catch(error => {
-      if (this.debug) {
-        console.warn(`[FFmpegUtil] 无法验证片段时长: ${segmentPath}`);
-      }
       return 0;
     });
   }
