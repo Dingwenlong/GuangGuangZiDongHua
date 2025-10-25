@@ -538,9 +538,9 @@ class AudioProcessor extends EventEmitter {
           videoPath,
           path.extname(videoPath)
         );
-        // 如果文件名以S4开头，则改为S5
-        if (originalVideoName.startsWith('S4')) {
-          newFileName = `S5${originalVideoName.substring(2)}${fileExt}`;
+        // 如果文件名以S5开头，则改为S6
+        if (originalVideoName.startsWith('S5')) {
+          newFileName = `S6${originalVideoName.substring(2)}${fileExt}`;
         } else {
           newFileName = `${originalVideoName}${fileExt}`;
         }
@@ -606,12 +606,6 @@ class AudioProcessor extends EventEmitter {
         throw new Error(`文件下载失败: 保存的文件为空或不存在 (${savePath})`);
       }
 
-      const fileSize = fs.statSync(savePath).size;
-      this.emit('log', {
-        message: `文件验证成功，大小: ${fileSize} 字节`,
-        type: 'info',
-      } as LogEvent);
-
       // 由于我们已经在下载前删除了原音频文件，这里不再重复删除
       // 保留日志记录以表明处理完成
       if (!isVideoProcessing && audioPath) {
@@ -627,6 +621,10 @@ class AudioProcessor extends EventEmitter {
         }文件下载成功，已保存到: ${savePath}`,
         type: 'success',
       } as LogEvent);
+
+      if (isVideoProcessing) {
+        this.emit('s6OkCallback', videoPath);
+      }
 
       this.emit('fileDownloaded', {
         originalUrl: fileUrl,
@@ -667,8 +665,6 @@ class AudioProcessor extends EventEmitter {
       }
 
       const fileStream = fs.createWriteStream(savePath);
-      let fileSize = 0;
-
       httpModule
         .get(fileUrl, response => {
           if (response.statusCode !== 200) {
@@ -681,11 +677,6 @@ class AudioProcessor extends EventEmitter {
             reject(error);
             return;
           }
-
-          // 监听数据事件以计算文件大小
-          response.on('data', chunk => {
-            fileSize += chunk.length;
-          });
 
           response.pipe(fileStream);
 

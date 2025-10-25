@@ -70,9 +70,6 @@ class PlaywrightScript extends EventEmitter {
   public async runWatermarkRemoval(filePath?: string, targetDir?: string) {
     let page: any = null;
     try {
-      // 获取当前系统用户名
-      const username = os.userInfo().username;
-
       // 确定下载目录
       const defaultDownloadDir = path.join(
         os.homedir(),
@@ -90,7 +87,7 @@ class PlaywrightScript extends EventEmitter {
 
       this.emit('log', { message: '开始处理视频去水印', type: 'info' });
 
-      // 初始化浏览器实例 - 即使之前已关闭也会重新创建
+      // 初始化浏览器实例
       await PlaywrightScript.initBrowser(downloadDir);
 
       if (!PlaywrightScript.browser) {
@@ -153,13 +150,11 @@ class PlaywrightScript extends EventEmitter {
 
       // 处理登录
       const loginPopupSelector = '.meitu-account-quick-login-popup-container';
-
       try {
         await page.waitForSelector(loginPopupSelector, {
           state: 'visible',
           timeout: 5000,
         });
-
         await page.waitForSelector(loginPopupSelector, {
           state: 'hidden',
           timeout: 120000,
@@ -169,7 +164,7 @@ class PlaywrightScript extends EventEmitter {
       }
       this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
 
-      // 等待处理完成（修正后的轮询逻辑，解决类型报错）
+      // 等待处理完成
       const exportButtonSelector =
         '.index_buttonBox__-1roP .index_exportButton__4OdAj';
       const maxWaitTime = 120 * 60 * 1000; // 最大等待时间（2小时）
@@ -207,7 +202,6 @@ class PlaywrightScript extends EventEmitter {
             resolve(downloads);
           }, 5000);
         };
-
         page.on('download', listener);
         page.click(exportButtonSelector);
       });
@@ -218,7 +212,7 @@ class PlaywrightScript extends EventEmitter {
         return { success: false, message: '未捕获到任何下载文件' };
       }
 
-      // 处理下载的文件
+      // 处理下载的文件（S2→S3）
       let targetPath = null;
       const uuidPattern =
         /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
@@ -232,8 +226,9 @@ class PlaywrightScript extends EventEmitter {
 
         if (!isUuidFile) {
           let processedName = fileName;
-          if (processedName.startsWith('S1')) {
-            processedName = processedName.replace('S1', 'S2');
+          // 文件名替换：S2→S3
+          if (processedName.startsWith('S2')) {
+            processedName = processedName.replace('S2', 'S3');
           }
 
           if (!processedName.endsWith('.mp4')) {
@@ -241,20 +236,18 @@ class PlaywrightScript extends EventEmitter {
           }
 
           targetPath = path.join(downloadDir, processedName);
+          // 若目标文件已存在，先删除
           if (fs.existsSync(targetPath)) {
             fs.unlinkSync(targetPath);
           }
           await download.saveAs(targetPath);
-          this.emit('log', { message: `${filePath}处理完成`, type: 'success' });
+          this.emit('log', { message: `${filePath}下载完成`, type: 'success' });
         } else {
+          // 处理临时UUID文件
           const tempPath = path.join(downloadDir, fileName);
           await download.saveAs(tempPath);
           if (fs.existsSync(tempPath)) {
             fs.unlinkSync(tempPath);
-            this.emit('log', {
-              message: `${filePath}处理完成`,
-              type: 'success',
-            });
           }
         }
       }
@@ -262,31 +255,54 @@ class PlaywrightScript extends EventEmitter {
       if (!targetPath) {
         return { success: false, message: '未找到有效的下载文件' };
       }
+
+      // 下载完成后修改原文件所在文件夹名（S2→S3）
+      const originalFileDir = path.dirname(filePath);
+      const originalDirName = path.basename(originalFileDir);
+      if (originalDirName.includes('S2')) {
+        const newDirName = originalDirName.replace('S2', 'S3');
+        const newFileDir = path.join(path.dirname(originalFileDir), newDirName);
+        const renameSuccess = await this.renameWithRetry(
+          originalFileDir,
+          newFileDir
+        );
+        if (renameSuccess) {
+          this.emit('log', {
+            message: `文件夹重命名成功: ${originalFileDir} → ${newFileDir}`,
+            type: 'success',
+          });
+        } else {
+          this.emit('log', {
+            message: `文件夹重命名失败（可能被占用）: ${originalFileDir}`,
+            type: 'warning',
+          });
+        }
+      }
+
       this.okCallback(targetPath);
-      // 不关闭浏览器，保持实例运行
       return {
         success: true,
         message: `文件已成功处理并保存至: ${targetPath}`,
         filePath: targetPath,
       };
     } catch (error: any) {
-      console.error('操作过程中出现错误:', error.message);
+      console.error('视频去水印出错:', error.message);
       this.emit('log', {
-        message: `操作过程中出现错误: ${error.message}`,
+        message: `视频去水印出错: ${error.message}`,
         type: 'error',
       });
       return {
         success: false,
-        message: `操作过程中出现错误: ${error.message}`,
+        message: `操作失败: ${error.message}`,
       };
     } finally {
-      // 关闭当前标签页，但保留浏览器实例
+      // 关闭标签页，保留浏览器实例
       if (page && !page.isClosed()) {
-        await page.close().catch((error: any) => {
-          console.error('关闭标签页时出错:', error);
+        await page.close().catch((err: any) => {
+          console.error('关闭标签页失败:', err.message);
         });
       }
-      console.log('操作完成，标签页已关闭');
+      console.log('视频去水印流程结束');
     }
   }
 
@@ -521,6 +537,58 @@ class PlaywrightScript extends EventEmitter {
     } finally {
       console.log('操作完成');
     }
+  }
+
+  private async renameWithRetry(
+    oldPath: string,
+    newPath: string,
+    maxRetries = 5,
+    delay = 1000
+  ): Promise<boolean> {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        // 检查原路径是否存在
+        if (!fs.existsSync(oldPath)) {
+          console.log(`原路径不存在，跳过重命名: ${oldPath}`);
+          return false;
+        }
+
+        // 若新路径已存在，先删除（避免重命名冲突）
+        if (fs.existsSync(newPath)) {
+          try {
+            fs.rmdirSync(newPath, { recursive: true });
+            console.log(`已删除已存在的目标路径: ${newPath}`);
+          } catch (rmErr: any) {
+            console.warn(
+              `删除目标路径失败，将尝试直接重命名: ${rmErr.message}`
+            );
+          }
+        }
+
+        // 执行重命名
+        fs.renameSync(oldPath, newPath);
+        return true;
+      } catch (err: any) {
+        // 非权限错误直接返回失败
+        if (err.code !== 'EPERM' && err.code !== 'EBUSY') {
+          console.error(`重命名失败（非占用错误）: ${err.message}`);
+          return false;
+        }
+
+        // 最后一次重试失败
+        if (i === maxRetries - 1) {
+          console.error(
+            `达到最大重试次数(${maxRetries})，重命名失败: ${err.message}`
+          );
+          return false;
+        }
+
+        // 延迟后重试
+        console.log(`因文件占用，将在${delay}ms后进行第${i + 2}次重试...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    return false;
   }
 
   /**
