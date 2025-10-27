@@ -1,0 +1,50 @@
+1.素材合并
+  执行工作流任务
+    video-processor.ts中合并视频
+    成功后回调将路径传入workbench-manager的s2队列
+
+2.去水印
+  执行素材去水印任务
+    playwright.ts去水印
+    setTimeout轮询workbench-manager的s2队列
+    成功后回调将链路参数传入workbench-manager的s3队列
+
+3.切视频
+  执行视频拆分任务
+    video-processor.ts中拆分视频
+    setTimeout轮询workbench-manager的s3队列
+    成功后回调将分解的所有视频路径传入workbench-manager的s4队列
+
+4.分镜&混剪
+  执行视频分镜任务
+    video-scene-splitter.ts分镜
+    setTimeout轮询workbench-manager的s4队列
+    分镜后记录分镜商品目录开始混剪
+    成功后回调将混剪商品目录传入workbench-manager的s5队列
+
+5.配音加字幕
+6.高清放大
+7.光合发布
+
+补充
+  任务调度处理队列
+  队列在回调中添加
+-----------------------------------------------------
+
+第三、四步：把第二步下载的视频S2---{时间戳}.mp4，按商品（假设第一步用lowdb记录了合并视频对应的商品目录）分割，具体步骤如下：
+1、将S2---{时间戳}.mp4涉及到的商品目录的 S2 改为 S3
+2、按20秒*4=80秒，先分割到商品目录，然后再按20秒分割成单个视频
+命名规则：商品目录 + "---" + 从1开始递增的序号
+3、将分割后的单个视频再切4个分镜
+	(1)执行批处理文件完成分镜
+		video_scene_split.bat "{单个视频}.mp4" "分镜目录-{单个视频}"
+	(2)批处理生成的分镜命名规则："scene_" + 从1开始递增的序号
+4、同一个商品不同视频（ABCD）混剪
+	(1)商品目录下生成混剪视频逻辑：
+		混剪视频1：A-scene_1 + B-scene_2 + C-scene_3 + D-scene_4
+		混剪视频2：B-scene_1 + A-scene_2 + D-scene_3 + C-scene_4
+		混剪视频3：C-scene_1 + D-scene_2 + A-scene_3 + B-scene_4
+		混剪视频4：D-scene_1 + C-scene_2 + B-scene_3 + A-scene_4
+	(2)混剪后视频命名规则：商品目录（S3 改为 S4） + "---" + 从1开始递增的序号
+	(3)混剪视频成功后，删除S3---开头的视频
+	(4)混剪视频成功后，商品目录的 S3 改为 S4
