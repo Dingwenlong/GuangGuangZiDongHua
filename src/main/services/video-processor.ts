@@ -54,10 +54,6 @@ class VideoProcessor extends EventEmitter {
   // 字幕处理状态标记
   private isSubtitleProcessing: boolean;
 
-  // 音频提取任务队列
-  private audioExtractQueue: string[];
-  private audioExtractInterval: NodeJS.Timeout | null;
-
   constructor(monitorDirectory: string, options: VideoProcessorOptions = {}) {
     super();
     this.monitorDirectory = monitorDirectory;
@@ -81,10 +77,6 @@ class VideoProcessor extends EventEmitter {
     this.videoToVideosTableMap = new Map<string, string[][]>();
     // 初始化字幕处理状态
     this.isSubtitleProcessing = false;
-
-    // 音频提取任务队列
-    this.audioExtractQueue = [];
-    this.audioExtractInterval = null;
 
     // 系统状态
     this.status = {
@@ -164,9 +156,6 @@ class VideoProcessor extends EventEmitter {
     // 启动去字幕队列检查
     this.startSubtitleQueueChecking();
 
-    // 启动音频提取队列处理
-    this.startAudioExtractQueueProcessing();
-
     this.writeLog(
       `视频处理器已启动，监控目录: ${this.monitorDirectory}，文件标识方法: ${this.options.fileKeyMethod}`,
       'success'
@@ -188,10 +177,6 @@ class VideoProcessor extends EventEmitter {
 
     if (this.queueProcessInterval) {
       clearInterval(this.queueProcessInterval);
-    }
-
-    if (this.audioExtractInterval) {
-      clearInterval(this.audioExtractInterval);
     }
 
     this.status.monitoring = false;
@@ -713,6 +698,7 @@ class VideoProcessor extends EventEmitter {
   }
 
   /**
+<<<<<<< HEAD
    * 启动音频提取队列处理
    */
   private startAudioExtractQueueProcessing(): void {

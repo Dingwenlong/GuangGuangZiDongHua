@@ -80,6 +80,14 @@ export interface WorkbenchStoreSchema {
     autoHandOnWorkflow: boolean;
     running: boolean;
   };
+  s5: {
+    autoHandOnWorkflow: boolean;
+    running: boolean;
+  };
+  s6: {
+    autoHandOnWorkflow: boolean;
+    running: boolean;
+  };
   /**
    * 第二步任务队列
    */
@@ -121,6 +129,14 @@ export interface WorkbenchStoreSchema {
     ]
    */
   s4TasksQueue: S4VideosChunk[];
+  /**
+   * 第五步任务队列
+   */
+  s5TasksQueue: string[];
+  /**
+   * 第六步任务队列
+   */
+  s6TasksQueue: string[];
 }
 
 // 默认数据
@@ -145,9 +161,20 @@ const defaultData: WorkbenchStoreSchema = merge(
       autoHandOnWorkflow: true,
       running: false,
     },
+    s5: {
+      autoHandOnWorkflow: true,
+      running: false,
+    },
+    s6: {
+      autoHandOnWorkflow: true,
+      running: false,
+    },
+
     s2TasksQueue: [],
     s3TasksQueue: [],
     s4TasksQueue: [],
+    s5TasksQueue: [],
+    s6TasksQueue: [],
   },
   config.workBenchDefault
 );
@@ -318,7 +345,11 @@ class WorkbenchManager {
   public async enqueueTask(
     key: keyof Pick<
       WorkbenchStoreSchema,
-      's2TasksQueue' | 's3TasksQueue' | 's4TasksQueue'
+      | 's2TasksQueue'
+      | 's3TasksQueue'
+      | 's4TasksQueue'
+      | 's5TasksQueue'
+      | 's6TasksQueue'
     >,
     data: string | S3VideosChunk | S4VideosChunk
   ): Promise<void> {
@@ -332,6 +363,12 @@ class WorkbenchManager {
     }
     if (key === 's4TasksQueue') {
       this.db.data[key].push(data as S4VideosChunk);
+    }
+    if (key === 's5TasksQueue') {
+      this.db.data[key].push(data as string);
+    }
+    if (key === 's6TasksQueue') {
+      this.db.data[key].push(data as string);
     }
 
     console.log(`已添加任务: ${data}`);
@@ -349,7 +386,11 @@ class WorkbenchManager {
   public async dequeueTask(
     key: keyof Pick<
       WorkbenchStoreSchema,
-      's2TasksQueue' | 's3TasksQueue' | 's4TasksQueue'
+      | 's2TasksQueue'
+      | 's3TasksQueue'
+      | 's4TasksQueue'
+      | 's5TasksQueue'
+      | 's6TasksQueue'
     >
   ): Promise<S2VideosChunk | S3VideosChunk | S4VideosChunk | undefined> {
     await this.db.read();

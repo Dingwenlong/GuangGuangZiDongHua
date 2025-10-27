@@ -329,9 +329,6 @@ class PlaywrightScript extends EventEmitter {
   public async RunVideoQualityFix(filePath?: string, targetDir?: string) {
     let page;
     try {
-      // 获取当前系统用户名
-      const username = os.userInfo().username;
-
       // 确定下载目录
       const defaultDownloadDir = path.join(
         os.homedir(),
