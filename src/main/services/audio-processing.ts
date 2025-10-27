@@ -606,13 +606,16 @@ class AudioProcessor extends EventEmitter {
         throw new Error(`文件下载失败: 保存的文件为空或不存在 (${savePath})`);
       }
 
-      // 由于我们已经在下载前删除了原音频文件，这里不再重复删除
       // 保留日志记录以表明处理完成
       if (!isVideoProcessing && audioPath) {
         this.emit('log', {
           message: `音频处理完成，已使用新文件替代原文件`,
           type: 'info',
         } as LogEvent);
+      }
+      // 如果为视频则代表处理完成，触发完成的处理
+      if (isVideoProcessing) {
+        this.emit('s5OkCallback', videoPath);
       }
 
       this.emit('log', {
@@ -621,10 +624,6 @@ class AudioProcessor extends EventEmitter {
         }文件下载成功，已保存到: ${savePath}`,
         type: 'success',
       } as LogEvent);
-
-      if (isVideoProcessing) {
-        this.emit('s6OkCallback', videoPath);
-      }
 
       this.emit('fileDownloaded', {
         originalUrl: fileUrl,
@@ -658,11 +657,11 @@ class AudioProcessor extends EventEmitter {
       const response = await this.httpGetRequest(url);
 
       this.emit('log', {
-        message: `重启服务API调用成功，响应: ${response}`,
+        message: `重启服务API调用成功`,
         type: 'success',
       } as LogEvent);
 
-      this.emit('serviceRebooted', { success: true, response });
+      // this.emit('serviceRebooted', { success: true, response });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -670,7 +669,7 @@ class AudioProcessor extends EventEmitter {
         message: `重启服务API调用失败: ${errorMessage}`,
         type: 'error',
       } as LogEvent);
-      this.emit('serviceRebooted', { success: false, error: errorMessage });
+      // this.emit('serviceRebooted', { success: false, error: errorMessage });
       throw error;
     }
   }
