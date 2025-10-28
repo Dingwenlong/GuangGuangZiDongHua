@@ -41,7 +41,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, ref, onUnmounted, computed } from 'vue';
+import { onMounted, ref, onUnmounted } from 'vue';
 import LogPanel from './components/log-panel.vue';
 import S1 from './components/s1.vue';
 import S2 from './components/s2.vue';

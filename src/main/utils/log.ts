@@ -20,15 +20,51 @@ export interface LogEvent {
 export function writeLog(
   this: EventEmitter,
   message: string,
-  type: LogEvent['type']
+  type: LogEvent['type'] = 'info'
 ) {
-  if (type === 'info') log.info(message);
-  if (type === 'error') log.error(message);
-  if (type === 'success') log.log(message);
-  if (type === 'warning') log.warn(message);
-  if (type === 'debug') log.debug(message);
-  this.emit('log', {
-    message,
-    type,
-  } as LogEvent);
+  // 参数验证
+  if (message === undefined || message === null || message === '') {
+    console.error('writeLog called with invalid message:', message);
+    return;
+  }
+
+  // 确保 type 是有效值
+  const validTypes: LogEvent['type'][] = [
+    'info',
+    'error',
+    'success',
+    'warning',
+    'debug',
+  ];
+  if (!validTypes.includes(type)) {
+    console.warn(
+      `writeLog called with invalid type: ${type}, defaulting to 'info'`
+    );
+    type = 'info';
+  }
+
+  // 记录日志
+  try {
+    switch (type) {
+      case 'info':
+        log.info(message);
+        break;
+      case 'error':
+        log.error(message);
+        break;
+      case 'success':
+        log.log(message);
+        break;
+      case 'warning':
+        log.warn(message);
+        break;
+      case 'debug':
+        log.debug(message);
+        break;
+    }
+
+    this.emit('log', { message, type } as LogEvent);
+  } catch (error) {
+    console.error('Error in writeLog:', error);
+  }
 }

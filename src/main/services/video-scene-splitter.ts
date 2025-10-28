@@ -379,6 +379,10 @@ export class VideoSceneSplitter extends EventEmitter {
   }
 
   private writeLog(message: string, type: LogEvent['type'] = 'info') {
+    if (!message) {
+      console.error('writeLog called with empty message');
+      return;
+    }
     writeLog.call(this, message, type);
   }
 }
