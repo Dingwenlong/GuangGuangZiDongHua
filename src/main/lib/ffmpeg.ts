@@ -356,7 +356,7 @@ export class FFmpegUtil extends EventEmitter {
   }
 
   /**
-   * 合并视频文件
+   * 合并视频文件（直接合并，不转码）
    */
   public concatVideos(
     videoFiles: string[],
@@ -370,50 +370,9 @@ export class FFmpegUtil extends EventEmitter {
         fs.mkdirSync(tempDir, { recursive: true });
       }
 
-      // 创建临时转码文件列表
-      const transcodedFiles: string[] = [];
-      let processedCount = 0;
-
-      // 转码所有视频为统一参数
-      // const transcodePromises = videoFiles.map((file, index) => {
-      //   return new Promise<void>((resolveTranscode, rejectTranscode) => {
-      //     const transcodedPath = path.join(tempDir, `transcoded_${index}.mp4`);
-      //     transcodedFiles.push(transcodedPath);
-
-      //     // 转码为统一参数
-      //     ffmpeg(file)
-      //       .outputOptions([
-      //         '-c:v libx264', // 视频编码器
-      //         '-preset fast', // 编码速度
-      //         '-crf 23', // 质量参数
-      //         '-c:a aac', // 音频编码器
-      //         '-b:a 128k', // 音频比特率
-      //         '-vf scale=1280:720', // 统一分辨率
-      //         '-r 30', // 统一帧率
-      //         '-movflags +faststart', // 优化网络播放
-      //       ])
-      //       .output(transcodedPath)
-      //       .on('end', () => {
-      //         processedCount++;
-      //         this.emit('progress', {
-      //           progress: (processedCount / videoFiles.length) * 50, // 转码占50%进度
-      //           operation: `${operationName} - 转码中`,
-      //         });
-      //         resolveTranscode();
-      //       })
-      //       .on('error', err => {
-      //         rejectTranscode(new Error(`转码视频失败: ${err.message}`));
-      //       })
-      //       .run();
-      //   });
-      // });
-
-      // // 所有视频转码完成后合并
-      // Promise.all(transcodePromises)
-      //   .then(() => {
       // 创建 concat 列表文件
       const listPath = path.join(tempDir, `concat_list_${Date.now()}.txt`);
-      const listContent = transcodedFiles
+      const listContent = videoFiles
         .map(file => `file '${path.resolve(file)}'`)
         .join('\n');
 
@@ -428,7 +387,7 @@ export class FFmpegUtil extends EventEmitter {
       const command = ffmpeg()
         .input(listPath)
         .inputOptions(['-f concat', '-safe 0'])
-        .outputOptions(['-c copy']) // 使用copy模式，因为已经统一编码
+        .outputOptions(['-c copy']) // 使用copy模式，直接合并不转码
         .output(outputPath);
 
       this.runCommand(command, operationName)
@@ -438,11 +397,6 @@ export class FFmpegUtil extends EventEmitter {
             if (fs.existsSync(listPath)) {
               fs.unlinkSync(listPath);
             }
-            transcodedFiles.forEach(file => {
-              if (fs.existsSync(file)) {
-                fs.unlinkSync(file);
-              }
-            });
           } catch (e) {
             console.warn('清理临时文件失败:', e);
           }
@@ -454,18 +408,11 @@ export class FFmpegUtil extends EventEmitter {
             if (fs.existsSync(listPath)) {
               fs.unlinkSync(listPath);
             }
-            transcodedFiles.forEach(file => {
-              if (fs.existsSync(file)) {
-                fs.unlinkSync(file);
-              }
-            });
           } catch (e) {
             console.warn('清理临时文件失败:', e);
           }
           reject(error);
         });
-      // })
-      // .catch(reject);
     });
   }
 
