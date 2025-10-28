@@ -51,11 +51,7 @@
         </template>
         <template v-else-if="column.key === 'action'">
           <span>
-            <Button
-              type="primary"
-              @click="
-                openFolder(s1.taskDirectory + '\\' + record.productDirectory)
-              "
+            <Button type="primary" @click="openFolder(record.productDirectory)"
               >打开文件夹</Button
             >
           </span>
@@ -121,7 +117,7 @@ function startOrStopTaskHandler(start = true) {
     sData: { autoHandOnWorkflow: s2.value.autoHandOnWorkflow, running: start },
   });
 
-  setCookie();
+  // setCookie();
 }
 
 // 调用去水印脚本
@@ -215,9 +211,7 @@ onMounted(async () => {
       console.log(arg);
       data.value = arg.structure
         .filter(dir => {
-          const [first, seconds, ..._] = dir.name;
-
-          return dir.type === 'directory' && first === 'S' && seconds === '2';
+          return dir.type === 'directory' && dir.name === '视频去字幕任务';
         })
         .map(dir => {
           return {

@@ -1,14 +1,14 @@
-import { type BrowserWindowConstructorOptions } from "electron";
-import config from "@config/index";
+import { type BrowserWindowConstructorOptions } from 'electron';
+import config from '@config/index';
 
 export const mainWindowConfig: BrowserWindowConstructorOptions = {
   titleBarOverlay: {
     height: 40,
-    color: "#001428",
-    symbolColor: "#fff",
+    color: '#001428',
+    symbolColor: '#fff',
   },
-  titleBarStyle: config.IsUseSysTitle ? "default" : "hidden",
-  backgroundColor: "#001428",
+  titleBarStyle: config.IsUseSysTitle ? 'default' : 'hidden',
+  backgroundColor: '#001428',
   width: 1700,
   height: 800,
   minWidth: 1366,
@@ -22,16 +22,16 @@ export const mainWindowConfig: BrowserWindowConstructorOptions = {
     sandbox: false,
     webSecurity: true,
     // 如果是开发模式可以使用devTools
-    devTools: process.env.NODE_ENV === "development",
+    // devTools: process.env.NODE_ENV === 'development',
     // 在macos中启用橡皮动画
-    scrollBounce: process.platform === "darwin",
+    scrollBounce: process.platform === 'darwin',
   },
 };
 
 export const loginWindowConfig: BrowserWindowConstructorOptions = {
   titleBarOverlay: false,
-  titleBarStyle: "hidden",
-  backgroundColor: "#ffffff",
+  titleBarStyle: 'hidden',
+  backgroundColor: '#ffffff',
   width: 400,
   height: 600,
   resizable: false,
@@ -45,9 +45,9 @@ export const loginWindowConfig: BrowserWindowConstructorOptions = {
     sandbox: false,
     webSecurity: true,
     // 如果是开发模式可以使用devTools
-    devTools: process.env.NODE_ENV === "development",
+    // devTools: process.env.NODE_ENV === "development",
     // 在macos中启用橡皮动画
-    scrollBounce: process.platform === "darwin",
+    scrollBounce: process.platform === 'darwin',
   },
 };
 
@@ -73,11 +73,11 @@ export const loadWindowConfig: BrowserWindowConstructorOptions = {
 export const childWindowConfig: BrowserWindowConstructorOptions = {
   titleBarOverlay: {
     height: 40,
-    color: "#001428",
-    symbolColor: "#fff",
+    color: '#001428',
+    symbolColor: '#fff',
   },
-  titleBarStyle: config.IsUseSysTitle ? "default" : "hidden",
-  backgroundColor: "#001428",
+  titleBarStyle: config.IsUseSysTitle ? 'default' : 'hidden',
+  backgroundColor: '#001428',
   height: 595,
   useContentSize: true,
   width: 1140,
@@ -90,7 +90,7 @@ export const childWindowConfig: BrowserWindowConstructorOptions = {
     contextIsolation: true, // 推荐保持 true，出于安全考虑
     sandbox: false,
     webSecurity: true,
-    devTools: process.env.NODE_ENV === "development",
-    scrollBounce: process.platform === "darwin",
+    // devTools: process.env.NODE_ENV === 'development',
+    scrollBounce: process.platform === 'darwin',
   },
 };
