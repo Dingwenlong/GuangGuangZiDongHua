@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import pinia from '@renderer/store';
 import { login, changePwd } from '@renderer/api/account';
 import type { UserData } from '@main/services/auth-manager';
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { setToken, setRefreshToken } from '@renderer/utils/token';
 
 interface TokenData {
@@ -58,9 +58,6 @@ export const useStoreUser = defineStore('user', () => {
     }
     localStorage.setItem(loginAccountKey, JSON.stringify(data));
   };
-  const loginState = async (): Promise<boolean> => {
-    return await ipcRendererChannel.GetLoginState.invoke();
-  };
   const changeAccountPwd = (data: { password: string }) => {
     const res = changePwd(data);
     const localAccount = getLocalAccount();
@@ -86,6 +83,10 @@ export const useStoreUser = defineStore('user', () => {
       setToken(authInfo.token);
       setRefreshToken(authInfo.refreshToken);
     }
+  }
+
+  async function loginState(): Promise<boolean> {
+    return await ipcRendererChannel.GetLoginState.invoke();
   }
 
   return {

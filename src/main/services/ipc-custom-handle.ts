@@ -175,10 +175,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       const s4VideosChunk = task as S4VideosChunk;
       const s3s4 = await workbenchManager.getByKey('s3s4');
       const options = {
-        initialLength: s3s4.storyboardDuration1, // 初始
-        extendedLength: s3s4.storyboardDuration2, // 延长
+        initialLength: 4, // 初始
+        extendedLength: 5, // 延长
         lookahead: 2, // 检查2秒
-        maxSegments: s3s4.productMaterialNum, // 最多4个片段
+        maxSegments: 4, // 最多4个片段
         sceneThreshold: s3s4.storyboardSceneThreshold, // 场景变化阈值
       };
       await videoSceneSplitter.workflow(s4VideosChunk, options);

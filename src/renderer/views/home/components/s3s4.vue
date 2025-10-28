@@ -87,7 +87,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted, reactive, watch, computed } from 'vue';
+import { ref, onMounted, onUnmounted, reactive, watch } from 'vue';
 import {
   Switch,
   Input,
@@ -101,7 +101,7 @@ const { shell, ipcRendererChannel } = window;
 
 const workDir = '视频去字幕任务';
 const s1 = reactive({
-  taskDirectory: 'test',
+  taskDirectory: '',
 });
 const s3 = ref({
   productMaterialNum: 4,
@@ -111,24 +111,21 @@ const s3 = ref({
   autoHandOnWorkflow: true,
 });
 const tableData = ref<any>([]);
-const monitorDirectory = computed(() =>
-  path.join(s1.taskDirectory, workDir).replace(/\//g, '\\')
-);
-
-watch(s3.value, val => {
-  ipcRendererChannel.UpdateWorkbenchData.invoke({
-    stepNo: 's3',
-    sData: { ...val },
-  });
-});
 
 onMounted(() => {
   // 获取历史缓存
   ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbenchS1 => {
     s1.taskDirectory = workbenchS1.taskDirectory ?? '';
   });
-  ipcRendererChannel.GetWorkbenchData.invoke('s3').then(workbenchS3 => {
+  ipcRendererChannel.GetWorkbenchData.invoke('s3s4').then(workbenchS3 => {
     s3.value = { ...workbenchS3 };
+  });
+
+  watch(s3.value, val => {
+    ipcRendererChannel.UpdateWorkbenchData.invoke({
+      stepNo: 's3',
+      sData: { ...val },
+    });
   });
 
   // 绑定文件夹变化监听事件
@@ -140,7 +137,9 @@ onMounted(() => {
           .filter((file: any) => file.isVideo)
           .map((file: any) => {
             return {
-              taskDirectory: monitorDirectory.value,
+              taskDirectory: path
+                .join(s1.taskDirectory, workDir)
+                .replace(/\//g, '\\'),
               videoMaterial: file.name,
             };
           });
@@ -148,6 +147,7 @@ onMounted(() => {
     }
   );
 });
+
 onUnmounted(() => {
   // 移除文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.removeAllListeners();

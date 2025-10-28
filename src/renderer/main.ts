@@ -9,11 +9,13 @@ import App from './App.vue';
 import router from './router';
 import { errorHandler } from './error';
 import './utils/hack-ipc-renderer';
+import { storeInitPlugin } from './store/plugins/store-init';
 
 const app = createApp(App);
-const store = createPinia();
+const pinia = createPinia();
+pinia.use(storeInitPlugin);
 app.use(router);
-app.use(store);
+app.use(pinia);
 errorHandler(app);
 
 app.mount('#app');
