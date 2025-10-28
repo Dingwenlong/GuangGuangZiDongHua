@@ -302,8 +302,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   // 启动所有任务
   scheduler.startAllTasks();
-  scheduler.stopTask('s2Task');
-  scheduler.stopTask('s3Task');
   // ----------------------执行完每一步之后的回调处理---------------------
   // 第一步完成之后
   videoProcessor.on('s1OkCallback', async (videosChunk: S3VideosChunk) => {

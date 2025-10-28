@@ -56,6 +56,7 @@ const logData = ref<any[]>([]);
 
 onMounted(() => {
   ipcRendererChannel.LogUpdate.on((_, arg) => {
+    console.log(_, arg);
     const now = new Date();
     const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
       2,

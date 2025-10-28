@@ -4,14 +4,11 @@ import * as path from 'path';
 import { FFmpegUtil } from '../lib/ffmpeg';
 import EventEmitter from 'events';
 import { writeLog, type LogEvent } from '@main/utils/log';
-import { merge } from 'lodash-es';
 import type { S4VideosChunk } from './workbench-manager';
 import {
-  cleanProductDirs,
   insertDirectoryBeforeLast,
   removeFilesByPrefix,
   renameProductDir,
-  renameProductDirs,
 } from '@main/utils/file';
 
 /**
@@ -67,6 +64,7 @@ export class VideoSceneSplitter extends EventEmitter {
     videosChunk.childFolders = [];
 
     // -----------视频切片---------
+    this.writeLog(`开始执行视频切片任务${videosChunk.folderName}`);
     for (const video of videosChunk.videos) {
       const videoPath = videosChunk.folderName + video.fileName;
       const outputDir = `${insertDirectoryBeforeLast(
@@ -89,7 +87,7 @@ export class VideoSceneSplitter extends EventEmitter {
     }
 
     // -----------混剪---------
-
+    this.writeLog(`开始执行视频混剪任务${videosChunk.folderName}`);
     // 混剪视频1：1-scene_1 + 2-scene_2 + 3-scene_3 + 4-scene_4
     const montage1: string[] = new Array(4).fill('');
     // 混剪视频2：2-scene_1 + 1-scene_2 + 4-scene_3 + 3-scene_4
@@ -195,6 +193,7 @@ export class VideoSceneSplitter extends EventEmitter {
       await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
       this.writeLog(`${videosChunk.folderName}目录重命名为S4`);
     }
+    this.writeLog(`视频混剪任务混剪完成${videosChunk.folderName}`);
     this.emit('s4OkCallback', videos);
   }
 

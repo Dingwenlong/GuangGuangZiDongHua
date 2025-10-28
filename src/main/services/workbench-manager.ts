@@ -159,7 +159,7 @@ const defaultData: WorkbenchStoreSchema = merge(
       storyboardDuration1: 4,
       storyboardDuration2: 6,
       autoHandOnWorkflow: true,
-      running: false,
+      running: true,
     },
     s5: {
       autoHandOnWorkflow: true,

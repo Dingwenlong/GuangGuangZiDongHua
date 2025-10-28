@@ -102,10 +102,6 @@ class VideoProcessor extends EventEmitter {
       }: ${event.progress.toFixed(1)}%`;
       this.updateStatus();
     });
-
-    this.ffmpegUtil.on('log', (event: LogEvent) => {
-      this.emit('log', event);
-    });
   }
 
   /**
@@ -694,110 +690,6 @@ class VideoProcessor extends EventEmitter {
       setTimeout(() => {
         this.startSubtitleQueueChecking();
       }, 3000);
-    }
-  }
-
-  /**
-<<<<<<< HEAD
-   * 启动音频提取队列处理
-   */
-  private startAudioExtractQueueProcessing(): void {
-    // 每2秒处理一个队列项目
-    this.audioExtractInterval = setInterval(async () => {
-      if (this.audioExtractQueue.length > 0) {
-        const videoPath = this.audioExtractQueue.shift();
-        if (videoPath) {
-          await this.processAudioExtract(videoPath);
-        }
-      }
-    }, 2000);
-  }
-
-  /**
-   * 添加到音频提取队列
-   */
-  public addToAudioExtractQueue(videoPath: string): void {
-    const normalizedPath = path.resolve(videoPath);
-
-    // 检查是否已经在队列中
-    if (!this.audioExtractQueue.includes(normalizedPath)) {
-      this.audioExtractQueue.push(normalizedPath);
-      this.writeLog(
-        `已加入音频提取队列: ${path.basename(normalizedPath)} (队列长度: ${
-          this.audioExtractQueue.length
-        })`
-      );
-    }
-  }
-
-  /**
-   * 从音频提取队列中移除
-   */
-  public removeFromAudioExtractQueue(videoPath: string): void {
-    const normalizedPath = path.resolve(videoPath);
-    this.audioExtractQueue = this.audioExtractQueue.filter(
-      path => path !== normalizedPath
-    );
-    this.writeLog(
-      `已从音频提取队列移除: ${path.basename(normalizedPath)} (剩余队列长度: ${
-        this.audioExtractQueue.length
-      })`
-    );
-  }
-
-  /**
-   * 处理音频提取
-   */
-  private async processAudioExtract(videoPath: string): Promise<void> {
-    const fileKey = this.getFileKey(videoPath);
-
-    // 检查是否正在处理
-    if (this.currentlyProcessing.has(fileKey)) {
-      return;
-    }
-
-    // 标记为处理中
-    this.currentlyProcessing.add(fileKey);
-    this.status.processingStatus = `提取音频中: ${path.basename(videoPath)}`;
-    this.updateStatus();
-
-    try {
-      // 确保视频文件存在
-      if (!fs.existsSync(videoPath)) {
-        throw new Error('视频文件不存在');
-      }
-
-      // 创建音频输出目录
-      const audioOutputDir = path.join(this.monitorDirectory, '音频输出');
-      if (!fs.existsSync(audioOutputDir)) {
-        fs.mkdirSync(audioOutputDir, { recursive: true });
-      }
-
-      // 生成输出音频文件名
-      const baseName = path.basename(videoPath, path.extname(videoPath));
-      const outputPath = path.resolve(audioOutputDir, `${baseName}.mp3`);
-
-      // 提取音频
-      await this.ffmpegUtil.extractAudio(path.resolve(videoPath), outputPath);
-
-      this.writeLog(`音频提取成功: ${path.basename(outputPath)}`, 'success');
-
-      // 触发提取完成事件
-      this.emit('audioExtractComplete', { inputPath: videoPath, outputPath });
-
-      // 从队列中移除
-      this.removeFromAudioExtractQueue(videoPath);
-    } catch (error) {
-      this.writeLog(
-        `音频提取失败: ${path.basename(videoPath)} - ${
-          (error as Error).message
-        }`,
-        'error'
-      );
-    } finally {
-      this.currentlyProcessing.delete(fileKey);
-      this.status.processingStatus = '空闲';
-      this.updateStatus();
     }
   }
 

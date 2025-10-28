@@ -45,9 +45,9 @@ class AudioExtractor extends EventEmitter {
       this.emit('status', this.status);
     });
 
-    this.ffmpegUtil.on('log', (event: LogEvent) => {
-      this.emit('log', event);
-    });
+    // this.ffmpegUtil.on('log', (event: LogEvent) => {
+    //   this.emit('log', event);
+    // });
   }
 
   /**
