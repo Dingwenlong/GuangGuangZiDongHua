@@ -43,7 +43,7 @@ class VideoProcessor extends EventEmitter {
   private recentlyProcessedCleanup: NodeJS.Timeout | null;
   private processingQueue: Map<string, ProcessingQueueItem>;
   private status: StatusObject;
-  private queueProcessInterval!: NodeJS.Timeout | null;
+  private queueProcessInterval: NodeJS.Timeout | null = null;
   private ffmpegUtil: FFmpegUtil;
 
   // 去字幕任务队列
@@ -53,6 +53,9 @@ class VideoProcessor extends EventEmitter {
   private videoToVideosTableMap: Map<string, string[][]>;
   // 字幕处理状态标记
   private isSubtitleProcessing: boolean;
+
+  private shouldRunChecks: boolean = false;
+  private checkPromise: Promise<void> | null = null;
 
   constructor(monitorDirectory: string, options: VideoProcessorOptions = {}) {
     super();
@@ -161,7 +164,7 @@ class VideoProcessor extends EventEmitter {
   /**
    * 停止文件监控
    */
-  public stop(): void {
+  public async stop(): Promise<void> {
     if (this.watcher) {
       this.watcher.stop();
       this.writeLog('文件监控已停止');
@@ -174,6 +177,12 @@ class VideoProcessor extends EventEmitter {
     if (this.queueProcessInterval) {
       clearInterval(this.queueProcessInterval);
     }
+    this.shouldRunChecks = false;
+    // 等待当前循环完成
+    if (this.checkPromise) {
+      await this.checkPromise;
+      this.checkPromise = null;
+    }
 
     this.status.monitoring = false;
     this.status.processingStatus = '已停止';
@@ -182,18 +191,14 @@ class VideoProcessor extends EventEmitter {
     this.writeLog('视频处理器已完全停止');
   }
 
-  public async updateWatchedDirectory(newDirectory: string): Promise<void> {
+  public updateWatchedDirectory(newDirectory: string): void {
+    this.writeLog(`目录切换 ${this.monitorDirectory} --> ${newDirectory}`);
     this.monitorDirectory = newDirectory;
     if (this.watcher) {
       this.watcher.stop();
       this.watcher = null;
       this.startFileWatching();
     }
-    this.writeLog(`目录切换 ${this.monitorDirectory} --> ${newDirectory}`);
-
-    await new Promise(resolve => {
-      setTimeout(resolve, 1000);
-    });
   }
 
   /**
@@ -432,12 +437,6 @@ class VideoProcessor extends EventEmitter {
       throw new Error(`无法获取视频时长: ${(error as Error).message}`);
     }
 
-    // 根据时长处理视频
-    if (Math.abs(duration - 20) < 0.1) {
-      this.writeLog('视频时长正好20秒，无需处理');
-      return;
-    }
-
     if (duration < 16) {
       this.writeLog('视频时长小于16秒，无法处理', 'warning');
       return;
@@ -446,6 +445,16 @@ class VideoProcessor extends EventEmitter {
     // 获取输出文件名 - 保留S1---前缀
     const outputFileName = await this.getOutputFileName(productDir);
     const outputPath = path.join(productDir, outputFileName);
+
+    // 根据时长处理视频
+    if (Math.abs(duration - 20) < 0.1) {
+      this.writeLog('视频时长正好20秒，无需处理');
+
+      if (inputPath.indexOf('---') === -1) {
+        await fs.promises.rename(inputPath, outputPath);
+      }
+      return;
+    }
 
     this.status.processingStatus = `处理中: ${path.basename(inputPath)}`;
     this.updateStatus();
@@ -462,7 +471,7 @@ class VideoProcessor extends EventEmitter {
       await this.ffmpegUtil.verifyOutputVideo(outputPath);
 
       // 删除原视频
-      fs.unlinkSync(inputPath);
+      await fs.promises.unlink(inputPath);
 
       this.writeLog(
         `视频处理完成: ${outputFileName} (${duration.toFixed(2)}秒 → 20.00秒)`,
@@ -471,7 +480,7 @@ class VideoProcessor extends EventEmitter {
     } catch (error) {
       // 清理可能生成的不完整输出文件
       if (fs.existsSync(outputPath)) {
-        fs.unlinkSync(outputPath);
+        await fs.promises.unlink(outputPath);
       }
       throw new Error(`视频处理失败: ${(error as Error).message}`);
     } finally {
@@ -481,13 +490,24 @@ class VideoProcessor extends EventEmitter {
   }
 
   private async startChecking(): Promise<void> {
-    // 执行检查
-    await this.checkMergeCondition();
+    this.shouldRunChecks = true;
+    this.checkPromise = this.checkLoop();
+  }
 
-    // 等待5秒后再次执行
-    setTimeout(() => {
-      this.startChecking();
-    }, 5000);
+  private async checkLoop(): Promise<void> {
+    while (this.shouldRunChecks) {
+      try {
+        await this.checkMergeCondition();
+      } catch (error) {
+        this.writeLog(
+          `检查合并条件时出错: ${(error as Error).message}`,
+          'error'
+        );
+      }
+
+      // 等待5秒
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
   }
 
   /**
@@ -592,14 +612,14 @@ class VideoProcessor extends EventEmitter {
 
     try {
       const productDirs: string[] = [];
-      const VideoSegment: VideoSegment[] = [];
+      const videoSegment: VideoSegment[] = [];
       const newPathOfChains: FolderItem[] = [];
       videosChunk.pathOfChains.forEach(item => {
         // 文件夹名改为S2后面执行完统一改为S3
         item.folderName = item.folderName.replace('S1---', 'S2---');
         productDirs.push(item.folderName);
         item.videos.forEach(video => {
-          VideoSegment.push({
+          videoSegment.push({
             fragmentDuration: video.fragmentDuration,
             filePath: path.join(
               item.folderName,
@@ -615,13 +635,13 @@ class VideoProcessor extends EventEmitter {
           }),
         } satisfies FolderItem);
       });
-      console.log('VideoSegment', VideoSegment);
+      console.log('VideoSegment', videoSegment);
 
       this.writeLog(`视频 ${videosChunk.videoFilePath} 开始拆分`);
 
       await this.ffmpegUtil.splitVideoBySegments(
         videosChunk.videoFilePath,
-        VideoSegment
+        videoSegment
       );
 
       // 删除文件
@@ -727,19 +747,19 @@ class VideoProcessor extends EventEmitter {
 
   // 等待文件稳定
   private waitForFileStable(filePath: string, timeout = 30000): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       let size = 0;
       let stableCount = 0;
       const startTime = Date.now();
 
-      const check = (): void => {
+      const check = async (): Promise<void> => {
         if (Date.now() - startTime > timeout) {
           reject(new Error('文件稳定等待超时'));
           return;
         }
 
         try {
-          const stats = fs.statSync(filePath);
+          const stats = await fs.promises.stat(filePath);
           if (stats.size === size) {
             stableCount++;
             if (stableCount >= 3) {
@@ -756,7 +776,7 @@ class VideoProcessor extends EventEmitter {
         }
       };
 
-      check();
+      await check();
     });
   }
 
@@ -866,7 +886,6 @@ class VideoProcessor extends EventEmitter {
   // 更新系统状态
   private updateStatus(): void {
     this.emit('status', this.status);
-    this.emit('log', `当前状态：${this.status.processingStatus}`);
   }
 
   // 获取系统状态
@@ -890,6 +909,11 @@ class VideoProcessor extends EventEmitter {
   }
 
   private writeLog(message: string, type: LogEvent['type'] = 'info') {
+    if (!message) {
+      console.error('writeLog called with empty message');
+      return;
+    }
+
     writeLog.call(this, message, type);
   }
 }

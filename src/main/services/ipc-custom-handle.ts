@@ -83,27 +83,29 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const videoSceneSplitter = new VideoSceneSplitter();
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
-  const isTest = true;
-
-  // ----------------------执行每一步---------------------
-  // s1
-  workbenchManager.watch('s1', async (newValue: WorkbenchStoreSchema['s1']) => {
+  const isTest = false;
+  const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
+    if (!newValue) newValue = await workbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
     if (!newValue.taskDirectory || !newValue.running) {
-      if (status.monitoring) videoProcessor.stop();
+      if (status.monitoring) await videoProcessor.stop();
       return;
     }
-    const normalizedNewValue = path.normalize(newValue.taskDirectory);
-    const normalizedMonitorDir = path.normalize(
-      videoProcessor.monitorDirectory
-    );
-    if (normalizedNewValue !== normalizedMonitorDir)
-      await videoProcessor.updateWatchedDirectory(newValue.taskDirectory);
+
+    if (videoProcessor.monitorDirectory !== newValue.taskDirectory)
+      videoProcessor.updateWatchedDirectory(newValue.taskDirectory);
 
     if (!status.monitoring) {
       videoProcessor.start();
       console.log('执行任务s1');
     }
+  };
+  firstStart();
+
+  // ----------------------执行每一步---------------------
+  // s1
+  workbenchManager.watch('s1', async (newValue: WorkbenchStoreSchema['s1']) => {
+    await firstStart(newValue);
   });
   // s2
   // 每5秒执行一次，并发数为1
@@ -406,19 +408,19 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   videoProcessor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message,
+      message: '[videoProcessor]' + message,
       type,
     });
   });
   audioProcessor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message,
+      message: '[audioProcessor]' + message,
       type,
     });
   });
   playwrightScript.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message,
+      message: '[playwrightScript]' + message,
       type,
     });
   });
@@ -426,7 +428,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   // 音频提取器日志监听
   audioExtractor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message,
+      message: '[audioExtractor]' + message,
       type,
     });
   });
