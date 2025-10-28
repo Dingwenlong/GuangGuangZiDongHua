@@ -31,23 +31,6 @@ class AudioExtractor extends EventEmitter {
     };
 
     this.ffmpegUtil = FFmpegUtil.getInstance();
-    this.setupFFmpegEvents();
-  }
-
-  /**
-   * 设置FFmpeg事件监听
-   */
-  private setupFFmpegEvents(): void {
-    this.ffmpegUtil.on('progress', (event: FFmpegProgressEvent) => {
-      this.status.processingStatus = `${
-        event.operation
-      }: ${event.progress.toFixed(1)}%`;
-      this.emit('status', this.status);
-    });
-
-    // this.ffmpegUtil.on('log', (event: LogEvent) => {
-    //   this.emit('log', event);
-    // });
   }
 
   /**
