@@ -125,6 +125,30 @@ class PlaywrightScript extends EventEmitter {
       await fileChooser.setFiles(filePath);
       this.emit('log', { message: `${filePath}上传成功`, type: 'success' });
 
+      // 添加登录状态检测 - 在上传文件后、分类选择前执行
+      this.emit('log', { message: '检测是否已登录', type: 'info' });
+      const isLoggedIn =
+        (await page.locator('.index_accountAvatar__gOrHw').count()) > 0;
+
+      if (!isLoggedIn) {
+        this.emit('log', { message: '未登录，触发登录操作', type: 'info' });
+        // 触发类名为iconfont-legacy的元素
+        const loginButton = await page.waitForSelector('.iconfont-legacy', {
+          timeout: 10000,
+        });
+        await loginButton.click();
+
+        // 等待登录后index_accountAvatar__gOrHw元素出现
+        this.emit('log', { message: '等待用户完成登录...', type: 'info' });
+        await page.waitForSelector('.index_accountAvatar__gOrHw', {
+          timeout: 300000, // 5分钟超时，给用户足够时间登录
+          state: 'visible',
+        });
+        this.emit('log', { message: '登录成功，继续处理', type: 'success' });
+      } else {
+        this.emit('log', { message: '已登录，继续处理', type: 'success' });
+      }
+
       // 处理分类选择
       await page.waitForSelector('.index_categorgList__dF7ji', {
         timeout: 60000,
