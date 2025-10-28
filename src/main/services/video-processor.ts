@@ -446,15 +446,15 @@ class VideoProcessor extends EventEmitter {
     const outputFileName = await this.getOutputFileName(productDir);
     const outputPath = path.join(productDir, outputFileName);
 
-    // 根据时长处理视频
-    if (Math.abs(duration - 20) < 0.1) {
-      this.writeLog('视频时长正好20秒，无需处理');
+    // // 根据时长处理视频
+    // if (Math.abs(duration - 20) < 0.1) {
+    //   this.writeLog(`[${inputPath}]视频时长正好20秒，无需处理`);
 
-      if (inputPath.indexOf('---') === -1) {
-        await fs.promises.rename(inputPath, outputPath);
-      }
-      return;
-    }
+    //   if (inputPath.indexOf('---') === -1) {
+    //     await fs.promises.rename(inputPath, outputPath);
+    //   }
+    //   return;
+    // }
 
     this.status.processingStatus = `处理中: ${path.basename(inputPath)}`;
     this.updateStatus();
