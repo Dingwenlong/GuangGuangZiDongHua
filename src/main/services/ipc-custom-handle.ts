@@ -84,7 +84,11 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const videoSceneSplitter = new VideoSceneSplitter();
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
-  const s5TaskProcessor = new S5TaskProcessor(workbenchManager, audioExtractor, audioProcessor);
+  const s5TaskProcessor = new S5TaskProcessor(
+    workbenchManager,
+    audioExtractor,
+    audioProcessor
+  );
   const isTest = false;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await workbenchManager.getByKey('s1');
@@ -470,6 +474,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       channel: 'GetAuthInfo',
       handler: async () => {
         return await authManager.getAuthInfo();
+      },
+    },
+    {
+      channel: 'CheckLoginStatus',
+      handler: async () => {
+        return await playwrightScript.CheckKaipaiLoginStatus();
       },
     },
     {

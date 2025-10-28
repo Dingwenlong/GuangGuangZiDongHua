@@ -70,7 +70,7 @@ export class IpcChannelMainCustomClass {
     filePath: string;
     targetDir: string;
   }>;
-  CheckLoginStatus!: IpcMainEventListener<void, boolean>;
+  CheckKaipaiLoginStatus!: IpcMainEventListener<void, boolean>;
   UpdateWorkbenchData!: IpcMainEventListener<{ stepNo: string; sData: any }>;
   GetWorkbenchData!: IpcMainEventListener<string, any>;
   StartMonitoringDirectory!: IpcMainEventListener<string>;
