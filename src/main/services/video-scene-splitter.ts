@@ -4,6 +4,15 @@ import * as path from 'path';
 import { FFmpegUtil } from '../lib/ffmpeg';
 import EventEmitter from 'events';
 import { writeLog, type LogEvent } from '@main/utils/log';
+import { merge } from 'lodash-es';
+import type { S4VideosChunk } from './workbench-manager';
+import {
+  cleanProductDirs,
+  insertDirectoryBeforeLast,
+  removeFilesByPrefix,
+  renameProductDir,
+  renameProductDirs,
+} from '@main/utils/file';
 
 /**
  * 视频场景分割配置选项
@@ -21,10 +30,6 @@ export interface VideoSceneSplitterOptions {
   sceneThreshold?: number;
   /** 是否重新编码输出片段，默认true（确保时长准确） */
   reencode?: boolean;
-  /** ffmpeg可执行文件路径，默认使用系统PATH中的ffmpeg */
-  ffmpegPath?: string;
-  /** ffprobe可执行文件路径，默认使用系统PATH中的ffprobe */
-  ffprobePath?: string;
 }
 
 /**
@@ -50,22 +55,151 @@ export interface SplitResult {
 export class VideoSceneSplitter extends EventEmitter {
   private ffmpegUtil: FFmpegUtil;
 
-  constructor(options: VideoSceneSplitterOptions = {}) {
+  constructor() {
     super();
     this.ffmpegUtil = FFmpegUtil.getInstance();
   }
 
-  /**
-   * 检查视频文件是否存在且可访问
-   */
-  private checkVideoFileExists(videoPath: string): void {
-    if (!fs.existsSync(videoPath)) {
-      throw new Error(`视频文件不存在: ${videoPath}`);
+  public async workflow(
+    videosChunk: S4VideosChunk,
+    options?: VideoSceneSplitterOptions
+  ) {
+    videosChunk.childFolders = [];
+
+    // -----------视频切片---------
+    for (const video of videosChunk.videos) {
+      const videoPath = videosChunk.folderName + video.fileName;
+      const outputDir = `${insertDirectoryBeforeLast(
+        videosChunk.folderName,
+        '视频分镜任务'
+      )}---${video.fileNo}`;
+
+      const splitResult = await this.split(videoPath, outputDir, options);
+      if (splitResult)
+        videosChunk.childFolders.push({
+          folderName: outputDir,
+          videos: splitResult.segments.map((segment, i) => {
+            return {
+              fileName: segment.replace(outputDir + '\\', ''),
+              fragmentDuration: 0,
+              fileNo: i + 1,
+            };
+          }),
+        });
     }
+
+    // -----------混剪---------
+
+    // 混剪视频1：1-scene_1 + 2-scene_2 + 3-scene_3 + 4-scene_4
+    const montage1: string[] = new Array(4).fill('');
+    // 混剪视频2：2-scene_1 + 1-scene_2 + 4-scene_3 + 3-scene_4
+    const montage2: string[] = new Array(4).fill('');
+    // 混剪视频3：3-scene_1 + 4-scene_2 + 1-scene_3 + 2-scene_4
+    const montage3: string[] = new Array(4).fill('');
+    // 混剪视频4：4-scene_1 + 3-scene_2 + 2-scene_3 + 1-scene_4
+    const montage4: string[] = new Array(4).fill('');
+    videosChunk.childFolders.forEach(childFolder => {
+      const endChar = childFolder.folderName.slice(-1);
+      switch (endChar) {
+        case '1':
+          childFolder.videos.forEach(video => {
+            // 1-1
+            if (video.fileNo === 1)
+              montage1[0] = childFolder.folderName + video.fileName;
+            // 1-2
+            if (video.fileNo === 2)
+              montage2[1] = childFolder.folderName + video.fileName;
+            // 1-3
+            if (video.fileNo === 3)
+              montage3[2] = childFolder.folderName + video.fileName;
+            // 1-4
+            if (video.fileNo === 4)
+              montage4[3] = childFolder.folderName + video.fileName;
+          });
+          break;
+        case '2':
+          childFolder.videos.forEach(video => {
+            // 2-1
+            if (video.fileNo === 1)
+              montage2[0] = childFolder.folderName + video.fileName;
+            // 2-2
+            if (video.fileNo === 2)
+              montage1[1] = childFolder.folderName + video.fileName;
+            // 2-3
+            if (video.fileNo === 3)
+              montage4[2] = childFolder.folderName + video.fileName;
+            // 2-4
+            if (video.fileNo === 4)
+              montage3[3] = childFolder.folderName + video.fileName;
+          });
+          break;
+        case '3':
+          childFolder.videos.forEach(video => {
+            // 3-1
+            if (video.fileNo === 1)
+              montage3[0] = childFolder.folderName + video.fileName;
+            // 3-2
+            if (video.fileNo === 2)
+              montage4[1] = childFolder.folderName + video.fileName;
+            // 3-3
+            if (video.fileNo === 3)
+              montage1[2] = childFolder.folderName + video.fileName;
+            // 3-4
+            if (video.fileNo === 4)
+              montage2[3] = childFolder.folderName + video.fileName;
+          });
+          break;
+        case '4':
+          childFolder.videos.forEach(video => {
+            // 4-1
+            if (video.fileNo === 1)
+              montage4[0] = childFolder.folderName + video.fileName;
+            // 4-2
+            if (video.fileNo === 2)
+              montage3[1] = childFolder.folderName + video.fileName;
+            // 4-3
+            if (video.fileNo === 3)
+              montage2[2] = childFolder.folderName + video.fileName;
+            // 4-4
+            if (video.fileNo === 4)
+              montage1[3] = childFolder.folderName + video.fileName;
+          });
+          break;
+        default:
+          break;
+      }
+    });
+    const montages = [montage1, montage2, montage3, montage4];
+    const videos: string[] = [];
+    let i = 1;
+    for (const montage of montages) {
+      const outFileName = `${path.basename(
+        videosChunk.folderName.replace('S3---', 'S4---')
+      )}---${i}`;
+      const outputPosition = path.join(videosChunk.folderName, outFileName);
+      await this.montage(montage, outputPosition);
+      videos.push(outputPosition);
+      i++;
+      // 删除S3---开头的视频
+      const removedFiles = removeFilesByPrefix(
+        [videosChunk.folderName],
+        'S3---',
+        {
+          recursive: true,
+        }
+      );
+      this.writeLog(
+        `${videosChunk.folderName}目录已删除S3开头的视频(${removedFiles})`
+      );
+      // 商品目录的 S3 改为 S4
+      await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
+      this.writeLog(`${videosChunk.folderName}目录重命名为S4`);
+    }
+    this.emit('s4OkCallback', videos);
   }
 
   /**
-   * 主方法：执行视频场景分割
+   * 视频场景分割
    * @param videoPath 输入视频文件路径
    * @param outputDir 输出目录
    * @param options 分割配置选项
@@ -85,8 +219,6 @@ export class VideoSceneSplitter extends EventEmitter {
         maxSegments: options.maxSegments ?? 4,
         sceneThreshold: options.sceneThreshold ?? 0.3,
         reencode: options.reencode ?? true,
-        ffmpegPath: options.ffmpegPath || 'ffmpeg',
-        ffprobePath: options.ffprobePath || 'ffprobe',
       };
 
       // 验证输入文件
@@ -219,7 +351,6 @@ export class VideoSceneSplitter extends EventEmitter {
         `视频 ${videoPath} 分割完成! 原始视频时长: ${videoDuration}秒，生成片段数: ${segments.length}，片段总时长: ${totalSegmentsDuration}秒`,
         'info'
       );
-      this.emit('s4-1OkCallback', result);
 
       return result;
     } catch (error) {
@@ -232,8 +363,20 @@ export class VideoSceneSplitter extends EventEmitter {
   /**
    * 蒙太奇（混剪）
    */
-  public async montage() {
-    this.emit('s4-2OkCallback');
+  public async montage(allVideoFiles: string[], outputPath: string) {
+    this.writeLog(`开始混剪 ${allVideoFiles.length}`);
+    await this.ffmpegUtil.concatVideos(allVideoFiles, outputPath);
+
+    this.writeLog(`视频混剪成功: ${outputPath}`, 'success');
+  }
+
+  /**
+   * 检查视频文件是否存在且可访问
+   */
+  private checkVideoFileExists(videoPath: string): void {
+    if (!fs.existsSync(videoPath)) {
+      throw new Error(`视频文件不存在: ${videoPath}`);
+    }
   }
 
   private writeLog(message: string, type: LogEvent['type'] = 'info') {

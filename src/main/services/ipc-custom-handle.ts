@@ -5,8 +5,9 @@ import config from '@config/index';
 import type MainInit from './window-manager';
 import authManager from './auth-manager';
 import WorkbenchManager, {
-  type OrderedFolderItem,
-  type OrderedVideosChunk,
+  type FolderItem,
+  type S3VideosChunk,
+  type S4VideosChunk,
   type WorkbenchStoreSchema,
 } from './workbench-manager';
 import { webContentSend } from './web-content-send';
@@ -16,9 +17,8 @@ import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
 import { formatArrayDiff } from '@main/utils/array';
-import VideoSceneSplitter, { type SplitResult } from './video-scene-splitter';
+import VideoSceneSplitter from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
-import { insertDirectoryBeforeLast } from '@main/utils/file';
 
 /**
  * 自定义全局
@@ -80,9 +80,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const audioExtractor = new AudioExtractor();
   const audioProcessor = new AudioProcessor();
   const videoProcessor = new VideoProcessor('');
-  const videoSceneSplitter = new VideoSceneSplitter({
-    reencode: true, // 重新编码确保时长准确
-  });
+  const videoSceneSplitter = new VideoSceneSplitter();
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
   const isTest = true;
@@ -153,7 +151,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       if (!task) return;
       console.log('执行任务s3');
 
-      videoProcessor.splitVideo(task as OrderedVideosChunk);
+      videoProcessor.splitVideo(task as S3VideosChunk);
     }
   );
   workbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
@@ -174,24 +172,16 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       if (!task) return;
       console.log('执行任务s4');
 
+      const s4VideosChunk = task as S4VideosChunk;
       const s3s4 = await workbenchManager.getByKey('s3s4');
-      const folderItem = task as OrderedFolderItem;
-
-      // ！------------记录一下视频切片路径，执行下一步混剪逻辑---------
-      for (const video of folderItem.videos) {
-        const videoPath = folderItem.folderName + video.fileName;
-        const outputDir =
-          insertDirectoryBeforeLast(folderItem.folderName, '视频分镜') +
-          '---' +
-          video.fileName.split('---').pop()?.split('.')[0];
-        await videoSceneSplitter.split(videoPath, outputDir, {
-          initialLength: s3s4.storyboardDuration1, // 初始
-          extendedLength: s3s4.storyboardDuration2, // 延长
-          lookahead: 2, // 检查2秒
-          maxSegments: s3s4.productMaterialNum, // 最多4个片段
-          sceneThreshold: s3s4.storyboardSceneThreshold, // 场景变化阈值
-        });
-      }
+      const options = {
+        initialLength: s3s4.storyboardDuration1, // 初始
+        extendedLength: s3s4.storyboardDuration2, // 延长
+        lookahead: 2, // 检查2秒
+        maxSegments: s3s4.productMaterialNum, // 最多4个片段
+        sceneThreshold: s3s4.storyboardSceneThreshold, // 场景变化阈值
+      };
+      await videoSceneSplitter.workflow(s4VideosChunk, options);
     }
   );
   workbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
@@ -312,10 +302,11 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   // 启动所有任务
   scheduler.startAllTasks();
-  //scheduler.stopTask('s4Task');
+  scheduler.stopTask('s2Task');
+  scheduler.stopTask('s3Task');
   // ----------------------执行完每一步之后的回调处理---------------------
   // 第一步完成之后
-  videoProcessor.on('s1OkCallback', async (videosChunk: OrderedVideosChunk) => {
+  videoProcessor.on('s1OkCallback', async (videosChunk: S3VideosChunk) => {
     // 增加第二步队列
     await workbenchManager.enqueueTask(
       's2TasksQueue',
@@ -329,24 +320,27 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     await workbenchManager.enqueueTask('s3TasksQueue', videosChunk);
   });
   // 第二步完成之后
-  playwrightScript.on('s2OkCallback', videoPath => {
+  playwrightScript.on('s2OkCallback', async videoPath => {
     // 通知 workbenchManager 去字幕任务完成
-    workbenchManager.updateSubtitleRemoveOver(videoPath, true);
+    await workbenchManager.updateSubtitleRemoveOver(videoPath, true);
   });
   // 第三步完成之后
-  videoProcessor.on(
-    's3OkCallback',
-    async (newPathOfChains: OrderedFolderItem[]) => {
-      // 增加第四步队列
-      newPathOfChains.forEach(async pathOfChain => {
-        await workbenchManager.enqueueTask('s4TasksQueue', pathOfChain);
-      });
+  videoProcessor.on('s3OkCallback', async (newPathOfChains: FolderItem[]) => {
+    // 增加第四步队列
+    newPathOfChains.forEach(async pathOfChain => {
+      await workbenchManager.enqueueTask(
+        's4TasksQueue',
+        pathOfChain as S4VideosChunk
+      );
+    });
+  });
+
+  // 第四步完成之后
+  videoSceneSplitter.on('s4OkCallback', async (videos: string[]) => {
+    for (const video of videos) {
+      await workbenchManager.enqueueTask('s4TasksQueue', video);
     }
-  );
-  // 第四步之一完成之后
-  videoSceneSplitter.on('s4-1OkCallback', (splitResult: SplitResult) => {});
-  // 第四步之二完成之后
-  videoSceneSplitter.on('s4-2OkCallback', (splitResult: SplitResult) => {});
+  });
 
   // 第五步完成之后
   audioExtractor.on('s5OkCallback', result => {

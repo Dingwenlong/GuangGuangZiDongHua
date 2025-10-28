@@ -2,12 +2,14 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import FileWatcher from '../lib/file-watcher';
-import { isVideoFile, isProcessedVideoFile } from '../utils/file';
-import { FFmpegUtil, FFmpegProgressEvent, VideoSegment } from '../lib/ffmpeg';
 import {
-  OrderedVideosChunk,
-  type OrderedFolderItem,
-} from './workbench-manager';
+  isVideoFile,
+  isProcessedVideoFile,
+  cleanProductDirs,
+  renameProductDirs,
+} from '../utils/file';
+import { FFmpegUtil, FFmpegProgressEvent, VideoSegment } from '../lib/ffmpeg';
+import { S3VideosChunk, type FolderItem } from './workbench-manager';
 import { writeLog, type LogEvent } from '@main/utils/log';
 
 // 类型定义
@@ -205,7 +207,7 @@ class VideoProcessor extends EventEmitter {
     const subtitleTaskDir = path.join(this.monitorDirectory, '视频去字幕任务');
     const tempDir = path.join(this.monitorDirectory, 'temp');
     const audioOutputDir = path.join(this.monitorDirectory, '音频输出');
-    const storyboardDir = path.join(this.monitorDirectory, '视频分镜');
+    const storyboardDir = path.join(this.monitorDirectory, '视频分镜任务');
 
     [subtitleTaskDir, tempDir, audioOutputDir, storyboardDir].forEach(dir => {
       if (!fs.existsSync(dir)) {
@@ -532,23 +534,25 @@ class VideoProcessor extends EventEmitter {
           path.join(this.monitorDirectory, '视频去字幕任务'),
           outputFileName
         ),
-        pathOfChains: [] as OrderedFolderItem[],
+        pathOfChains: [] as FolderItem[],
         subtitleRemoveOver: false,
-      } as OrderedVideosChunk;
+      } as S3VideosChunk;
 
       const productDirs = this.getProductDirectories().sort().slice(0, 5);
       const allVideoFiles: string[] = [];
       productDirs.forEach(dir => {
+        // 升序，取前四个
         const videoFiles = this.getProcessedVideos(dir).slice(0, 4);
         const pathOfChain = {
           folderName: dir,
-          videos: videoFiles.map(video => {
+          videos: videoFiles.map((video, index) => {
             return {
               fragmentDuration: 20,
               fileName: video.replace(dir, ''),
+              fileNo: index + 1,
             };
           }),
-        } satisfies OrderedFolderItem;
+        } satisfies FolderItem;
         videosChunk.pathOfChains.push(pathOfChain);
         allVideoFiles.push(...videoFiles);
       });
@@ -569,10 +573,10 @@ class VideoProcessor extends EventEmitter {
       );
 
       // 清空S1商品目录并重命名为S2
-      await this.cleanProductDirs(productDirs);
-      this.writeLog(`已清空S1目录商品`);
-      await this.renameProductDirs(productDirs, 'S1---', 'S2---');
-      this.writeLog(`目录重命名为S2`);
+      await cleanProductDirs(productDirs);
+      this.writeLog(`已清空${productDirs}目录商品`);
+      await renameProductDirs(productDirs, 'S1---', 'S2---');
+      this.writeLog(`${productDirs}目录重命名为S2`);
 
       this.emit('s1OkCallback', videosChunk);
     } catch (error) {
@@ -586,14 +590,14 @@ class VideoProcessor extends EventEmitter {
   /**
    * 拆分视频
    */
-  public async splitVideo(videosChunk: OrderedVideosChunk): Promise<void> {
+  public async splitVideo(videosChunk: S3VideosChunk): Promise<void> {
     this.status.processingStatus = '开始拆分视频';
     this.updateStatus();
 
     try {
       const productDirs: string[] = [];
       const VideoSegment: VideoSegment[] = [];
-      const newPathOfChains: OrderedFolderItem[] = [];
+      const newPathOfChains: FolderItem[] = [];
       videosChunk.pathOfChains.forEach(item => {
         // 文件夹名改为S2后面执行完统一改为S3
         item.folderName = item.folderName.replace('S1---', 'S2---');
@@ -613,7 +617,7 @@ class VideoProcessor extends EventEmitter {
             video.fileName = video.fileName.replace('S1---', 'S3---');
             return video;
           }),
-        } satisfies OrderedFolderItem);
+        } satisfies FolderItem);
       });
       console.log('VideoSegment', VideoSegment);
 
@@ -627,7 +631,8 @@ class VideoProcessor extends EventEmitter {
       // 删除文件
       fs.unlinkSync(videosChunk.videoFilePath);
       // 重命名商品目录
-      await this.renameProductDirs(productDirs, 'S2---', 'S3---');
+      await renameProductDirs(productDirs, 'S2---', 'S3---');
+      this.writeLog(`${productDirs}目录重命名为S3`);
 
       this.writeLog(`视频拆分成功: ${videosChunk.videoFilePath}`, 'success');
 
@@ -693,50 +698,106 @@ class VideoProcessor extends EventEmitter {
   }
 
   /**
-   * 清空商品目录
+<<<<<<< HEAD
+   * 启动音频提取队列处理
    */
-  private async cleanProductDirs(productDirs: string[]): Promise<void> {
-    for (const dir of productDirs) {
-      try {
-        // 清空目录中的所有文件
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-          const filePath = path.join(dir, file);
-          if (fs.statSync(filePath).isFile()) {
-            fs.unlinkSync(filePath);
-          }
+  private startAudioExtractQueueProcessing(): void {
+    // 每2秒处理一个队列项目
+    this.audioExtractInterval = setInterval(async () => {
+      if (this.audioExtractQueue.length > 0) {
+        const videoPath = this.audioExtractQueue.shift();
+        if (videoPath) {
+          await this.processAudioExtract(videoPath);
         }
-        this.writeLog(`已清空目录: ${path.basename(dir)}`);
-      } catch (error) {
-        this.writeLog(
-          `处清空目录失败: ${path.basename(dir)} - ${(error as Error).message}`,
-          'error'
-        );
       }
+    }, 2000);
+  }
+
+  /**
+   * 添加到音频提取队列
+   */
+  public addToAudioExtractQueue(videoPath: string): void {
+    const normalizedPath = path.resolve(videoPath);
+
+    // 检查是否已经在队列中
+    if (!this.audioExtractQueue.includes(normalizedPath)) {
+      this.audioExtractQueue.push(normalizedPath);
+      this.writeLog(
+        `已加入音频提取队列: ${path.basename(normalizedPath)} (队列长度: ${
+          this.audioExtractQueue.length
+        })`
+      );
     }
   }
 
   /**
-   * 重命名商品目录
+   * 从音频提取队列中移除
    */
-  private async renameProductDirs(
-    productDirs: string[],
-    searchVal: string,
-    replaceVal: string
-  ): Promise<void> {
-    for (const dir of productDirs) {
-      try {
-        // 重命名目录
-        const newDirName = dir.replace(searchVal, replaceVal);
-        fs.renameSync(dir, newDirName);
+  public removeFromAudioExtractQueue(videoPath: string): void {
+    const normalizedPath = path.resolve(videoPath);
+    this.audioExtractQueue = this.audioExtractQueue.filter(
+      path => path !== normalizedPath
+    );
+    this.writeLog(
+      `已从音频提取队列移除: ${path.basename(normalizedPath)} (剩余队列长度: ${
+        this.audioExtractQueue.length
+      })`
+    );
+  }
 
-        this.writeLog(`已重命名目录: ${path.basename(newDirName)}`);
-      } catch (error) {
-        this.writeLog(
-          `重命名目录失败: ${path.basename(dir)} - ${(error as Error).message}`,
-          'error'
-        );
+  /**
+   * 处理音频提取
+   */
+  private async processAudioExtract(videoPath: string): Promise<void> {
+    const fileKey = this.getFileKey(videoPath);
+
+    // 检查是否正在处理
+    if (this.currentlyProcessing.has(fileKey)) {
+      return;
+    }
+
+    // 标记为处理中
+    this.currentlyProcessing.add(fileKey);
+    this.status.processingStatus = `提取音频中: ${path.basename(videoPath)}`;
+    this.updateStatus();
+
+    try {
+      // 确保视频文件存在
+      if (!fs.existsSync(videoPath)) {
+        throw new Error('视频文件不存在');
       }
+
+      // 创建音频输出目录
+      const audioOutputDir = path.join(this.monitorDirectory, '音频输出');
+      if (!fs.existsSync(audioOutputDir)) {
+        fs.mkdirSync(audioOutputDir, { recursive: true });
+      }
+
+      // 生成输出音频文件名
+      const baseName = path.basename(videoPath, path.extname(videoPath));
+      const outputPath = path.resolve(audioOutputDir, `${baseName}.mp3`);
+
+      // 提取音频
+      await this.ffmpegUtil.extractAudio(path.resolve(videoPath), outputPath);
+
+      this.writeLog(`音频提取成功: ${path.basename(outputPath)}`, 'success');
+
+      // 触发提取完成事件
+      this.emit('audioExtractComplete', { inputPath: videoPath, outputPath });
+
+      // 从队列中移除
+      this.removeFromAudioExtractQueue(videoPath);
+    } catch (error) {
+      this.writeLog(
+        `音频提取失败: ${path.basename(videoPath)} - ${
+          (error as Error).message
+        }`,
+        'error'
+      );
+    } finally {
+      this.currentlyProcessing.delete(fileKey);
+      this.status.processingStatus = '空闲';
+      this.updateStatus();
     }
   }
 

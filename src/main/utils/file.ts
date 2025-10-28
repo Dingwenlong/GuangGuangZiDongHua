@@ -1,4 +1,5 @@
 import path from 'path';
+import * as fs from 'fs';
 
 // 支持的视频格式
 const videoExtensions = new Set<string>([
@@ -128,4 +129,148 @@ export function insertDirectoryBeforeLast(
   }
 
   return result;
+}
+
+/**
+ * 根据条件函数删除目录中的文件
+ * @param dirs 要处理的目录数组
+ * @param shouldRemoveFile 条件函数，接收文件名和完整路径，返回是否删除该文件
+ * @param options 配置选项
+ * @param options.recursive 是否递归处理子目录，默认为false
+ * @param options.dryRun 是否只模拟不实际删除，默认为false
+ * @returns 被删除的文件列表
+ */
+export function removeFilesByCondition(
+  dirs: string[],
+  shouldRemoveFile: (fileName: string, fullPath: string) => boolean,
+  options: {
+    recursive?: boolean;
+    dryRun?: boolean;
+  } = {}
+): string[] {
+  const { recursive = false, dryRun = false } = options;
+  const removedFiles: string[] = [];
+
+  for (const dir of dirs) {
+    try {
+      // 确保目录存在
+      if (!fs.existsSync(dir)) {
+        continue;
+      }
+
+      const items = fs.readdirSync(dir);
+      for (const item of items) {
+        const fullPath = path.join(dir, item);
+        const stat = fs.statSync(fullPath);
+
+        if (stat.isFile()) {
+          // 检查文件是否符合删除条件
+          if (shouldRemoveFile(item, fullPath)) {
+            if (!dryRun) {
+              fs.unlinkSync(fullPath);
+            }
+            removedFiles.push(fullPath);
+          }
+        } else if (stat.isDirectory() && recursive) {
+          // 递归处理子目录
+          const subRemoved = removeFilesByCondition(
+            [fullPath],
+            shouldRemoveFile,
+            options
+          );
+          removedFiles.push(...subRemoved);
+        }
+      }
+    } catch (error) {
+      throw new Error(
+        `处理目录失败: ${path.basename(dir)} - ${(error as Error).message}`
+      );
+    }
+  }
+
+  return removedFiles;
+}
+
+/**
+ * 根据文件名前缀删除文件
+ * @param dirs 要处理的目录数组
+ * @param prefix 文件名前缀
+ * @param options 配置选项
+ * @returns 被删除的文件列表
+ */
+export function removeFilesByPrefix(
+  dirs: string[],
+  prefix: string,
+  options: {
+    recursive?: boolean;
+    dryRun?: boolean;
+  } = {}
+): string[] {
+  return removeFilesByCondition(
+    dirs,
+    fileName => fileName.startsWith(prefix),
+    options
+  );
+}
+
+/**
+ * 清空目录
+ */
+export async function cleanProductDirs(productDirs: string[]): Promise<void> {
+  for (const dir of productDirs) {
+    try {
+      // 清空目录中的所有文件
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        const filePath = path.join(dir, file);
+        if (fs.statSync(filePath).isFile()) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (error) {
+      throw new Error(
+        `处清空目录失败: ${path.basename(dir)} - ${(error as Error).message}`
+      );
+    }
+  }
+}
+
+/**
+ * 重命名目录
+ */
+export async function renameProductDir(
+  dir: string,
+  searchVal: string,
+  replaceVal: string
+): Promise<void> {
+  try {
+    // 重命名目录
+    const newDirName = dir.replace(searchVal, replaceVal);
+    fs.renameSync(dir, newDirName);
+  } catch (error) {
+    throw new Error(
+      `重命名目录失败: ${path.basename(dir)} - ${(error as Error).message}`
+    );
+  }
+}
+
+/**
+ * 重命名目录
+ */
+export async function renameProductDirs(
+  productDirs: string[],
+  searchVal: string,
+  replaceVal: string
+): Promise<void> {
+  for (const dir of productDirs) {
+    try {
+      // 重命名目录
+      const newDirName = dir.replace(searchVal, replaceVal);
+      fs.renameSync(dir, newDirName);
+    } catch (error) {
+      throw new Error(
+        `重命名目录失败: ${path.basename(dir)} - ${(error as Error).message}`
+      );
+    }
+  }
 }

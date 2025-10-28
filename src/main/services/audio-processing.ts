@@ -331,9 +331,20 @@ class AudioProcessor extends EventEmitter {
         if (historyResult && Object.keys(historyResult).length > 0) {
           try {
             // 根据处理类型提取相应的输出数据
-            // 音频使用57节点，视频可能在其他节点
-            const nodeKey = isVideoProcessing ? '11' : '57'; // 假设视频在58节点，可根据实际情况调整
-            const mediaType = isVideoProcessing ? 'gifs' : 'audio';
+            // 音频使用57节点
+            const nodeKey = isVideoProcessing ? '35' : '57';
+            const mediaType = isVideoProcessing ? 'videos' : 'audio';
+
+            // 如果是视频则检测status.status_str是否为success，是则继续处理
+            if (mediaType === 'videos') {
+              if (historyResult[promptId]?.status.status_str !== 'success') {
+                this.emit('log', {
+                  message: '视频处理失败',
+                  type: 'error',
+                } as LogEvent);
+                return;
+              }
+            }
             const targetData =
               historyResult[promptId]?.outputs?.[nodeKey]?.[mediaType]?.[0];
 
@@ -353,18 +364,18 @@ class AudioProcessor extends EventEmitter {
               }
 
               // 记录提取的参数信息
-              const mediaTypeText = isVideoProcessing ? '视频' : '音频';
-              this.emit('log', {
-                message: `提取的${mediaTypeText}参数(仅非空): ${JSON.stringify(
-                  filteredData
-                )}`,
-                type: 'info',
-              } as LogEvent);
+              // const mediaTypeText = isVideoProcessing ? '视频' : '音频';
+              // this.emit('log', {
+              //   message: `提取的${mediaTypeText}参数(仅非空): ${JSON.stringify(
+              //     filteredData
+              //   )}`,
+              //   type: 'info',
+              // } as LogEvent);
 
               // 对于视频处理，如果没有必要的参数，可以记录警告但不中断处理
               if (isVideoProcessing && Object.keys(filteredData).length === 0) {
                 this.emit('log', {
-                  message: '视频处理参数全部为空，将使用默认逻辑处理',
+                  message: '视频处理参数全部为空，下载视频失败',
                   type: 'warning',
                 } as LogEvent);
               }
@@ -409,10 +420,6 @@ class AudioProcessor extends EventEmitter {
       ? server
       : `http://${server}`;
     const url = `${normalizedServer}:${port}/history/${promptId}`;
-    this.emit('log', {
-      message: `轮询任务状态: ${url}`,
-      type: 'info',
-    } as LogEvent);
 
     const maxRetries = 60; // 最多重试60次
     const retryInterval = 30 * 1000; // 每30秒轮询一次

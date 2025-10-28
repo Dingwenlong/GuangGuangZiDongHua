@@ -6,7 +6,6 @@ yarn-error.log*
 
 resources/
 dist/
-temp/
 build/
 !build/icons
 

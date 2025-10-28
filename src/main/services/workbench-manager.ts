@@ -14,17 +14,21 @@ export interface VideoStoryboard {
   /**
    * 视频片段时长/s
    */
-  fragmentDuration: 20;
+  fragmentDuration: number;
   /**
    * 视频名称
    */
   fileName: string;
+  /**
+   * 视频编号
+   */
+  fileNo: number;
 }
 
 /**
  * 有序文件夹项
  */
-export interface OrderedFolderItem {
+export interface FolderItem {
   /**
    * 文件夹名称
    */
@@ -35,13 +39,24 @@ export interface OrderedFolderItem {
   videos: VideoStoryboard[];
 }
 
-export interface OrderedVideosChunk {
+export type S2VideosChunk = string;
+
+export interface S3VideosChunk {
   /**
    * 去字幕文件
    */
   videoFilePath: string;
-  pathOfChains: OrderedFolderItem[];
   subtitleRemoveOver: boolean;
+  pathOfChains: FolderItem[];
+}
+
+export interface S4VideosChunk {
+  /**
+   * 视频文件夹
+   */
+  folderName: string;
+  videos: VideoStoryboard[];
+  childFolders?: FolderItem[];
 }
 
 // 定义存储的数据结构
@@ -79,38 +94,41 @@ export interface WorkbenchStoreSchema {
   s2TasksQueue: string[];
   /**
    * 第三步任务队列
-   * [
-   *  {
-   *    videoFileName: 'C://去字幕任务/1.mp4',
+    [
+      {
+        videoFileName: 'C://任务目录/去字幕任务/商品1.mp4',
+        subtitleRemoveOver: false,
         pathOfChains: [
           {
             folderName: '商品文件夹1',
-            videos: [{fragmentDuration: 20, fileName: '1.mp4'}, {fragmentDuration: 20, fileName: '2.mp4'}]
+            videos: [{fragmentDuration: 20, fileName: '1.mp4'}, ...3],
           },
           {
             folderName: '商品文件夹2',
-            videos: [{fragmentDuration: 20, fileName: '3.mp4'}, {fragmentDuration: 20, fileName: '4.mp4'}]
+            videos: [{fragmentDuration: 20, fileName: '3.mp4'}, ...3],
           }
         ]
       }
     ]
    */
-  s3TasksQueue: OrderedVideosChunk[];
+  s3TasksQueue: S3VideosChunk[];
   /**
    * 第四步任务队列
-   * [
+    [
       {
-        folderName: '商品文件夹1',
-        videos: [{fragmentDuration: 20, fileName: '1.mp4'}, {fragmentDuration: 20, fileName: '2.mp4'}]
-      },
-      {
-        folderName: '商品文件夹2',
-        videos: [{fragmentDuration: 20, fileName: '3.mp4'}, {fragmentDuration: 20, fileName: '4.mp4'}]
+        folderName: 'C://任务目录/商品1文件夹',
+        videos: [{fragmentDuration: 20, fileName: '1.mp4'}, ...3],
+        childFolders?: [
+          {
+            folderName: 'C://任务目录/视频分镜任务/子商品文件夹1',
+            videos: [{fragmentDuration: 20, fileName: '1.mp4'}, ...3]
+          },
+          ...3
+        ]
       }
     ]
    */
-  s4TasksQueue: OrderedFolderItem[];
-
+  s4TasksQueue: S4VideosChunk[];
   /**
    * 第五步任务队列
    */
@@ -333,7 +351,7 @@ class WorkbenchManager {
       | 's5TasksQueue'
       | 's6TasksQueue'
     >,
-    data: string | OrderedVideosChunk | OrderedFolderItem
+    data: string | S3VideosChunk | S4VideosChunk
   ): Promise<void> {
     await this.db.read();
 
@@ -341,10 +359,10 @@ class WorkbenchManager {
       this.db.data[key].push(data as string);
     }
     if (key === 's3TasksQueue') {
-      this.db.data[key].push(data as OrderedVideosChunk);
+      this.db.data[key].push(data as S3VideosChunk);
     }
     if (key === 's4TasksQueue') {
-      this.db.data[key].push(data as OrderedFolderItem);
+      this.db.data[key].push(data as S4VideosChunk);
     }
     if (key === 's5TasksQueue') {
       this.db.data[key].push(data as string);
@@ -374,7 +392,7 @@ class WorkbenchManager {
       | 's5TasksQueue'
       | 's6TasksQueue'
     >
-  ): Promise<string | OrderedVideosChunk | OrderedFolderItem | undefined> {
+  ): Promise<S2VideosChunk | S3VideosChunk | S4VideosChunk | undefined> {
     await this.db.read();
 
     // 检查队列是否为空
@@ -383,15 +401,11 @@ class WorkbenchManager {
     }
 
     let array = this.db.data[key];
-    let removedTask:
-      | string
-      | OrderedVideosChunk
-      | OrderedFolderItem
-      | undefined;
+    let removedTask: S2VideosChunk | S3VideosChunk | S4VideosChunk | undefined;
 
     if (key === 's3TasksQueue') {
       // 找到第一个字幕处理完的任务
-      const index = (array as OrderedVideosChunk[]).findIndex(
+      const index = (array as S3VideosChunk[]).findIndex(
         x => x.subtitleRemoveOver
       );
 

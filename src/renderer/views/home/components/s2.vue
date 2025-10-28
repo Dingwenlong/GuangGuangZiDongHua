@@ -10,15 +10,17 @@
         :disabled="s1.taskDirectory !== ''" />
       <div
         class="w-3/12 h-32 text-[12px] leading-35 text-gray-400 content-center text-right">
-        自动持续检测{{ s2.autoMonitoring ? '开启' : '关闭' }}
-        <Switch v-model:checked="s2.autoMonitoring" size="small" />
+        自动持续检测{{ s2.autoHandOnWorkflow ? '开启' : '关闭' }}
+        <Switch v-model:checked="s2.autoHandOnWorkflow" size="small" />
       </div>
     </div>
     <div class="w-full flex flex-row justify-end gap-10">
       <Button
         type="primary"
-        @click="() => startOrStopTaskHandler(!s2.autoMonitoring)"
-        >{{ !s2.autoMonitoring ? '开始' : '结束' }}执行素材去水印任务</Button
+        @click="() => startOrStopTaskHandler(!s2.autoHandOnWorkflow)"
+        >{{
+          !s2.autoHandOnWorkflow ? '开始' : '结束'
+        }}执行素材去水印任务</Button
       >
     </div>
   </div>
@@ -78,8 +80,7 @@ const s1 = reactive({
   taskDirectory: 'test',
 });
 const s2 = ref({
-  autoMonitoring: false,
-  intervalSeconds: 5,
+  autoHandOnWorkflow: false,
 });
 
 const columns: TableColumnType[] = [
@@ -113,16 +114,13 @@ function openFolder(path: string) {
   shell.openPath(path);
 }
 
-const videoMonitoringRunning = ref(false);
-
 function startOrStopTaskHandler(start = true) {
-  if (start && s1.taskDirectory && !videoMonitoringRunning.value) {
-    videoMonitoringRunning.value = true;
-    ipcRendererChannel.StartMonitoringDirectory.invoke(s1.taskDirectory);
-  } else if (!start && videoMonitoringRunning.value) {
-    videoMonitoringRunning.value = false;
-    ipcRendererChannel.StopMonitoringDirectory.invoke();
-  }
+  // 更新 s2 的 running 状态
+  ipcRendererChannel.UpdateWorkbenchData.invoke({
+    stepNo: 's2',
+    sData: { autoHandOnWorkflow: s2.value.autoHandOnWorkflow, running: start },
+  });
+
   setCookie();
 }
 
@@ -203,14 +201,13 @@ onMounted(async () => {
   });
 
   // 获取历史缓存数据
-  await ipcRendererChannel.GetWorkbenchData.invoke('s2').then(
-    (workbench: any) => {
-      s2.value = workbench ?? {
-        autoMonitoring: false,
-        intervalSeconds: 5,
-      };
-    }
-  );
+  // await ipcRendererChannel.GetWorkbenchData.invoke('s2').then(
+  //   (workbench: any) => {
+  //     s2.value = workbench ?? {
+  //       autoHandOnWorkflow: false,
+  //     };
+  //   }
+  // );
 
   // 绑定文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
@@ -218,7 +215,9 @@ onMounted(async () => {
       console.log(arg);
       data.value = arg.structure
         .filter(dir => {
-          return dir.type === 'directory' && dir.name === '视频去字幕任务';
+          const [first, seconds, ..._] = dir.name;
+
+          return dir.type === 'directory' && first === 'S' && seconds === '2';
         })
         .map(dir => {
           return {
