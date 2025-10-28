@@ -257,7 +257,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         audioProcessCount++;
 
         // 加入S6队列
-        await workbenchManager.enqueueTask('s6TasksQueue', videoPath);
+        // await workbenchManager.enqueueTask('s6TasksQueue', videoPath);
       } catch (error) {
         console.error('S5任务执行失败:', error);
       }
