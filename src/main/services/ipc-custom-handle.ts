@@ -19,6 +19,7 @@ import PlaywrightScript from './playwright';
 import { formatArrayDiff } from '@main/utils/array';
 import VideoSceneSplitter from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
+import S5TaskProcessor from './s5-task-processor';
 
 /**
  * 自定义全局
@@ -83,6 +84,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const videoSceneSplitter = new VideoSceneSplitter();
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
+  const s5TaskProcessor = new S5TaskProcessor(workbenchManager, audioExtractor, audioProcessor);
   const isTest = false;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await workbenchManager.getByKey('s1');
@@ -192,11 +194,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   // s5
   // 每5秒执行一次，并发数为1
-  // 添加音频处理计数器
-  let audioProcessCount = 0;
-  const latencyTime = 3 * 60 * 1000; // 3分钟等待时间
-  let isRebooting = false; // 重启标志
-
   scheduler.addTask(
     {
       name: 's5Task',
@@ -205,64 +202,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       enabled: true,
     },
     async () => {
-      // 如果正在重启，跳过当前任务
-      if (isRebooting) {
-        console.log('服务正在重启中，等待3分钟后再继续处理任务');
-        return;
-      }
-
-      const task = await workbenchManager.dequeueTask('s5TasksQueue');
-      if (!task) return;
-      console.log('执行任务s5');
-
-      try {
-        // 处理音频提取任务
-        const videoPath = task as string;
-        // 提取音频
-        const extractResult = await audioExtractor.extractAudio(videoPath);
-        console.log('音频提取完成:', extractResult);
-
-        // 检查是否需要重启服务
-        if (audioProcessCount >= 5) {
-          console.log(`已处理${audioProcessCount}个音频文件，准备重启服务`);
-
-          // 设置重启标志
-          isRebooting = true;
-
-          try {
-            // 调用重启服务方法，不需要等待返回
-            void audioProcessor.rebootService();
-            console.log('已发送重启服务请求');
-          } catch (rebootError) {
-            console.error('重启服务失败，但继续执行:', rebootError);
-          }
-
-          // 重置计数器
-          audioProcessCount = 0;
-
-          // 等待3分钟
-          console.log('等待3分钟后继续处理...');
-          await new Promise(resolve => setTimeout(resolve, latencyTime));
-          console.log('等待时间结束，继续处理任务');
-
-          // 重置重启标志
-          isRebooting = false;
-        }
-
-        // 处理音频
-        const processResult = await audioProcessor.processAudio(
-          extractResult.outputPath
-        );
-        console.log('音频处理完成:', processResult);
-
-        // 增加处理计数
-        audioProcessCount++;
-
-        // 加入S6队列
-        // await workbenchManager.enqueueTask('s6TasksQueue', videoPath);
-      } catch (error) {
-        console.error('S5任务执行失败:', error);
-      }
+      await s5TaskProcessor.execute();
     }
   );
   workbenchManager.watch('s5', (newValue: WorkbenchStoreSchema['s5']) => {
