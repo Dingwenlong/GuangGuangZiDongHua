@@ -55,6 +55,16 @@ export class VideoSceneSplitter extends EventEmitter {
   constructor() {
     super();
     this.ffmpegUtil = FFmpegUtil.getInstance();
+    this.setupFFmpegEvents();
+  }
+
+  /**
+   * 设置FFmpeg事件监听
+   */
+  private setupFFmpegEvents(): void {
+    this.ffmpegUtil.on('log', (event: LogEvent) => {
+      this.writeLog(event.message, event.type);
+    });
   }
 
   public async workflow(

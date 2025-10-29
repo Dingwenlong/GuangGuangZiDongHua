@@ -54,7 +54,6 @@ export class FFmpegUtil extends EventEmitter {
     } else {
       // 尝试使用系统 PATH 中的 ffmpeg
       this.ffmpegPath = 'ffmpeg';
-      console.warn('使用系统 PATH 中的 ffmpeg');
     }
 
     // 设置 ffprobe 路径
@@ -65,7 +64,6 @@ export class FFmpegUtil extends EventEmitter {
     } else {
       // 尝试使用系统 PATH 中的 ffprobe
       this.ffprobePath = 'ffprobe';
-      console.warn('使用系统 PATH 中的 ffprobe');
     }
 
     // 设置 fluent-ffmpeg 路径
@@ -75,9 +73,6 @@ export class FFmpegUtil extends EventEmitter {
     if (this.ffprobePath !== 'ffprobe') {
       ffmpeg.setFfprobePath(this.ffprobePath);
     }
-
-    console.log(`FFmpeg 路径: ${this.ffmpegPath}`);
-    console.log(`FFprobe 路径: ${this.ffprobePath}`);
   }
 
   /**
@@ -133,6 +128,11 @@ export class FFmpegUtil extends EventEmitter {
         normalizedPath,
       ];
 
+      this.emit('log', {
+        message: `[FFprobe命令] 检查视频是否包含音频流 ${this.ffprobePath}`,
+        type: 'debug',
+      });
+
       const result = spawnSync(this.ffprobePath, args, {
         encoding: 'utf8',
         windowsHide: true,
@@ -144,7 +144,6 @@ export class FFmpegUtil extends EventEmitter {
       }
 
       const hasAudio = (result.stdout || '').trim().includes('audio');
-
       resolve(hasAudio);
     });
   }
@@ -178,6 +177,11 @@ export class FFmpegUtil extends EventEmitter {
         '-', // 输出到空
       ];
 
+      this.emit('log', {
+        message: `[FFmpeg命令] 检测指定时间范围内是否有场景变化 ${this.ffmpegPath}`,
+        type: 'debug',
+      });
+
       const ffmpegProcess = spawn(this.ffmpegPath, args, { windowsHide: true });
 
       let stderrOutput = '';
@@ -186,6 +190,7 @@ export class FFmpegUtil extends EventEmitter {
       });
 
       ffmpegProcess.on('error', error => {
+        console.error(`[FFmpeg错误] 场景检测进程错误: ${error.message}`);
         reject(new Error(`场景检测进程错误: ${error.message}`));
       });
 
@@ -193,7 +198,11 @@ export class FFmpegUtil extends EventEmitter {
         // 在stderr输出中查找场景变化信息
         // showinfo滤镜会输出匹配的帧信息，包含"pts_time:"字段
         const sceneChangeDetected = /pts_time:([0-9.]+)/.test(stderrOutput);
-
+        console.log(
+          `[场景检测] 结果: ${
+            sceneChangeDetected ? '检测到场景变化' : '未检测到场景变化'
+          }`
+        );
         resolve(sceneChangeDetected);
       });
     });
@@ -260,6 +269,11 @@ export class FFmpegUtil extends EventEmitter {
 
       args.push(normalizedOutput);
 
+      this.emit('log', {
+        message: `[FFmpeg命令] 提取视频片段 ${this.ffmpegPath}`,
+        type: 'debug',
+      });
+
       const ffmpegProcess = spawn(this.ffmpegPath, args, { windowsHide: true });
 
       let stderrOutput = '';
@@ -268,11 +282,16 @@ export class FFmpegUtil extends EventEmitter {
       });
 
       ffmpegProcess.on('error', error => {
+        console.error(`[FFmpeg错误] 片段提取进程错误: ${error.message}`);
         reject(new Error(`片段提取进程错误: ${error.message}`));
       });
 
       ffmpegProcess.on('close', code => {
         if (code === 0) {
+          this.emit('log', {
+            message: `[片段提取] 成功提取片段: ${outputPath}`,
+            type: 'debug',
+          });
           resolve();
         } else {
           const errorMessage = [
@@ -284,6 +303,7 @@ export class FFmpegUtil extends EventEmitter {
             'FFmpeg错误输出:',
             stderrOutput,
           ].join('\n');
+          console.error(`[FFmpeg错误] ${errorMessage}`);
           reject(new Error(errorMessage));
         }
       });
@@ -673,9 +693,14 @@ export class FFmpegUtil extends EventEmitter {
           });
         })
         .on('end', () => {
+          this.emit('log', {
+            message: `[FFmpeg完成] ${operationName} 操作成功完成`,
+            type: 'debug',
+          });
           resolve();
         })
         .on('error', err => {
+          console.error(`[FFmpeg错误] ${operationName} 失败: ${err.message}`);
           reject(new Error(`FFmpeg处理失败: ${err.message}`));
         })
         .run();

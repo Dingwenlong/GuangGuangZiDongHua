@@ -292,9 +292,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   // 输出日志
   // s2队列监视
   workbenchManager.watchArray('s2TasksQueue', (diff, newValue, oldValue) => {
-    const diffMessage = formatArrayDiff(diff);
+    // const diffMessage = formatArrayDiff(diff);
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message: `S2去字幕任务队列发生变化: ${diffMessage}`,
+      message: `S2去字幕任务队列发生变化`,
       type: 'info',
     });
     if (diff.added.length > 0) {
@@ -306,9 +306,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   // s3队列监视
   workbenchManager.watchArray('s3TasksQueue', (diff, newValue, oldValue) => {
-    const diffMessage = formatArrayDiff(diff);
+    // const diffMessage = formatArrayDiff(diff);
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message: `S3视频拆分任务队列发生变化: ${diffMessage}`,
+      message: `S3视频拆分任务队列发生变化`,
       type: 'info',
     });
     if (diff.added.length > 0) {
@@ -320,9 +320,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
   // s4队列监视
   workbenchManager.watchArray('s4TasksQueue', (diff, newValue, oldValue) => {
-    const diffMessage = formatArrayDiff(diff);
+    // const diffMessage = formatArrayDiff(diff);
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message: `S4视频切割分镜任务队列发生变化: ${diffMessage}`,
+      message: `S4视频切割分镜任务队列发生变化`,
       type: 'info',
     });
     if (diff.added.length > 0) {
@@ -335,9 +335,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
 
   // s5队列监视
   workbenchManager.watchArray('s5TasksQueue', (diff, newValue, oldValue) => {
-    const diffMessage = formatArrayDiff(diff);
+    // const diffMessage = formatArrayDiff(diff);
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message: `S5任务队列发生变化: ${diffMessage}`,
+      message: `S5任务队列发生变化`,
       type: 'info',
     });
     if (diff.added.length > 0) {
