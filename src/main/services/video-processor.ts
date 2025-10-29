@@ -105,6 +105,9 @@ class VideoProcessor extends EventEmitter {
       }: ${event.progress.toFixed(1)}%`;
       this.updateStatus();
     });
+    this.ffmpegUtil.on('log', (event: LogEvent) => {
+      this.writeLog(event.message, event.type);
+    });
   }
 
   /**
@@ -199,6 +202,8 @@ class VideoProcessor extends EventEmitter {
       this.watcher = null;
       this.startFileWatching();
     }
+    // 创建必要的子目录
+    this.createSubdirectories();
   }
 
   /**

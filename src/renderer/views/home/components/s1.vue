@@ -131,7 +131,7 @@ onMounted(() => {
         tableData.value = arg.structure
           .filter(dir => {
             const [first, seconds, ..._] = dir.name;
-            return dir.type === 'directory' && first === 'S' && seconds === '1';
+            return dir.type === 'directory' && first === 'S'; //&& seconds === '1';
           })
           .map(dir => {
             return {
