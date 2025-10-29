@@ -71,7 +71,7 @@ onMounted(() => {
       message: arg.message,
       type: arg.type,
     });
-    if (logData.value.length > 100) {
+    if (logData.value.length > 1000) {
       logData.value.shift();
     }
   });

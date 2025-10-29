@@ -335,11 +335,14 @@ export class FFmpegUtil extends EventEmitter {
           `-af atempo=${speed > 2 ? 2 : speed}`,
           ...(speed > 2 ? ['-af', `atempo=${speed / 2}`] : []),
           '-t 20',
-          '-c:v libx264',
-          '-preset fast',
-          '-crf 23',
-          '-c:a aac',
-          '-b:a 128k',
+          '-c:v libx264', // 视频编码器
+          '-preset fast', // 编码速度
+          '-crf 23', // 质量参数
+          '-c:a aac', // 音频编码器
+          '-b:a 128k', // 音频比特率
+          '-vf scale=720:1280', // 统一分辨率
+          '-r 30', // 统一帧率
+          '-movflags +faststart', // 优化网络播放
         ])
         .output(outputPath);
 
@@ -361,11 +364,14 @@ export class FFmpegUtil extends EventEmitter {
       const command = ffmpeg(inputPath)
         .outputOptions([
           '-t 20',
-          '-c:v libx264',
-          '-preset fast',
-          '-crf 23',
-          '-c:a aac',
-          '-b:a 128k',
+          '-c:v libx264', // 视频编码器
+          '-preset fast', // 编码速度
+          '-crf 23', // 质量参数
+          '-c:a aac', // 音频编码器
+          '-b:a 128k', // 音频比特率
+          '-vf scale=720:1280', // 统一分辨率
+          '-r 30', // 统一帧率
+          '-movflags +faststart', // 优化网络播放
         ])
         .output(outputPath);
 
@@ -376,7 +382,7 @@ export class FFmpegUtil extends EventEmitter {
   }
 
   /**
-   * 合并视频文件（直接合并，不转码）
+   * 合并视频文件
    */
   public concatVideos(
     videoFiles: string[],
@@ -407,13 +413,17 @@ export class FFmpegUtil extends EventEmitter {
       const command = ffmpeg()
         .input(listPath)
         .inputOptions(['-f concat', '-safe 0'])
-        .outputOptions([
-          '-c:v libx264',
-          '-preset fast',
-          '-crf 23',
-          '-c:a aac',
-          '-b:a 128k',
-        ])
+        .outputOptions(['-c copy']) // 使用copy模式，因为已经统一编码
+        // .outputOptions([
+        //   '-c:v libx264', // 视频编码器
+        //   '-preset fast', // 编码速度
+        //   '-crf 23', // 质量参数
+        //   '-c:a aac', // 音频编码器
+        //   '-b:a 128k', // 音频比特率
+        //   '-vf scale=720:1280', // 统一分辨率
+        //   '-r 30', // 统一帧率
+        //   '-movflags +faststart', // 优化网络播放
+        // ])
         .output(outputPath);
 
       this.runCommand(command, operationName)

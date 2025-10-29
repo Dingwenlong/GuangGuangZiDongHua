@@ -44,7 +44,7 @@ export interface SplitResult {
 }
 
 /**
- * 视频场景分割工具类
+ * 视频场景分割
  * 功能：将视频按场景分割，先截取4秒，检查后续2秒是否有场景变化，
  *       如果没有变化则延长至5秒，最多分割4个片段
  */
@@ -73,132 +73,151 @@ export class VideoSceneSplitter extends EventEmitter {
   ) {
     videosChunk.childFolders = [];
 
-    // -----------视频切片---------
-    this.writeLog(`开始执行视频切片任务${videosChunk.folderName}`);
-    for (const video of videosChunk.videos) {
-      const videoPath = videosChunk.folderName + video.fileName;
-      const outputDir = `${insertDirectoryBeforeLast(
-        videosChunk.folderName,
-        '视频分镜任务'
-      )}---${video.fileNo}`;
+    try {
+      // -----------视频切片---------
+      this.writeLog(`开始执行视频切片任务${videosChunk.folderName}`);
+      for (const video of videosChunk.videos) {
+        const videoPath = videosChunk.folderName + video.fileName;
+        const outputDir = `${insertDirectoryBeforeLast(
+          videosChunk.folderName,
+          '视频分镜任务'
+        )}---${video.fileNo}`;
 
-      const splitResult = await this.split(videoPath, outputDir, options);
-      if (splitResult)
-        videosChunk.childFolders.push({
-          folderName: outputDir,
-          videos: splitResult.segments.map((segment, i) => {
-            return {
-              fileName: segment.replace(outputDir + '\\', ''),
-              fragmentDuration: 0,
-              fileNo: i + 1,
-            };
-          }),
-        });
-    }
-
-    // -----------混剪---------
-    this.writeLog(`开始执行视频混剪任务${videosChunk.folderName}`);
-    // 混剪视频1：1-scene_1 + 2-scene_2 + 3-scene_3 + 4-scene_4
-    const montage1: string[] = new Array(4).fill('');
-    // 混剪视频2：2-scene_1 + 1-scene_2 + 4-scene_3 + 3-scene_4
-    const montage2: string[] = new Array(4).fill('');
-    // 混剪视频3：3-scene_1 + 4-scene_2 + 1-scene_3 + 2-scene_4
-    const montage3: string[] = new Array(4).fill('');
-    // 混剪视频4：4-scene_1 + 3-scene_2 + 2-scene_3 + 1-scene_4
-    const montage4: string[] = new Array(4).fill('');
-    videosChunk.childFolders.forEach(childFolder => {
-      const endChar = childFolder.folderName.slice(-1);
-      switch (endChar) {
-        case '1':
-          childFolder.videos.forEach(video => {
-            const scenePath = path.join(childFolder.folderName, video.fileName);
-            // 1-1
-            if (video.fileNo === 1) montage1[0] = scenePath;
-            // 1-2
-            if (video.fileNo === 2) montage2[1] = scenePath;
-            // 1-3
-            if (video.fileNo === 3) montage3[2] = scenePath;
-            // 1-4
-            if (video.fileNo === 4) montage4[3] = scenePath;
+        const splitResult = await this.split(videoPath, outputDir, options);
+        if (splitResult)
+          videosChunk.childFolders.push({
+            folderName: outputDir,
+            videos: splitResult.segments.map((segment, i) => {
+              return {
+                fileName: segment.replace(outputDir + '\\', ''),
+                fragmentDuration: 0,
+                fileNo: i + 1,
+              };
+            }),
           });
-          break;
-        case '2':
-          childFolder.videos.forEach(video => {
-            const scenePath = path.join(childFolder.folderName, video.fileName);
-            // 2-1
-            if (video.fileNo === 1) montage2[0] = scenePath;
-            // 2-2
-            if (video.fileNo === 2) montage1[1] = scenePath;
-            // 2-3
-            if (video.fileNo === 3) montage4[2] = scenePath;
-            // 2-4
-            if (video.fileNo === 4) montage3[3] = scenePath;
-          });
-          break;
-        case '3':
-          childFolder.videos.forEach(video => {
-            const scenePath = path.join(childFolder.folderName, video.fileName);
-            // 3-1
-            if (video.fileNo === 1) montage3[0] = scenePath;
-            // 3-2
-            if (video.fileNo === 2) montage4[1] = scenePath;
-            // 3-3
-            if (video.fileNo === 3) montage1[2] = scenePath;
-            // 3-4
-            if (video.fileNo === 4) montage2[3] = scenePath;
-          });
-          break;
-        case '4':
-          childFolder.videos.forEach(video => {
-            const scenePath = path.join(childFolder.folderName, video.fileName);
-            // 4-1
-            if (video.fileNo === 1) montage4[0] = scenePath;
-            // 4-2
-            if (video.fileNo === 2) montage3[1] = scenePath;
-            // 4-3
-            if (video.fileNo === 3) montage2[2] = scenePath;
-            // 4-4
-            if (video.fileNo === 4) montage1[3] = scenePath;
-          });
-          break;
-        default:
-          break;
       }
-    });
-    const montages = [montage1, montage2, montage3, montage4];
-    console.log('montages', montages);
-    const videos: string[] = [];
-    let i = 1;
-    for (const montage of montages) {
-      const newFolderName = videosChunk.folderName.replace('S3---', 'S4---');
-      const outFileName = `${path.basename(newFolderName)}---${i}${path.extname(
-        montage[0]
-      )}`;
-      // 当前文件路径
-      await this.montage(
-        montage,
-        path.join(videosChunk.folderName, outFileName)
+
+      // -----------混剪---------
+      this.writeLog(`开始执行视频混剪任务${videosChunk.folderName}`);
+      // 混剪视频1：1-scene_1 + 2-scene_2 + 3-scene_3 + 4-scene_4
+      const montage1: string[] = new Array(4).fill('');
+      // 混剪视频2：2-scene_1 + 1-scene_2 + 4-scene_3 + 3-scene_4
+      const montage2: string[] = new Array(4).fill('');
+      // 混剪视频3：3-scene_1 + 4-scene_2 + 1-scene_3 + 2-scene_4
+      const montage3: string[] = new Array(4).fill('');
+      // 混剪视频4：4-scene_1 + 3-scene_2 + 2-scene_3 + 1-scene_4
+      const montage4: string[] = new Array(4).fill('');
+      videosChunk.childFolders.forEach(childFolder => {
+        const endChar = childFolder.folderName.slice(-1);
+        switch (endChar) {
+          case '1':
+            childFolder.videos.forEach(video => {
+              const scenePath = path.join(
+                childFolder.folderName,
+                video.fileName
+              );
+              // 1-1
+              if (video.fileNo === 1) montage1[0] = scenePath;
+              // 1-2
+              if (video.fileNo === 2) montage2[1] = scenePath;
+              // 1-3
+              if (video.fileNo === 3) montage3[2] = scenePath;
+              // 1-4
+              if (video.fileNo === 4) montage4[3] = scenePath;
+            });
+            break;
+          case '2':
+            childFolder.videos.forEach(video => {
+              const scenePath = path.join(
+                childFolder.folderName,
+                video.fileName
+              );
+              // 2-1
+              if (video.fileNo === 1) montage2[0] = scenePath;
+              // 2-2
+              if (video.fileNo === 2) montage1[1] = scenePath;
+              // 2-3
+              if (video.fileNo === 3) montage4[2] = scenePath;
+              // 2-4
+              if (video.fileNo === 4) montage3[3] = scenePath;
+            });
+            break;
+          case '3':
+            childFolder.videos.forEach(video => {
+              const scenePath = path.join(
+                childFolder.folderName,
+                video.fileName
+              );
+              // 3-1
+              if (video.fileNo === 1) montage3[0] = scenePath;
+              // 3-2
+              if (video.fileNo === 2) montage4[1] = scenePath;
+              // 3-3
+              if (video.fileNo === 3) montage1[2] = scenePath;
+              // 3-4
+              if (video.fileNo === 4) montage2[3] = scenePath;
+            });
+            break;
+          case '4':
+            childFolder.videos.forEach(video => {
+              const scenePath = path.join(
+                childFolder.folderName,
+                video.fileName
+              );
+              // 4-1
+              if (video.fileNo === 1) montage4[0] = scenePath;
+              // 4-2
+              if (video.fileNo === 2) montage3[1] = scenePath;
+              // 4-3
+              if (video.fileNo === 3) montage2[2] = scenePath;
+              // 4-4
+              if (video.fileNo === 4) montage1[3] = scenePath;
+            });
+            break;
+          default:
+            break;
+        }
+      });
+      const montages = [montage1, montage2, montage3, montage4];
+      console.log('montages', montages);
+      const videos: string[] = [];
+      let i = 1;
+      for (const montage of montages) {
+        const newFolderName = videosChunk.folderName.replace('S3---', 'S4---');
+        const outFileName = `${path.basename(
+          newFolderName
+        )}---${i}${path.extname(montage[0])}`;
+        // 当前文件路径
+        await this.montage(
+          montage,
+          path.join(videosChunk.folderName, outFileName)
+        );
+        // 为下一步提供的文件路径
+        videos.push(path.join(newFolderName, outFileName));
+        i++;
+      }
+      // 删除S3---开头的视频
+      const removedFiles = removeFilesByPrefix(
+        [videosChunk.folderName],
+        'S3---',
+        {
+          recursive: true,
+        }
       );
-      // 为下一步提供的文件路径
-      videos.push(path.join(newFolderName, outFileName));
-      i++;
+      this.writeLog(
+        `${videosChunk.folderName}目录已删除S3开头的视频(${removedFiles})`
+      );
+      // 商品目录的 S3 改为 S4
+      await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
+      this.writeLog(`${videosChunk.folderName}目录已重命名为S4`);
+      this.emit('s4OkCallback', videos);
+      this.writeLog(`视频混剪任务混剪完成${videosChunk.folderName}`);
+    } catch (error) {
+      this.writeLog(
+        `视频${videosChunk.folderName}切片混剪异常：${error}`,
+        'error'
+      );
     }
-    // 删除S3---开头的视频
-    const removedFiles = removeFilesByPrefix(
-      [videosChunk.folderName],
-      'S3---',
-      {
-        recursive: true,
-      }
-    );
-    this.writeLog(
-      `${videosChunk.folderName}目录已删除S3开头的视频(${removedFiles})`
-    );
-    // 商品目录的 S3 改为 S4
-    await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
-    this.writeLog(`${videosChunk.folderName}目录已重命名为S4`);
-    this.emit('s4OkCallback', videos);
-    this.writeLog(`视频混剪任务混剪完成${videosChunk.folderName}`);
   }
 
   /**
