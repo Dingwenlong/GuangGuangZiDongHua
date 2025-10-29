@@ -407,7 +407,13 @@ export class FFmpegUtil extends EventEmitter {
       const command = ffmpeg()
         .input(listPath)
         .inputOptions(['-f concat', '-safe 0'])
-        .outputOptions(['-c copy']) // 使用copy模式，直接合并不转码
+        .outputOptions([
+          '-c:v libx264',
+          '-preset fast',
+          '-crf 23',
+          '-c:a aac',
+          '-b:a 128k',
+        ])
         .output(outputPath);
 
       this.runCommand(command, operationName)
