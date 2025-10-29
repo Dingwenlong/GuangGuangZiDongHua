@@ -101,66 +101,54 @@ export class VideoSceneSplitter extends EventEmitter {
       switch (endChar) {
         case '1':
           childFolder.videos.forEach(video => {
+            const scenePath = path.join(childFolder.folderName, video.fileName);
             // 1-1
-            if (video.fileNo === 1)
-              montage1[0] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 1) montage1[0] = scenePath;
             // 1-2
-            if (video.fileNo === 2)
-              montage2[1] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 2) montage2[1] = scenePath;
             // 1-3
-            if (video.fileNo === 3)
-              montage3[2] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 3) montage3[2] = scenePath;
             // 1-4
-            if (video.fileNo === 4)
-              montage4[3] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 4) montage4[3] = scenePath;
           });
           break;
         case '2':
           childFolder.videos.forEach(video => {
+            const scenePath = path.join(childFolder.folderName, video.fileName);
             // 2-1
-            if (video.fileNo === 1)
-              montage2[0] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 1) montage2[0] = scenePath;
             // 2-2
-            if (video.fileNo === 2)
-              montage1[1] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 2) montage1[1] = scenePath;
             // 2-3
-            if (video.fileNo === 3)
-              montage4[2] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 3) montage4[2] = scenePath;
             // 2-4
-            if (video.fileNo === 4)
-              montage3[3] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 4) montage3[3] = scenePath;
           });
           break;
         case '3':
           childFolder.videos.forEach(video => {
+            const scenePath = path.join(childFolder.folderName, video.fileName);
             // 3-1
-            if (video.fileNo === 1)
-              montage3[0] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 1) montage3[0] = scenePath;
             // 3-2
-            if (video.fileNo === 2)
-              montage4[1] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 2) montage4[1] = scenePath;
             // 3-3
-            if (video.fileNo === 3)
-              montage1[2] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 3) montage1[2] = scenePath;
             // 3-4
-            if (video.fileNo === 4)
-              montage2[3] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 4) montage2[3] = scenePath;
           });
           break;
         case '4':
           childFolder.videos.forEach(video => {
+            const scenePath = path.join(childFolder.folderName, video.fileName);
             // 4-1
-            if (video.fileNo === 1)
-              montage4[0] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 1) montage4[0] = scenePath;
             // 4-2
-            if (video.fileNo === 2)
-              montage3[1] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 2) montage3[1] = scenePath;
             // 4-3
-            if (video.fileNo === 3)
-              montage2[2] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 3) montage2[2] = scenePath;
             // 4-4
-            if (video.fileNo === 4)
-              montage1[3] = childFolder.folderName + video.fileName;
+            if (video.fileNo === 4) montage1[3] = scenePath;
           });
           break;
         default:
@@ -168,33 +156,39 @@ export class VideoSceneSplitter extends EventEmitter {
       }
     });
     const montages = [montage1, montage2, montage3, montage4];
+    console.log('montages', montages);
     const videos: string[] = [];
     let i = 1;
     for (const montage of montages) {
-      const outFileName = `${path.basename(
-        videosChunk.folderName.replace('S3---', 'S4---')
-      )}---${i}`;
-      const outputPosition = path.join(videosChunk.folderName, outFileName);
-      await this.montage(montage, outputPosition);
-      videos.push(outputPosition);
+      const newFolderName = videosChunk.folderName.replace('S3---', 'S4---');
+      const outFileName = `${path.basename(newFolderName)}---${i}${path.extname(
+        montage[0]
+      )}`;
+      // 当前文件路径
+      await this.montage(
+        montage,
+        path.join(videosChunk.folderName, outFileName)
+      );
+      // 为下一步提供的文件路径
+      videos.push(path.join(newFolderName, outFileName));
       i++;
-      // 删除S3---开头的视频
-      const removedFiles = removeFilesByPrefix(
-        [videosChunk.folderName],
-        'S3---',
-        {
-          recursive: true,
-        }
-      );
-      this.writeLog(
-        `${videosChunk.folderName}目录已删除S3开头的视频(${removedFiles})`
-      );
-      // 商品目录的 S3 改为 S4
-      await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
-      this.writeLog(`${videosChunk.folderName}目录重命名为S4`);
     }
-    this.writeLog(`视频混剪任务混剪完成${videosChunk.folderName}`);
+    // 删除S3---开头的视频
+    const removedFiles = removeFilesByPrefix(
+      [videosChunk.folderName],
+      'S3---',
+      {
+        recursive: true,
+      }
+    );
+    this.writeLog(
+      `${videosChunk.folderName}目录已删除S3开头的视频(${removedFiles})`
+    );
+    // 商品目录的 S3 改为 S4
+    await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
+    this.writeLog(`${videosChunk.folderName}目录已重命名为S4`);
     this.emit('s4OkCallback', videos);
+    this.writeLog(`视频混剪任务混剪完成${videosChunk.folderName}`);
   }
 
   /**
@@ -363,9 +357,8 @@ export class VideoSceneSplitter extends EventEmitter {
    * 蒙太奇（混剪）
    */
   public async montage(allVideoFiles: string[], outputPath: string) {
-    this.writeLog(`开始混剪 ${allVideoFiles.length}`);
+    this.writeLog(`开始混剪 ${allVideoFiles}-->${outputPath}`);
     await this.ffmpegUtil.concatVideos(allVideoFiles, outputPath);
-
     this.writeLog(`视频混剪成功: ${outputPath}`, 'success');
   }
 

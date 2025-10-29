@@ -84,7 +84,11 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const videoSceneSplitter = new VideoSceneSplitter();
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
-  const s5TaskProcessor = new S5TaskProcessor(workbenchManager, audioExtractor, audioProcessor);
+  const s5TaskProcessor = new S5TaskProcessor(
+    workbenchManager,
+    audioExtractor,
+    audioProcessor
+  );
   const isTest = false;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await workbenchManager.getByKey('s1');
@@ -155,7 +159,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       if (!task) return;
       console.log('执行任务s3');
 
-      videoProcessor.splitVideo(task as S3VideosChunk);
+      await videoProcessor.splitVideo(task as S3VideosChunk);
     }
   );
   workbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
@@ -189,8 +193,8 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     }
   );
   workbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
-    if (!newValue.running) scheduler.disableTask('s3Task');
-    else scheduler.enableTask('s3Task');
+    if (!newValue.running) scheduler.disableTask('s4Task');
+    else scheduler.enableTask('s4Task');
   });
   // s5
   // 每5秒执行一次，并发数为1
@@ -265,23 +269,20 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     await workbenchManager.updateSubtitleRemoveOver(videoPath, true);
   });
   // 第三步完成之后
-  videoProcessor.on('s3OkCallback', async (newPathOfChains: FolderItem[]) => {
-    // 增加第四步队列
-    newPathOfChains.forEach(async pathOfChain => {
-      await workbenchManager.enqueueTask(
-        's4TasksQueue',
-        pathOfChain as S4VideosChunk
-      );
-    });
-  });
-
+  videoProcessor.on(
+    's3OkCallback',
+    async (newPathOfChains: S4VideosChunk[]) => {
+      for (const newPathOfChain of newPathOfChains) {
+        await workbenchManager.enqueueTask('s4TasksQueue', newPathOfChain);
+      }
+    }
+  );
   // 第四步完成之后
   videoSceneSplitter.on('s4OkCallback', async (videos: string[]) => {
     for (const video of videos) {
-      await workbenchManager.enqueueTask('s4TasksQueue', video);
+      await workbenchManager.enqueueTask('s5TasksQueue', video);
     }
   });
-
   // 第五步完成之后
   audioExtractor.on('s5OkCallback', result => {
     // 增加第六步队列

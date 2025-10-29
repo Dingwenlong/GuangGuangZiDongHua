@@ -635,7 +635,6 @@ class VideoProcessor extends EventEmitter {
           }),
         } satisfies FolderItem);
       });
-      console.log('VideoSegment', videoSegment);
 
       this.writeLog(`视频 ${videosChunk.videoFilePath} 开始拆分`);
 
