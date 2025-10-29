@@ -544,15 +544,13 @@ class AudioProcessor extends EventEmitter {
       // 创建新文件名
       let newFileName: string;
       let originalPath: string = targetPath;
+      let originalVideoName: string = '';
 
       if (isVideoProcessing && videoPath) {
         // 视频处理 - 使用视频文件名
         originalPath = videoPath;
-        const originalVideoName = path.basename(
-          videoPath,
-          path.extname(videoPath)
-        );
-        // 如果文件名以S5开头，则改为S6
+        originalVideoName = path.basename(videoPath, path.extname(videoPath));
+        // 如果文件名以S4开头，则改为S5
         if (originalVideoName.startsWith('S4')) {
           newFileName = `S5${originalVideoName.substring(2)}${fileExt}`;
         } else {
@@ -618,6 +616,35 @@ class AudioProcessor extends EventEmitter {
       // 验证下载的文件是否存在且大小合理
       if (!fs.existsSync(savePath) || fs.statSync(savePath).size === 0) {
         throw new Error(`文件下载失败: 保存的文件为空或不存在 (${savePath})`);
+      }
+
+      // 如果是视频处理且成功生成了S5文件，删除原始的S4视频和音频文件
+      if (
+        isVideoProcessing &&
+        videoPath &&
+        originalVideoName.startsWith('S4')
+      ) {
+        try {
+          // 删除原始S4视频文件
+          if (fs.existsSync(videoPath)) {
+            fs.unlinkSync(videoPath);
+          }
+
+          // 删除对应的S4音频文件（将.mp4替换为.mp3）
+          const audioFilePath = videoPath.replace(/\.mp4$/i, '.mp3');
+          if (fs.existsSync(audioFilePath)) {
+            fs.unlinkSync(audioFilePath);
+          }
+        } catch (deleteError) {
+          this.emit('log', {
+            message: `删除原始S4文件时出错: ${
+              deleteError instanceof Error
+                ? deleteError.message
+                : String(deleteError)
+            }`,
+            type: 'warning',
+          } as LogEvent);
+        }
       }
 
       // 保留日志记录以表明处理完成

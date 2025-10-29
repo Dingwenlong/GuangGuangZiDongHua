@@ -228,17 +228,17 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       console.log('执行任务s6');
 
       const videoFilePath = task as string;
-      if (isTest) {
-        // 测试过程直接重命名文件为S6
-        const targetPath = videoFilePath.replace('S6---', 'S7---');
-        fs.renameSync(videoFilePath, targetPath);
-        await playwrightScript.okCallback(targetPath);
-      } else {
-        await playwrightScript.RunVideoQualityFix(
-          videoFilePath,
-          path.dirname(videoFilePath)
-        );
-      }
+      // if (isTest) {
+      //   // 测试过程直接重命名文件为S6
+      //   const targetPath = videoFilePath.replace('S6---', 'S7---');
+      //   fs.renameSync(videoFilePath, targetPath);
+      //   await playwrightScript.okCallback(targetPath);
+      // } else {
+      await playwrightScript.RunVideoQualityFix(
+        videoFilePath,
+        path.dirname(videoFilePath)
+      );
+      // }
     }
   );
   workbenchManager.watch('s6', (newValue: WorkbenchStoreSchema['s6']) => {
@@ -282,10 +282,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       await workbenchManager.enqueueTask('s5TasksQueue', video);
     }
   });
-  // 第五步完成之后
-  audioExtractor.on('s5OkCallback', savePath => {
+  // 第五步完成之后（从audioProcessor监听事件）
+  audioProcessor.on('s5OkCallback', savePath => {
     // 增加第六步队列
-    // workbenchManager.enqueueTask('s6TasksQueue', savePath);
+    workbenchManager.enqueueTask('s6TasksQueue', savePath);
     console.log('新增s6任务:', savePath);
   });
   // ----------------------其他的---------------------

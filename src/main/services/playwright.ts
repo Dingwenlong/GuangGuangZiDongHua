@@ -418,7 +418,7 @@ class PlaywrightScript extends EventEmitter {
       const startButton = await page.waitForSelector(startBtnSelector, {
         timeout: 30000,
       });
-      // await startButton.click();
+      await startButton.click();
 
       // 处理登录
       const loginPopupSelector = '.meitu-account-quick-login-popup-container';
