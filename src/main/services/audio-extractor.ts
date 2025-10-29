@@ -44,8 +44,12 @@ class AudioExtractor extends EventEmitter {
    * 处理音频提取
    */
   public async extractAudio(videoPath: string): Promise<AudioExtractResult> {
+    this.emit('log', {
+      message: `开始提取音频: ${path.basename(videoPath)}`,
+      type: 'info',
+    } as LogEvent);
     this.status.processingStatus = `提取音频中: ${path.basename(videoPath)}`;
-    this.emit('status', this.status);
+    // this.emit('status', this.status);
 
     try {
       // 确保视频文件存在
@@ -53,15 +57,10 @@ class AudioExtractor extends EventEmitter {
         throw new Error('视频文件不存在');
       }
 
-      // 创建音频输出目录
-      const audioOutputDir = path.join(this.monitorDirectory, '音频输出');
-      if (!fs.existsSync(audioOutputDir)) {
-        fs.mkdirSync(audioOutputDir, { recursive: true });
-      }
-
-      // 生成输出音频文件名
+      // 生成输出音频文件名，直接保存在视频所在目录
+      const videoDir = path.dirname(videoPath);
       const baseName = path.basename(videoPath, path.extname(videoPath));
-      const outputPath = path.resolve(audioOutputDir, `${baseName}.mp3`);
+      const outputPath = path.resolve(videoDir, `${baseName}.mp3`);
 
       // 提取音频
       await this.ffmpegUtil.extractAudio(path.resolve(videoPath), outputPath);
@@ -87,7 +86,7 @@ class AudioExtractor extends EventEmitter {
       throw error;
     } finally {
       this.status.processingStatus = '空闲';
-      this.emit('status', this.status);
+      // this.emit('status', this.status);
     }
   }
 

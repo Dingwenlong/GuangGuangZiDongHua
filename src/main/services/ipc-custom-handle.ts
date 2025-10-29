@@ -283,9 +283,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     }
   });
   // 第五步完成之后
-  audioExtractor.on('s5OkCallback', result => {
+  audioExtractor.on('s5OkCallback', savePath => {
     // 增加第六步队列
-    workbenchManager.enqueueTask('s6TasksQueue', result.inputPath);
+    // workbenchManager.enqueueTask('s6TasksQueue', savePath);
+    console.log('新增s6任务:', savePath);
   });
   // ----------------------其他的---------------------
   // 输出日志
