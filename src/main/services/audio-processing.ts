@@ -122,7 +122,7 @@ class AudioProcessor extends EventEmitter {
       this.videoConfig = configData.video_config[0];
 
       // 设置默认活动配置为音频配置
-      this.status.activeConfig = this.audioConfig;
+      // this.status.activeConfig = this.audioConfig;
     } catch (error) {
       throw new Error(`加载配置文件失败: ${(error as Error).message}`);
     }
@@ -134,6 +134,10 @@ class AudioProcessor extends EventEmitter {
    */
   public async processAudio(audioPath: string): Promise<void> {
     try {
+      this.emit('log', {
+        message: `开始处理音频文件: ${path.basename(audioPath)}`,
+        type: 'info',
+      } as LogEvent);
       // 首先检查文件是否存在
       if (!fs.existsSync(audioPath)) {
         this.emit('log', {
@@ -466,9 +470,12 @@ class AudioProcessor extends EventEmitter {
     targetData: any,
     params: ProcessParams
   ): Promise<void> {
-    if (!this.status.activeConfig) {
+    const { isVideoProcessing } = params;
+    const activeConfig = this.getConfig(isVideoProcessing);
+
+    if (!activeConfig) {
       this.emit('log', {
-        message: '没有可用的服务器配置',
+        message: `${isVideoProcessing ? '视频' : '音频'}配置不存在`,
         type: 'error',
       } as LogEvent);
       return;
@@ -483,7 +490,7 @@ class AudioProcessor extends EventEmitter {
     }
 
     try {
-      const { server, port } = this.status.activeConfig;
+      const { server, port } = activeConfig;
       const { audioPath, videoPath, isVideoProcessing } = params;
 
       // 确保使用http协议
@@ -546,8 +553,8 @@ class AudioProcessor extends EventEmitter {
           path.extname(videoPath)
         );
         // 如果文件名以S5开头，则改为S6
-        if (originalVideoName.startsWith('S5')) {
-          newFileName = `S6${originalVideoName.substring(2)}${fileExt}`;
+        if (originalVideoName.startsWith('S4')) {
+          newFileName = `S5${originalVideoName.substring(2)}${fileExt}`;
         } else {
           newFileName = `${originalVideoName}${fileExt}`;
         }
@@ -620,10 +627,6 @@ class AudioProcessor extends EventEmitter {
           type: 'info',
         } as LogEvent);
       }
-      // 如果为视频则代表处理完成，触发完成的处理
-      if (isVideoProcessing) {
-        this.emit('s5OkCallback', videoPath);
-      }
 
       this.emit('log', {
         message: `${
@@ -632,13 +635,18 @@ class AudioProcessor extends EventEmitter {
         type: 'success',
       } as LogEvent);
 
-      this.emit('fileDownloaded', {
-        originalUrl: fileUrl,
-        savePath: savePath,
-        newFileName: newFileName,
-        isVideo: isVideoProcessing,
-        originalPath: originalPath,
-      });
+      // 如果为视频则代表处理完成，触发完成的处理
+      if (isVideoProcessing) {
+        this.emit('s5OkCallback', savePath);
+      }
+
+      // this.emit('fileDownloaded', {
+      //   originalUrl: fileUrl,
+      //   savePath: savePath,
+      //   newFileName: newFileName,
+      //   isVideo: isVideoProcessing,
+      //   originalPath: originalPath,
+      // });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

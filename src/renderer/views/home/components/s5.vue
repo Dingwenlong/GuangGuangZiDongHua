@@ -65,20 +65,11 @@ const s4 = ref({
 const tableData = ref<any>([]);
 
 const testProcessAudio = async () => {
-  try {
-    // 测试用的音频文件路径
-    const testAudioPath =
-      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\示例音频\\\\S5-示例声音.MP3';
-
-    // 调用音频处理接口
-    const promptId = await ipcRendererChannel.ProcessAudio.invoke({
-      audioPath: testAudioPath,
-    });
-
-    console.log('音频处理测试结果:', promptId);
-  } catch (error) {
-    console.error('音频处理测试失败:', error);
-  }
+  // 更新 s4 的 running 状态
+  // ipcRendererChannel.UpdateWorkbenchData.invoke({
+  //   stepNo: 's4',
+  //   sData: { autoHandOnWorkflow: s4.value.autoHandOnWorkflow, running: true },
+  // });
 };
 
 function openFolderHandler(dir: string) {
@@ -111,11 +102,12 @@ onMounted(() => {
   // 绑定文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
+      console.log(arg);
       tableData.value = arg.structure
         .filter(dir => {
           const [first, seconds, ..._] = dir.name;
-
-          return dir.type === 'directory' && first === 'S' && seconds === '5';
+          console.log(dir.name);
+          return dir.type === 'directory' && first === 'S' && seconds === '4';
         })
         .map(dir => {
           return {
