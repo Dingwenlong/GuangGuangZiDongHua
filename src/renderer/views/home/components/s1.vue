@@ -145,6 +145,10 @@ onMounted(() => {
       }
     }
   );
+
+  ipcRendererChannel.CheckKaipaiLoginStatus.invoke().then(isLogin => {
+    console.log('登录检测结果:', isLogin);
+  });
 });
 
 onUnmounted(() => {

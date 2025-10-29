@@ -101,6 +101,32 @@ class PlaywrightScript extends EventEmitter {
       await page.goto('https://www.kaipai.com/video-tool/remove-watermark');
       await page.waitForLoadState('networkidle');
 
+      // 添加登录状态检测 - 在上传文件后、分类选择前执行
+      this.emit('log', { message: '检测是否已登录', type: 'info' });
+      const avatarSelector = '.AccountAction_accountAvatar__BVL0g';
+
+      const elementCount = await page.locator(avatarSelector).count();
+      const isLoggedIn = elementCount > 0;
+
+      if (!isLoggedIn) {
+        this.emit('log', { message: '未登录，触发登录操作', type: 'info' });
+        // 触发类名为iconfont-legacy的元素
+        const loginButton = await page.waitForSelector('.iconfont-legacy', {
+          timeout: 10000,
+        });
+        await loginButton.click();
+
+        // 等待登录后index_accountAvatar__gOrHw元素出现
+        this.emit('log', { message: '等待用户完成登录...', type: 'info' });
+        await page.waitForSelector('.index_accountAvatar__gOrHw', {
+          timeout: 300000, // 5分钟超时，给用户足够时间登录
+          state: 'visible',
+        });
+        this.emit('log', { message: '登录成功，继续处理', type: 'success' });
+      } else {
+        this.emit('log', { message: '已登录，继续处理', type: 'success' });
+      }
+
       // 验证文件路径
       if (!filePath || !fs.existsSync(filePath)) {
         const errorMsg = filePath
@@ -125,30 +151,6 @@ class PlaywrightScript extends EventEmitter {
       await fileChooser.setFiles(filePath);
       this.emit('log', { message: `${filePath}上传成功`, type: 'success' });
 
-      // 添加登录状态检测 - 在上传文件后、分类选择前执行
-      this.emit('log', { message: '检测是否已登录', type: 'info' });
-      const isLoggedIn =
-        (await page.locator('.index_accountAvatar__gOrHw').count()) > 0;
-
-      if (!isLoggedIn) {
-        this.emit('log', { message: '未登录，触发登录操作', type: 'info' });
-        // 触发类名为iconfont-legacy的元素
-        const loginButton = await page.waitForSelector('.iconfont-legacy', {
-          timeout: 10000,
-        });
-        await loginButton.click();
-
-        // 等待登录后index_accountAvatar__gOrHw元素出现
-        this.emit('log', { message: '等待用户完成登录...', type: 'info' });
-        await page.waitForSelector('.index_accountAvatar__gOrHw', {
-          timeout: 300000, // 5分钟超时，给用户足够时间登录
-          state: 'visible',
-        });
-        this.emit('log', { message: '登录成功，继续处理', type: 'success' });
-      } else {
-        this.emit('log', { message: '已登录，继续处理', type: 'success' });
-      }
-
       // 处理分类选择
       await page.waitForSelector('.index_categorgList__dF7ji', {
         timeout: 60000,
@@ -172,20 +174,6 @@ class PlaywrightScript extends EventEmitter {
       });
       await startButton.click();
 
-      // 处理登录
-      const loginPopupSelector = '.meitu-account-quick-login-popup-container';
-      try {
-        await page.waitForSelector(loginPopupSelector, {
-          state: 'visible',
-          timeout: 5000,
-        });
-        await page.waitForSelector(loginPopupSelector, {
-          state: 'hidden',
-          timeout: 120000,
-        });
-      } catch (error) {
-        // 未检测到登录弹窗，继续执行
-      }
       this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
 
       // 等待处理完成
@@ -236,7 +224,7 @@ class PlaywrightScript extends EventEmitter {
         return { success: false, message: '未捕获到任何下载文件' };
       }
 
-      // 处理下载的文件（S2→S3）
+      // 处理下载的文件（S1→S2）
       let targetPath = null;
       const uuidPattern =
         /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
@@ -250,9 +238,9 @@ class PlaywrightScript extends EventEmitter {
 
         if (!isUuidFile) {
           let processedName = fileName;
-          // 文件名替换：S2→S3
-          if (processedName.startsWith('S2')) {
-            processedName = processedName.replace('S2', 'S3');
+          // 文件名替换：S1→S2
+          if (processedName.startsWith('S1')) {
+            processedName = processedName.replace('S1', 'S2');
           }
 
           if (!processedName.endsWith('.mp4')) {
@@ -280,11 +268,11 @@ class PlaywrightScript extends EventEmitter {
         return { success: false, message: '未找到有效的下载文件' };
       }
 
-      // 下载完成后修改原文件所在文件夹名（S2→S3）
+      // 下载完成后修改原文件所在文件夹名（S1→S2）
       const originalFileDir = path.dirname(filePath);
       const originalDirName = path.basename(originalFileDir);
-      if (originalDirName.includes('S2')) {
-        const newDirName = originalDirName.replace('S2', 'S3');
+      if (originalDirName.includes('S1')) {
+        const newDirName = originalDirName.replace('S1', 'S2');
         const newFileDir = path.join(path.dirname(originalFileDir), newDirName);
         const renameSuccess = await this.renameWithRetry(
           originalFileDir,
@@ -321,11 +309,12 @@ class PlaywrightScript extends EventEmitter {
       };
     } finally {
       // 关闭标签页，保留浏览器实例
-      if (page && !page.isClosed()) {
-        await page.close().catch((err: any) => {
-          console.error('关闭标签页失败:', err.message);
-        });
-      }
+      // this.emit('log', { message: '关闭标签页123123', type: 'info' });
+      // if (page && !page.isClosed()) {
+      //   await page.close().catch((err: any) => {
+      //     console.error('关闭标签页失败:', err.message);
+      //   });
+      // }
       console.log('视频去水印流程结束');
     }
   }

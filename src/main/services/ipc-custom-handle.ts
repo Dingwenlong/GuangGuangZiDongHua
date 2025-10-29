@@ -5,7 +5,6 @@ import config from '@config/index';
 import type MainInit from './window-manager';
 import authManager from './auth-manager';
 import WorkbenchManager, {
-  type FolderItem,
   type S3VideosChunk,
   type S4VideosChunk,
   type WorkbenchStoreSchema,
@@ -89,7 +88,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     audioExtractor,
     audioProcessor
   );
-  const isTest = false;
+  const isTest = true;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await workbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
