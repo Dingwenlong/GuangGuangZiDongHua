@@ -15,8 +15,9 @@ class S5TaskProcessor {
   private audioProcessCount: number = 0;
   private readonly latencyTime: number = 3 * 60 * 1000; // 3分钟等待时间
   private isRebooting: boolean = false; // 重启标志
-  private configPath: string =
-    '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\config.json';
+  private readonly configPath: string = '\\\\192.168.31.99\\影视存储\\逛逛客户端\\ComfyUI\\config.json';
+  private enableRebootCheck: boolean = true; // 是否启用重启检测
+  private rebootThreshold: number = 5; // 重启阈值
 
   constructor(
     workbenchManager: WorkbenchManager,
@@ -26,52 +27,35 @@ class S5TaskProcessor {
     this.workbenchManager = workbenchManager;
     this.audioExtractor = audioExtractor;
     this.audioProcessor = audioProcessor;
+    // 初始化时读取配置
+    this.readConfig();
   }
 
   /**
-   * 读取并解析配置文件
+   * 从指定路径读取配置文件
    * @private
    */
-  private getConfig(): any {
+  private readConfig(): void {
     try {
-      const configContent = fs.readFileSync(this.configPath, 'utf-8');
-      return JSON.parse(configContent);
+      if (fs.existsSync(this.configPath)) {
+        const configContent = fs.readFileSync(this.configPath, 'utf8');
+        const config = JSON.parse(configContent);
+        
+        // 从video_config中获取重启配置
+        if (config.video_config && config.video_config.length > 0) {
+          const videoConfig = config.video_config[0];
+          if (videoConfig.reboot) {
+            this.enableRebootCheck = videoConfig.reboot.require !== false; // 默认启用
+            this.rebootThreshold = videoConfig.reboot.threshold || 5; // 默认阈值为5
+            console.log(`已加载重启配置: enableRebootCheck=${this.enableRebootCheck}, threshold=${this.rebootThreshold}`);
+          }
+        }
+      } else {
+        console.warn(`配置文件不存在: ${this.configPath}`);
+      }
     } catch (error) {
       console.error('读取配置文件失败:', error);
-      // 返回默认配置
-      return {
-        video_config: [
-          {
-            reboot: {
-              require: false,
-              threshold: 20,
-            },
-          },
-        ],
-      };
     }
-  }
-
-  /**
-   * 检查是否需要重启服务
-   * @private
-   */
-  private shouldReboot(): boolean {
-    const config = this.getConfig();
-    // 获取video_config中的reboot配置
-    const rebootConfig = config?.video_config?.[0]?.reboot || {
-      require: false,
-      threshold: 20,
-    };
-
-    // 如果require为false，则不重启
-    if (!rebootConfig.require) {
-      return false;
-    }
-
-    // 否则根据阈值判断是否需要重启
-    const threshold = rebootConfig.threshold || 20;
-    return this.audioProcessCount >= threshold;
   }
 
   /**
@@ -96,12 +80,12 @@ class S5TaskProcessor {
       const extractResult = await this.audioExtractor.extractAudio(videoPath);
       console.log('音频提取完成:', extractResult);
 
-      // 增加处理计数
-      this.audioProcessCount++;
-
-      // 检查是否需要重启服务
-      if (this.shouldReboot()) {
+      // 检查是否需要重启服务（基于配置控制）
+      if (this.enableRebootCheck && this.audioProcessCount >= this.rebootThreshold) {
+        console.log(`重启检测已启用，当前处理数量${this.audioProcessCount}达到阈值${this.rebootThreshold}，执行重启逻辑`);
         await this.handleServiceReboot();
+      } else if (!this.enableRebootCheck && this.audioProcessCount >= this.rebootThreshold) {
+        console.log(`重启检测已禁用，当前处理数量${this.audioProcessCount}达到阈值${this.rebootThreshold}，跳过重启逻辑`);
       }
 
       // 处理音频
@@ -109,6 +93,9 @@ class S5TaskProcessor {
         extractResult.outputPath
       );
       console.log('音频处理完成:', processResult);
+
+      // 增加处理计数
+      this.audioProcessCount++;
 
       // 加入S6队列
       // await this.workbenchManager.enqueueTask('s6TasksQueue', videoPath);

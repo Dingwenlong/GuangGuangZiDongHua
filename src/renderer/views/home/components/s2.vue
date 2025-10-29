@@ -117,7 +117,7 @@ function startOrStopTaskHandler(start = true) {
     sData: { autoHandOnWorkflow: s2.value.autoHandOnWorkflow, running: start },
   });
 
-  // setCookie();
+  setCookie();
 }
 
 // 调用去水印脚本

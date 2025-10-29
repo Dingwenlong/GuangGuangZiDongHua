@@ -89,7 +89,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     audioExtractor,
     audioProcessor
   );
-  const isTest = false;
+  const isTest = true;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await workbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
@@ -474,12 +474,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       channel: 'GetAuthInfo',
       handler: async () => {
         return await authManager.getAuthInfo();
-      },
-    },
-    {
-      channel: 'CheckLoginStatus',
-      handler: async () => {
-        return await playwrightScript.CheckKaipaiLoginStatus();
       },
     },
     {
