@@ -43,6 +43,7 @@ class DirectoryMonitor extends EventEmitter {
   private maxDepth: number;
   private debounceTimer: NodeJS.Timeout | null;
   private debounceDelay: number;
+  private isDestroyed: boolean = false;
 
   constructor(
     monitorDirectory: string,
@@ -93,20 +94,35 @@ class DirectoryMonitor extends EventEmitter {
    * 停止目录监控
    */
   stop(): void {
+    if (this.isDestroyed) return;
+
+    this.cleanupResources();
+    this.emit('log', { message: '目录监控已完全停止', type: 'info' });
+  }
+
+  private cleanupResources(): void {
+    if (this.isDestroyed) return;
+
+    this.isDestroyed = true;
+
     if (this.watcher) {
+      // 移除所有事件监听器
+      this.watcher.removeAllListeners();
       this.watcher.stop();
-      this.emit('log', { message: '目录监控已停止', type: 'info' });
+      this.watcher = null;
     }
 
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
+      this.updateInterval = null;
     }
 
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
     }
 
-    this.emit('log', { message: '目录监控已完全停止', type: 'info' });
+    this.removeAllListeners();
   }
 
   /**
@@ -148,11 +164,14 @@ class DirectoryMonitor extends EventEmitter {
    * 防抖更新目录结构
    */
   private scheduleUpdate(): void {
+    if (this.isDestroyed) return;
+
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
 
     this.debounceTimer = setTimeout(() => {
+      if (this.isDestroyed) return;
       this.emitDirectoryStructure();
     }, this.debounceDelay);
   }
@@ -161,11 +180,22 @@ class DirectoryMonitor extends EventEmitter {
    * 发送目录结构事件
    */
   private emitDirectoryStructure(): void {
-    const structure = this.getDirectoryStructure(this.monitorDirectory);
-    this.emit('directoryStructure', {
-      root: this.monitorDirectory,
-      structure,
-    });
+    if (this.isDestroyed) return;
+
+    try {
+      const structure = this.getDirectoryStructure(this.monitorDirectory);
+      this.emit('directoryStructure', {
+        root: this.monitorDirectory,
+        structure,
+      });
+    } catch (error) {
+      if (!this.isDestroyed) {
+        this.emit('log', {
+          message: `发送目录结构失败: ${(error as Error).message}`,
+          type: 'error',
+        });
+      }
+    }
   }
 
   /**
@@ -175,48 +205,73 @@ class DirectoryMonitor extends EventEmitter {
     dirPath: string,
     currentDepth: number = 0
   ): DirectoryItem[] {
+    if (this.isDestroyed) return [];
+
     const items: DirectoryItem[] = [];
 
     try {
+      if (!fs.existsSync(dirPath)) {
+        if (!this.isDestroyed) {
+          this.emit('log', {
+            message: `目录不存在: ${dirPath}`,
+            type: 'warning',
+          });
+        }
+        return [];
+      }
+
       const files = fs.readdirSync(dirPath);
 
       for (const file of files) {
-        const fullPath = path.join(dirPath, file);
-        const stats = fs.statSync(fullPath);
+        try {
+          const fullPath = path.join(dirPath, file);
+          const stats = fs.statSync(fullPath);
 
-        if (stats.isDirectory()) {
-          // 递归获取子目录内容，限制深度
-          const children =
-            currentDepth < this.maxDepth
-              ? this.getDirectoryStructure(fullPath, currentDepth + 1)
-              : [];
+          if (stats.isDirectory()) {
+            // 递归获取子目录内容，限制深度
+            const children =
+              currentDepth < this.maxDepth
+                ? this.getDirectoryStructure(fullPath, currentDepth + 1)
+                : [];
 
-          items.push({
-            name: file,
-            path: fullPath,
-            type: 'directory',
-            children,
-          });
-        } else {
-          // 判断是否是视频文件
-          const isVideo = isVideoFile(fullPath);
-          const isProcessed = isVideo && isProcessedVideoFile(fullPath);
+            items.push({
+              name: file,
+              path: fullPath,
+              type: 'directory',
+              children,
+            });
+          } else {
+            // 判断是否是视频文件
+            const isVideo = isVideoFile(fullPath);
+            const isProcessed = isVideo && isProcessedVideoFile(fullPath);
 
-          items.push({
-            name: file,
-            path: fullPath,
-            type: 'file',
-            size: stats.size,
-            isVideo,
-            isProcessed,
-          });
+            items.push({
+              name: file,
+              path: fullPath,
+              type: 'file',
+              size: stats.size,
+              isVideo,
+              isProcessed,
+            });
+          }
+        } catch (fileError) {
+          if (!this.isDestroyed) {
+            this.emit('log', {
+              message: `处理文件失败: ${file} - ${
+                (fileError as Error).message
+              }`,
+              type: 'warning',
+            });
+          }
         }
       }
     } catch (error) {
-      this.emit('log', {
-        message: `读取目录失败: ${dirPath} - ${(error as Error).message}`,
-        type: 'error',
-      });
+      if (!this.isDestroyed) {
+        this.emit('log', {
+          message: `读取目录失败: ${dirPath} - ${(error as Error).message}`,
+          type: 'error',
+        });
+      }
     }
 
     return items;
