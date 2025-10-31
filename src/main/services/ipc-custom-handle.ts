@@ -118,7 +118,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       name: 's2Task',
       interval: 5000,
-      concurrency: 1,
+      concurrency: 5,
       enabled: true,
     },
     async () => {
@@ -224,18 +224,17 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     async () => {
       const task = await workbenchManager.dequeueTask('s6TasksQueue');
       if (!task) return;
+
       const videoFilePath = task as string;
-      // if (isTest) {
-      //   // 测试过程直接重命名文件为S6
-      //   const targetPath = videoFilePath.replace('S6---', 'S7---');
-      //   fs.renameSync(videoFilePath, targetPath);
-      //   await playwrightScript.okCallback(targetPath);
-      // } else {
-      await playwrightScript.RunVideoQualityFix(
-        videoFilePath,
-        path.dirname(videoFilePath)
-      );
-      // }
+      try {
+        // 处理任务
+        await playwrightScript.RunVideoQualityFix(
+          videoFilePath,
+          path.dirname(videoFilePath)
+        );
+      } catch (error) {
+        console.error('处理S6任务出错:', error);
+      }
     }
   );
   workbenchManager.watch('s6', (newValue: WorkbenchStoreSchema['s6']) => {
@@ -283,7 +282,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   audioProcessor.on('s5OkCallback', (savePath: string[]) => {
     // 增加第六步队列
     for (const path of savePath) {
-      workbenchManager.enqueueTask('s6TasksQueue', path);
+      setTimeout(() => {
+        workbenchManager.enqueueTask('s6TasksQueue', path);
+      }, 1000);
     }
     // console.log('新增s6任务:', savePath);
   });

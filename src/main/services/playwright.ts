@@ -70,15 +70,7 @@ class PlaywrightScript extends EventEmitter {
   public async runWatermarkRemoval(filePath?: string, targetDir?: string) {
     let page: any = null;
     try {
-      // 确定下载目录
-      const defaultDownloadDir = path.join(
-        os.homedir(),
-        'Downloads',
-        'kaipai_output'
-      );
-      const downloadDir = targetDir
-        ? path.resolve(targetDir)
-        : defaultDownloadDir;
+      const downloadDir = targetDir ? path.resolve(targetDir) : '';
 
       fs.mkdirSync(downloadDir, { recursive: true });
 
@@ -446,15 +438,7 @@ class PlaywrightScript extends EventEmitter {
   public async RunVideoQualityFix(filePath?: string, targetDir?: string) {
     let page: any = null;
     try {
-      // 确定下载目录
-      const defaultDownloadDir = path.join(
-        os.homedir(),
-        'Downloads',
-        'kaipai_output'
-      );
-      const downloadDir = targetDir
-        ? path.resolve(targetDir)
-        : defaultDownloadDir;
+      const downloadDir = targetDir ? path.resolve(targetDir) : '';
       fs.mkdirSync(downloadDir, { recursive: true });
 
       // 验证文件并提取原始文件名
@@ -702,6 +686,31 @@ class PlaywrightScript extends EventEmitter {
                 message: `目标文件夹 ${s6FolderName} 已存在，跳过重命名`,
                 type: 'warning',
               });
+            }
+          }
+        } else {
+          // 还有没处理的，继续触发S6的步骤
+          const s5Files = dirFiles.filter(
+            file => file.startsWith('S5') && file.endsWith('.mp4')
+          );
+
+          if (s5Files.length > 0) {
+            this.emit('log', {
+              message: `检测到还有 ${s5Files.length} 个S5文件需要处理`,
+              type: 'info',
+            });
+
+            // 获取第一个S5文件的完整路径
+            const nextS5File = path.join(downloadDir, s5Files[0]);
+
+            if (fs.existsSync(nextS5File)) {
+              this.emit('log', {
+                message: `继续处理S5文件: ${nextS5File}`,
+                type: 'info',
+              });
+
+              // 递归调用处理下一个S5文件
+              await this.RunVideoQualityFix(nextS5File, downloadDir);
             }
           }
         }
