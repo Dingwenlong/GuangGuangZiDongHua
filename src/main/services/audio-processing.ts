@@ -652,63 +652,88 @@ class AudioProcessor extends EventEmitter {
 
       // 如果为视频则代表处理完成，触发完成的处理
       if (isVideoProcessing) {
-        // 检查并处理S4文件夹到S5文件夹的文件移动逻辑
         try {
           // 获取当前视频所在的S4文件夹路径
           const currentDir = path.dirname(savePath);
           const parentDir = path.dirname(currentDir);
           const dirName = path.basename(currentDir);
+          const fileName = path.basename(savePath);
 
-          // 检查文件夹是否以S4开头
-          if (dirName.startsWith('S4')) {
-            // 创建对应的S5文件夹路径
-            const newDirName = dirName.replace('S4', 'S5');
-            const newDirPath = path.join(parentDir, newDirName);
+          // 步骤1: 只将文件名更改为S5开头，不创建新文件夹
+          if (fileName.startsWith('S4')) {
+            const newFileName = fileName.replace('S4', 'S5');
+            const newFilePath = path.join(currentDir, newFileName);
 
-            // 获取当前文件名
-            const fileName = path.basename(savePath);
-            // 创建新的保存路径（在S5文件夹中）
-            const newSavePath = path.join(newDirPath, fileName);
-
-            try {
-              // 先创建S5文件夹（如果不存在）
-              if (!fs.existsSync(newDirPath)) {
-                fs.mkdirSync(newDirPath, { recursive: true });
-                this.emit('log', {
-                  message: `已创建S5文件夹: ${newDirPath}`,
-                  type: 'info',
-                } as LogEvent);
+            if (fs.existsSync(savePath) && savePath !== newFilePath) {
+              // 如果目标文件已存在，先删除它
+              if (fs.existsSync(newFilePath)) {
+                fs.unlinkSync(newFilePath);
               }
+              // 重命名文件
+              fs.renameSync(savePath, newFilePath);
+              savePath = newFilePath;
 
-              // 将当前处理完成的文件移动到S5文件夹
-              if (fs.existsSync(savePath)) {
-                // 如果目标文件已存在，先删除它
-                if (fs.existsSync(newSavePath)) {
-                  fs.unlinkSync(newSavePath);
-                }
-                // 移动文件
-                fs.renameSync(savePath, newSavePath);
-
-                // 更新保存路径为S5文件夹中的路径
-                savePath = newSavePath;
-              }
-
-              // 检查S4文件夹是否为空
-              const files = fs.readdirSync(currentDir);
-              if (files.length === 0) {
-                // 删除空的S4文件夹
-                fs.rmdirSync(currentDir);
-                this.emit('log', {
-                  message: `已删除空的S4文件夹: ${currentDir}`,
-                  type: 'info',
-                } as LogEvent);
-              }
-            } catch (moveError) {
               this.emit('log', {
-                message: `移动文件到S5文件夹或删除S4文件夹时出错: ${
-                  moveError instanceof Error
-                    ? moveError.message
-                    : String(moveError)
+                message: `已将文件重命名为S5开头: ${newFileName}`,
+                type: 'info',
+              } as LogEvent);
+            }
+          }
+
+          // 步骤2: 检查当前文件夹下是否有四个S4开头的文件（现在应该都是S5开头了）
+          if (dirName.startsWith('S4')) {
+            try {
+              // 获取当前文件夹下所有以S5开头的文件
+              const files = fs.readdirSync(currentDir);
+              const s5Files = files.filter(
+                file => file.startsWith('S5') && file.endsWith('.mp4')
+              );
+
+              this.emit('log', {
+                message: `检测到当前文件夹中S5开头的视频文件数量: ${s5Files.length}`,
+                type: 'info',
+              } as LogEvent);
+
+              // 当有四个S5文件时，将外面一层文件夹的S4前缀改为S5
+              if (s5Files.length === 4) {
+                // 创建对应的S5文件夹路径
+                const newDirName = dirName.replace('S4', 'S5');
+                const newDirPath = path.join(parentDir, newDirName);
+
+                // 如果S5文件夹不存在，则重命名整个S4文件夹
+                if (!fs.existsSync(newDirPath)) {
+                  fs.renameSync(currentDir, newDirPath);
+                  this.emit('log', {
+                    message: `已将文件夹 ${dirName} 重命名为 ${newDirName}`,
+                    type: 'success',
+                  } as LogEvent);
+
+                  // 构建四个文件的完整路径数组
+                  const updatedFilePaths = s5Files.map(file =>
+                    path.join(newDirPath, file)
+                  );
+
+                  // 触发s5OkCallback事件，传入四个文件的路径数组
+                  setTimeout(() => {
+                    this.emit('s5OkCallback', updatedFilePaths);
+                    this.emit('log', {
+                      message: `已触发s5OkCallback，传入${updatedFilePaths.length}个文件路径`,
+                      type: 'success',
+                    } as LogEvent);
+                  }, 3 * 1000);
+                } else {
+                  this.emit('log', {
+                    message: `目标文件夹 ${newDirName} 已存在，无法重命名`,
+                    type: 'warning',
+                  } as LogEvent);
+                }
+              }
+            } catch (checkError) {
+              this.emit('log', {
+                message: `检查文件夹中S5文件数量时出错: ${
+                  checkError instanceof Error
+                    ? checkError.message
+                    : String(checkError)
                 }`,
                 type: 'warning',
               } as LogEvent);
@@ -724,19 +749,7 @@ class AudioProcessor extends EventEmitter {
             type: 'warning',
           } as LogEvent);
         }
-
-        setTimeout(() => {
-          this.emit('s5OkCallback', savePath);
-        }, 3 * 1000);
       }
-
-      // this.emit('fileDownloaded', {
-      //   originalUrl: fileUrl,
-      //   savePath: savePath,
-      //   newFileName: newFileName,
-      //   isVideo: isVideoProcessing,
-      //   originalPath: originalPath,
-      // });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

@@ -650,6 +650,71 @@ class PlaywrightScript extends EventEmitter {
       // 关闭标签页
       await page.close();
 
+      // 检测目录中是否有四个S6开头的文件，如果有则将父级S5文件夹重命名为S6
+      try {
+        // 获取下载目录中的所有文件
+        const dirFiles = fs.readdirSync(downloadDir);
+
+        // 筛选出以S6开头的文件
+        const s6Files = dirFiles.filter(file => file.startsWith('S6'));
+
+        this.emit('log', {
+          message: `检测到S6开头的文件数量: ${s6Files.length}`,
+          type: 'info',
+        });
+
+        // 如果有四个S6开头的文件，尝试重命名父级文件夹
+        if (s6Files.length === 4) {
+          // 解析文件路径以查找可能的S5父文件夹
+          const pathParts = targetPath.split(path.sep);
+          let s5FolderIndex = -1;
+
+          // 查找S5开头的文件夹
+          for (let i = 0; i < pathParts.length; i++) {
+            if (pathParts[i].startsWith('S5')) {
+              s5FolderIndex = i;
+              break;
+            }
+          }
+
+          // 如果找到S5文件夹，进行重命名
+          if (s5FolderIndex !== -1) {
+            const s5FolderName = pathParts[s5FolderIndex];
+            const s6FolderName = s5FolderName.replace('S5', 'S6');
+
+            const s5FolderPath = pathParts
+              .slice(0, s5FolderIndex + 1)
+              .join(path.sep);
+            const s6FolderPath =
+              pathParts.slice(0, s5FolderIndex).join(path.sep) +
+              path.sep +
+              s6FolderName;
+
+            // 检查目标文件夹是否存在，不存在则重命名
+            if (!fs.existsSync(s6FolderPath)) {
+              fs.renameSync(s5FolderPath, s6FolderPath);
+              this.emit('log', {
+                message: `成功将文件夹 ${s5FolderName} 重命名为 ${s6FolderName}`,
+                type: 'success',
+              });
+            } else {
+              this.emit('log', {
+                message: `目标文件夹 ${s6FolderName} 已存在，跳过重命名`,
+                type: 'warning',
+              });
+            }
+          }
+        }
+      } catch (checkError) {
+        this.emit('log', {
+          message: `检测S6文件并更新文件夹名称时出错: ${
+            (checkError as Error).message
+          }`,
+          type: 'error',
+        });
+        // 不影响主流程，继续返回成功结果
+      }
+
       return {
         success: true,
         message: `处理完成，文件保存至：${targetPath}`,

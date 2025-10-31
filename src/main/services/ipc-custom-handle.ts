@@ -213,12 +213,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
 
   // s6
-  // 每5秒执行一次，并发数为1
+  // 每5秒执行一次，并发数为100
   scheduler.addTask(
     {
       name: 's6Task',
       interval: 5000,
-      concurrency: 1,
+      concurrency: 100,
       enabled: true,
     },
     async () => {
@@ -280,9 +280,11 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     }
   });
   // 第五步完成之后（从audioProcessor监听事件）
-  audioProcessor.on('s5OkCallback', savePath => {
+  audioProcessor.on('s5OkCallback', (savePath: string[]) => {
     // 增加第六步队列
-    workbenchManager.enqueueTask('s6TasksQueue', savePath);
+    for (const path of savePath) {
+      workbenchManager.enqueueTask('s6TasksQueue', path);
+    }
     // console.log('新增s6任务:', savePath);
   });
   // ----------------------其他的---------------------
