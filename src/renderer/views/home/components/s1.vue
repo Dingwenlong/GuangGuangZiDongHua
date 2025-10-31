@@ -208,10 +208,11 @@ async function batchCreationFolderHandler() {
     .filter(([title, productId]) => title && productId && title !== '商品名称')
     .map(
       ([title, productId], i) =>
-        `S1---${i + 1}---${title.replace(/\r/g, '')}---${productId.replace(
-          /\r/g,
-          ''
-        )}---${nanoid(8)}`
+        `S1---${i + 1}---${title
+          .replace(/\r\t\n/g, '')
+          .replace('/', '_')
+          .replace('\\', '_')
+          .replace(' ', '')}---${productId.replace(/\r/g, '')}---${nanoid(8)}`
     );
 
   await Promise.all(
