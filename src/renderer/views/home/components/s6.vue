@@ -20,7 +20,7 @@
         @click="() => startOrStopTaskHandler(!s6.autoHandOnWorkflow)"
         >{{
           !s6.autoHandOnWorkflow ? '开始' : '结束'
-        }}执行素材去水印任务</Button
+        }}执行素材高清化任务</Button
       >
     </div>
   </div>
@@ -122,7 +122,7 @@ function startOrStopTaskHandler(start = true) {
     stepNo: 's6',
     sData: { ...s6.value, running: start },
   });
-  setCookie();
+  // setCookie();
 }
 
 // 调用去水印脚本
@@ -131,8 +131,7 @@ function setCookie() {
 
   try {
     // 处理文件路径（使用/代替\避免转义问题）
-    const firstFilePath =
-      'C:\\Users\\ASUS\\Downloads\\ces\\S2-aaa\\S1---33019725083-1-192.mp4';
+    const firstFilePath = 'C:\\Users\\ASUS\\Downloads\\S5-testMP4.mp4';
 
     // 调用去水印脚本
     ipcRendererChannel.RunVideoQualityFix.invoke({

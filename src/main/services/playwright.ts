@@ -80,46 +80,37 @@ class PlaywrightScript extends EventEmitter {
         ? path.resolve(targetDir)
         : defaultDownloadDir;
 
-      // 确保下载目录存在
-      if (!fs.existsSync(downloadDir)) {
-        fs.mkdirSync(downloadDir, { recursive: true });
-      }
+      fs.mkdirSync(downloadDir, { recursive: true });
 
       this.emit('log', { message: '开始处理视频去水印', type: 'info' });
 
       // 初始化浏览器实例
       await PlaywrightScript.initBrowser(downloadDir);
-
       if (!PlaywrightScript.browser) {
         throw new Error('无法初始化浏览器实例');
       }
 
       // 创建新标签页
       page = await PlaywrightScript.browser.newPage();
-
-      // 打开网页并等待加载
       await page.goto('https://www.kaipai.com/video-tool/remove-watermark');
       await page.waitForLoadState('networkidle');
 
-      // 添加登录状态检测 - 在上传文件后、分类选择前执行
+      // 登录状态检测
       this.emit('log', { message: '检测是否已登录', type: 'info' });
       const avatarSelector = '.AccountAction_accountAvatar__BVL0g';
-
       const elementCount = await page.locator(avatarSelector).count();
       const isLoggedIn = elementCount > 0;
 
       if (!isLoggedIn) {
         this.emit('log', { message: '未登录，触发登录操作', type: 'info' });
-        // 触发类名为iconfont-legacy的元素
         const loginButton = await page.waitForSelector('.iconfont-legacy', {
           timeout: 10000,
         });
         await loginButton.click();
 
-        // 等待登录后index_accountAvatar__gOrHw元素出现
         this.emit('log', { message: '等待用户完成登录...', type: 'info' });
         await page.waitForSelector('.index_accountAvatar__gOrHw', {
-          timeout: 300000, // 5分钟超时，给用户足够时间登录
+          timeout: 300000, // 5分钟登录超时
           state: 'visible',
         });
         this.emit('log', { message: '登录成功，继续处理', type: 'success' });
@@ -138,16 +129,12 @@ class PlaywrightScript extends EventEmitter {
       // 上传文件
       const uploadArea = await page.waitForSelector(
         '.UploadContentV2_cardRightBox__s8gmc',
-        {
-          timeout: 30000,
-        }
+        { timeout: 30000 }
       );
-
       const [fileChooser] = await Promise.all([
         page.waitForEvent('filechooser', { timeout: 15000 }),
         uploadArea.click(),
       ]);
-
       await fileChooser.setFiles(filePath);
       this.emit('log', { message: `${filePath}上传成功`, type: 'success' });
 
@@ -155,142 +142,268 @@ class PlaywrightScript extends EventEmitter {
       await page.waitForSelector('.index_categorgList__dF7ji', {
         timeout: 60000,
       });
-
-      const secondCategorySelector =
+      const firstCategorySelector =
         '.index_categorgList__dF7ji > .index_categoryItem__pPv2U:nth-child(1)';
-
-      const secondCategory = await page.waitForSelector(
-        secondCategorySelector,
-        {
-          timeout: 30000,
-        }
-      );
-      await secondCategory.click();
+      const firstCategory = await page.waitForSelector(firstCategorySelector, {
+        timeout: 60000,
+      });
+      await firstCategory.click();
 
       // 开始处理
       const startBtnSelector = '.index_button__WWpyb';
       const startButton = await page.waitForSelector(startBtnSelector, {
-        timeout: 30000,
+        timeout: 60000,
       });
       await startButton.click();
-
       this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
 
-      // 等待处理完成
-      const exportButtonSelector =
-        '.index_buttonBox__-1roP .index_exportButton__4OdAj';
-      const maxWaitTime = 120 * 60 * 1000; // 最大等待时间（2小时）
-      const checkInterval = 60 * 1000; // 检查间隔（1分钟）
+      // 点击开始后等待10秒
+      await new Promise(resolve => setTimeout(resolve, 10 * 1000));
 
-      try {
-        await page.waitForFunction(
-          (selector: any) => {
-            const btn = document.querySelector(selector);
-            return btn && !btn.classList.contains('index_disabled__Xu0Xz');
-          },
-          exportButtonSelector,
-          {
-            timeout: maxWaitTime,
-            polling: checkInterval,
-          }
+      // 全局超时和检测间隔设置
+      const maxWaitTime = 120 * 60 * 1000; // 2小时
+      const checkInterval = 30 * 1000; // 30秒
+
+      // 等待处理列表出现
+      const trackListSelector = '.index_trackList__1mQ3P';
+      let trackListFound = false;
+      const trackListStart = Date.now();
+      while (Date.now() - trackListStart < maxWaitTime) {
+        const trackList = await page.$(trackListSelector);
+        if (trackList) {
+          trackListFound = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+      }
+      if (!trackListFound) {
+        throw new Error(`超过${maxWaitTime / 60000}分钟未找到处理列表`);
+      }
+
+      // 等待第一个处理项出现
+      const trackItemSelector = '.index_trackItem__vo4uQ';
+      let firstItemFound = false;
+      const firstItemStart = Date.now();
+      while (Date.now() - firstItemStart < maxWaitTime) {
+        const firstItem = await page.$(
+          `${trackListSelector} ${trackItemSelector}:first-child`
         );
-      } catch (error) {
-        return {
-          success: false,
-          message: `超过最大等待时间(${
-            maxWaitTime / 60000
-          }分钟)，导出按钮仍不可用`,
-        };
+        if (firstItem) {
+          firstItemFound = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+      }
+      if (!firstItemFound) {
+        throw new Error(`超过${maxWaitTime / 60000}分钟未找到处理项`);
+      }
+
+      // 等待导出按钮可用
+      const exportButtonSelector = '.index_button__Zm8pL';
+      let exportButton: any = null;
+      const exportBtnStart = Date.now();
+      while (Date.now() - exportBtnStart < maxWaitTime) {
+        exportButton = await page.$(
+          `${trackListSelector} ${trackItemSelector}:first-child ${exportButtonSelector}`
+        );
+
+        if (exportButton) {
+          const isVisible = await exportButton.isVisible();
+          const isEnabled = await exportButton.isEnabled();
+          if (isVisible && isEnabled) {
+            break;
+          }
+        }
+
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+      }
+
+      if (
+        !exportButton ||
+        !(await exportButton.isVisible()) ||
+        !(await exportButton.isEnabled())
+      ) {
+        throw new Error(`超过${maxWaitTime / 60000}分钟，导出按钮仍不可用`);
       }
 
       // 监听下载事件
-      const downloads: any = [];
-      const downloadPromise = new Promise(resolve => {
-        const listener = (download: any) => {
-          downloads.push(download);
-          // 等待5秒确认是否有更多文件
-          setTimeout(() => {
-            page.off('download', listener);
-            resolve(downloads);
-          }, 5000);
-        };
-        page.on('download', listener);
-        page.click(exportButtonSelector);
-      });
+      let allDownloads: any[] = [];
+      const handleDownload = (download: any) => {
+        allDownloads.push(download);
+        this.emit('log', {
+          message: `检测到下载文件: ${download.suggestedFilename()}`,
+          type: 'info',
+        });
+      };
 
-      const allDownloads: any = await downloadPromise;
+      page.on('download', handleDownload);
+
+      try {
+        // 点击导出按钮
+        await exportButton.waitForElementState('enabled', {
+          timeout: maxWaitTime,
+        });
+        this.emit('log', { message: '尝试点击导出按钮', type: 'info' });
+        await exportButton.click();
+
+        // 等待下载事件
+        const downloadStart = Date.now();
+        let downloadEvent: any = null;
+        while (Date.now() - downloadStart < maxWaitTime) {
+          if (allDownloads.length > 0) {
+            downloadEvent = allDownloads[0];
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+
+        if (!downloadEvent) {
+          // 尝试键盘操作
+          this.emit('log', { message: '尝试键盘操作触发下载', type: 'info' });
+          await exportButton.focus();
+          await page.keyboard.press('Enter');
+
+          // 再次等待下载
+          const keyboardDownloadStart = Date.now();
+          while (Date.now() - keyboardDownloadStart < maxWaitTime) {
+            if (allDownloads.length > 0) {
+              downloadEvent = allDownloads[0];
+              break;
+            }
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+          }
+        }
+
+        if (!downloadEvent) {
+          throw new Error(`超过${maxWaitTime / 60000}分钟未检测到下载事件`);
+        }
+
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+      } catch (err: any) {
+        this.emit('log', {
+          message: `下载触发过程出错: ${err.message}`,
+          type: 'error',
+        });
+        page.off('download', handleDownload);
+        if (page) await page.close().catch(() => {});
+        return { success: false, message: `下载触发失败: ${err.message}` };
+      } finally {
+        page.off('download', handleDownload);
+      }
 
       if (allDownloads.length === 0) {
+        this.emit('log', { message: '未捕获到任何下载文件', type: 'warning' });
+        if (page) await page.close().catch(() => {});
         return { success: false, message: '未捕获到任何下载文件' };
       }
 
-      // 处理下载的文件（S1→S2）
+      // 处理下载文件（S1改为S2）
       let targetPath = null;
       const uuidPattern =
         /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+      const preDownloadFiles = new Set(fs.readdirSync(downloadDir));
 
       for (const download of allDownloads) {
-        const downloadPath = await download.path();
-        if (!downloadPath) continue;
-
         const fileName = download.suggestedFilename();
         const isUuidFile = uuidPattern.test(fileName);
 
         if (!isUuidFile) {
           let processedName = fileName;
-          // 文件名替换：S1→S2
           if (processedName.startsWith('S1')) {
             processedName = processedName.replace('S1', 'S2');
           }
-
           if (!processedName.endsWith('.mp4')) {
             processedName = `${processedName}.mp4`;
           }
 
           targetPath = path.join(downloadDir, processedName);
-          // 若目标文件已存在，先删除
           if (fs.existsSync(targetPath)) {
             fs.unlinkSync(targetPath);
           }
           await download.saveAs(targetPath);
-          this.emit('log', { message: `${filePath}下载完成`, type: 'success' });
+          this.emit('log', {
+            message: `文件下载完成，保存至${targetPath}`,
+            type: 'success',
+          });
         } else {
-          // 处理临时UUID文件
           const tempPath = path.join(downloadDir, fileName);
-          await download.saveAs(tempPath);
-          if (fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
+          try {
+            await download.saveAs(tempPath);
+            if (fs.existsSync(tempPath)) {
+              fs.unlinkSync(tempPath);
+            }
+          } catch (err: any) {
+            this.emit('log', {
+              message: `处理临时UUID文件出错: ${err.message}，请手动删除。`,
+              type: 'warning',
+            });
           }
         }
       }
 
-      if (!targetPath) {
-        return { success: false, message: '未找到有效的下载文件' };
-      }
-
-      // 下载完成后修改原文件所在文件夹名（S1→S2）
-      const originalFileDir = path.dirname(filePath);
-      const originalDirName = path.basename(originalFileDir);
-      if (originalDirName.includes('S1')) {
-        const newDirName = originalDirName.replace('S1', 'S2');
-        const newFileDir = path.join(path.dirname(originalFileDir), newDirName);
-        const renameSuccess = await this.renameWithRetry(
-          originalFileDir,
-          newFileDir
-        );
-        if (renameSuccess) {
-          this.emit('log', {
-            message: `文件夹重命名成功: ${originalFileDir} → ${newFileDir}`,
-            type: 'success',
-          });
-        } else {
-          this.emit('log', {
-            message: `文件夹重命名失败（可能被占用）: ${originalFileDir}`,
-            type: 'warning',
-          });
+      // 清理残留UUID文件
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const files = fs.readdirSync(downloadDir);
+      for (const file of files) {
+        const baseName = path.basename(file, path.extname(file));
+        if (uuidRegex.test(baseName)) {
+          const uuidFilePath = path.join(downloadDir, file);
+          try {
+            fs.unlinkSync(uuidFilePath);
+          } catch (e) {
+            this.emit('log', {
+              message: `删除UUID文件失败: ${
+                (e as Error).message
+              }，请手动删除。`,
+              type: 'warning',
+            });
+          }
         }
       }
 
+      // 验证最终文件
+      if (
+        !targetPath ||
+        !fs.existsSync(targetPath) ||
+        fs.statSync(targetPath).size === 0
+      ) {
+        this.emit('log', {
+          message: '验证文件失败，尝试目录监控查找',
+          type: 'warning',
+        });
+        const currentFiles = fs.readdirSync(downloadDir);
+        for (const file of currentFiles) {
+          if (!preDownloadFiles.has(file) && !file.endsWith('.crdownload')) {
+            const possiblePath = path.join(downloadDir, file);
+            let processedName = file;
+            if (processedName.startsWith('S1')) {
+              processedName = processedName.replace('S1', 'S2');
+            }
+            if (!processedName.endsWith('.mp4')) {
+              processedName = `${processedName}.mp4`;
+            }
+            targetPath = path.join(downloadDir, processedName);
+
+            if (fs.existsSync(possiblePath)) {
+              fs.renameSync(possiblePath, targetPath);
+              break;
+            }
+          }
+        }
+      }
+
+      if (
+        !targetPath ||
+        !fs.existsSync(targetPath) ||
+        fs.statSync(targetPath).size === 0
+      ) {
+        if (page) await page.close().catch(() => {});
+        return { success: false, message: '未找到有效的下载文件' };
+      }
+
+      // 关闭标签页
+      await page.close();
       this.okCallback(targetPath);
       return {
         success: true,
@@ -298,24 +411,15 @@ class PlaywrightScript extends EventEmitter {
         filePath: targetPath,
       };
     } catch (error: any) {
-      console.error('视频去水印出错:', error.message);
       this.emit('log', {
         message: `视频去水印出错: ${error.message}`,
         type: 'error',
       });
+      if (page) await page.close().catch(() => {});
       return {
         success: false,
         message: `操作失败: ${error.message}`,
       };
-    } finally {
-      // 关闭标签页，保留浏览器实例
-      // this.emit('log', { message: '关闭标签页123123', type: 'info' });
-      // if (page && !page.isClosed()) {
-      //   await page.close().catch((err: any) => {
-      //     console.error('关闭标签页失败:', err.message);
-      //   });
-      // }
-      console.log('视频去水印流程结束');
     }
   }
 
@@ -340,7 +444,7 @@ class PlaywrightScript extends EventEmitter {
    * 视频质量修复处理
    */
   public async RunVideoQualityFix(filePath?: string, targetDir?: string) {
-    let page;
+    let page: any = null;
     try {
       // 确定下载目录
       const defaultDownloadDir = path.join(
@@ -351,266 +455,221 @@ class PlaywrightScript extends EventEmitter {
       const downloadDir = targetDir
         ? path.resolve(targetDir)
         : defaultDownloadDir;
+      fs.mkdirSync(downloadDir, { recursive: true });
 
-      this.emit('log', { message: '开始处理视频去水印', type: 'info' });
-
-      // 确保下载目录存在
-      if (!fs.existsSync(downloadDir)) {
-        fs.mkdirSync(downloadDir, { recursive: true });
-      }
-
-      // 初始化浏览器实例 - 即使之前已关闭也会重新创建
-      await PlaywrightScript.initBrowser(downloadDir);
-
-      if (!PlaywrightScript.browser) {
-        throw new Error('无法初始化浏览器实例');
-      }
-
-      // 创建新标签页
-      const page = await PlaywrightScript.browser.newPage();
-
-      // 打开网页并等待加载
-      await page.goto('https://www.kaipai.com/video-tool/quality');
-      await page.waitForLoadState('networkidle');
-
-      // 验证文件路径
+      // 验证文件并提取原始文件名
       if (!filePath || !fs.existsSync(filePath)) {
         const errorMsg = filePath
-          ? `文件不存在，请检查路径: ${filePath}`
-          : '未提供有效的文件路径';
+          ? `文件不存在: ${filePath}`
+          : '未提供文件路径';
         throw new Error(errorMsg);
       }
+      const originalFileName = path.basename(filePath, path.extname(filePath));
+      const targetFileName = originalFileName.startsWith('S5')
+        ? `${originalFileName.replace('S5', 'S6')}.mp4`
+        : `${originalFileName}.mp4`;
+      const targetPath = path.join(downloadDir, targetFileName);
+
+      this.emit('log', { message: '开始处理视频质量修复', type: 'info' });
+
+      // 初始化浏览器和页面
+      await PlaywrightScript.initBrowser(downloadDir);
+      if (!PlaywrightScript.browser) throw new Error('无法初始化浏览器');
+      page = await PlaywrightScript.browser.newPage();
+      await page.goto('https://www.kaipai.com/video-tool/quality');
+      await page.waitForLoadState('networkidle');
 
       // 上传文件
       const uploadArea = await page.waitForSelector(
         '.UploadContentV2_cardRightBox__s8gmc',
-        {
-          timeout: 30000,
-        }
+        { timeout: 30000 }
       );
-
       const [fileChooser] = await Promise.all([
         page.waitForEvent('filechooser', { timeout: 15000 }),
         uploadArea.click(),
       ]);
-
       await fileChooser.setFiles(filePath);
-      this.emit('log', { message: `${filePath}上传成功`, type: 'success' });
+      // this.emit('log', { message: `${filePath} 上传成功`, type: 'success' });
 
-      // 处理分类选择
+      // 选择分类
       await page.waitForSelector('.index_categorgList__dF7ji', {
         timeout: 60000,
       });
-
-      const secondCategorySelector =
-        '.index_categorgList__dF7ji > .index_categoryItem__pPv2U:nth-child(3)';
-
-      const secondCategory = await page.waitForSelector(
-        secondCategorySelector,
-        {
-          timeout: 30000,
-        }
+      await page.click(
+        '.index_categorgList__dF7ji > .index_categoryItem__pPv2U:nth-child(2)'
       );
-      await secondCategory.click();
 
-      // 开始处理
-      const startBtnSelector = '.index_button__WWpyb';
-      const startButton = await page.waitForSelector(startBtnSelector, {
-        timeout: 30000,
-      });
-      await startButton.click();
+      // 点击开始处理
+      await page.click('.index_button__WWpyb');
 
-      // 处理登录
-      const loginPopupSelector = '.meitu-account-quick-login-popup-container';
+      // 点击开始后等待5秒，避免网络延迟导致的状态误判
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
-      try {
-        await page.waitForSelector(loginPopupSelector, {
-          state: 'visible',
-          timeout: 5000,
-        });
+      // 全局超时和检测间隔设置
+      const maxWaitTime = 120 * 60 * 1000; // 2小时
+      const checkInterval = 10 * 1000; // 10秒
 
-        await page.waitForSelector(loginPopupSelector, {
-          state: 'hidden',
-          timeout: 120000,
-        });
-      } catch (error) {
-        // 未检测到登录弹窗，继续执行
+      // 等待任务项DOM稳定
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // 监控第一个任务项
+      const trackListSelector = '.index_trackList__1mQ3P';
+      const trackItemSelector = '.index_trackItem__vo4uQ';
+      const firstItemSelector = `${trackListSelector} ${trackItemSelector}:first-child`;
+      const exportBaseClass = 'index_button__Zm8pL';
+      const retryClass = 'index_grayButton__UaZr0';
+      const exportButtonSelector = `${firstItemSelector} .${exportBaseClass}:not(.${retryClass})`;
+
+      // 等待第一个任务项出现
+      let firstItemFound = false;
+      const firstItemStart = Date.now();
+      while (Date.now() - firstItemStart < maxWaitTime) {
+        const firstItem = await page.$(firstItemSelector);
+        if (firstItem) {
+          firstItemFound = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
       }
-      this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
+      if (!firstItemFound) {
+        throw new Error(`超过${maxWaitTime / 60000}分钟未找到第一个任务项`);
+      }
 
-      // 等待处理完成（修正后的轮询逻辑，解决类型报错）
-      const exportButtonSelector =
-        '.index_buttonBox__-1roP .index_exportButton__4OdAj';
-      const maxWaitTime = 120 * 60 * 1000; // 最大等待时间（2小时）
-      const checkInterval = 60 * 1000; // 检查间隔（1分钟）
+      // 等待导出按钮可用
+      let exportButton: any = null;
+      let checkCount = 0;
+      const exportBtnStart = Date.now();
+      while (Date.now() - exportBtnStart < maxWaitTime) {
+        checkCount++;
+        exportButton = await page.$(exportButtonSelector);
 
-      try {
-        await page.waitForFunction(
-          (selector: any) => {
-            const btn = document.querySelector(selector);
-            return btn && !btn.classList.contains('index_disabled__Xu0Xz');
-          },
-          exportButtonSelector,
-          {
-            timeout: maxWaitTime,
-            polling: checkInterval,
+        if (exportButton) {
+          const isVisible = await exportButton.isVisible();
+          const isEnabled = await exportButton.isEnabled();
+
+          if (isVisible && isEnabled) {
+            break;
           }
-        );
-      } catch (error) {
-        return {
-          success: false,
-          message: `超过最大等待时间(${
-            maxWaitTime / 60000
-          }分钟)，导出按钮仍不可用`,
-        };
+        }
+
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
       }
 
-      // 监听下载事件
-      const downloads: any = [];
-      const downloadPromise = new Promise(resolve => {
-        const listener = (download: any) => {
-          downloads.push(download);
-          // 等待5秒确认是否有更多文件
+      if (
+        !exportButton ||
+        !(await exportButton.isVisible()) ||
+        !(await exportButton.isEnabled())
+      ) {
+        throw new Error(`超过${maxWaitTime / 60000}分钟，导出按钮不可用`);
+      }
+
+      // 点击导出按钮并监听下载
+      const downloadPromise = page.waitForEvent('download', {
+        timeout: maxWaitTime,
+      });
+      await exportButton.click();
+
+      // 检查目录变化（备用方案）
+      const checkDownloadDir = async () => {
+        const originalFiles = new Set(fs.readdirSync(downloadDir));
+        return new Promise<string>((resolve, reject) => {
+          const interval = setInterval(() => {
+            const currentFiles = fs.readdirSync(downloadDir);
+            for (const file of currentFiles) {
+              if (!originalFiles.has(file) && !file.endsWith('.crdownload')) {
+                clearInterval(interval);
+                resolve(path.join(downloadDir, file));
+                return;
+              }
+            }
+          }, checkInterval);
+
           setTimeout(() => {
-            page.off('download', listener);
-            resolve(downloads);
-          }, 5000);
-        };
+            clearInterval(interval);
+            reject(new Error('目录监控超时'));
+          }, maxWaitTime);
+        });
+      };
 
-        page.on('download', listener);
-        page.click(exportButtonSelector);
-      });
-
-      const allDownloads: any = await downloadPromise;
-
-      if (allDownloads.length === 0) {
-        return { success: false, message: '未捕获到任何下载文件' };
+      // 并行等待：优先使用Playwright事件，失败则用目录监控
+      let download: any, tempPath: string;
+      try {
+        download = await downloadPromise;
+        tempPath = path.join(downloadDir, download.suggestedFilename());
+        await download.saveAs(tempPath);
+      } catch (e) {
+        this.emit('log', {
+          message: `下载事件监听失败，尝试目录监控: ${(e as Error).message}`,
+          type: 'warning',
+        });
+        tempPath = await checkDownloadDir();
       }
 
-      // 处理下载的文件
-      let targetPath = null;
-      const uuidPattern =
-        /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
+      // 等待文件写入完成
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
-      for (const download of allDownloads) {
-        const downloadPath = await download.path();
-        if (!downloadPath) continue;
+      // 验证临时文件
+      if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
+        throw new Error(`临时文件无效：${tempPath}`);
+      }
 
-        const fileName = download.suggestedFilename();
-        const isUuidFile = uuidPattern.test(fileName);
+      // 强制重命名为目标文件名
+      if (fs.existsSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+        this.emit('log', {
+          message: `已删除旧文件：${targetPath}`,
+          type: 'info',
+        });
+      }
+      fs.renameSync(tempPath, targetPath);
 
-        if (!isUuidFile) {
-          let processedName = fileName;
-          if (processedName.startsWith('S5')) {
-            processedName = processedName.replace('S5', 'S6');
-          }
+      // 验证最终文件
+      if (!fs.existsSync(targetPath) || fs.statSync(targetPath).size === 0) {
+        throw new Error(`最终文件无效：${targetPath}`);
+      }
 
-          if (!processedName.endsWith('.mp4')) {
-            processedName = `${processedName}.mp4`;
-          }
-
-          targetPath = path.join(downloadDir, processedName);
-          if (fs.existsSync(targetPath)) {
-            fs.unlinkSync(targetPath);
-          }
-          await download.saveAs(targetPath);
-          this.emit('log', { message: `${filePath}处理完成`, type: 'success' });
-        } else {
-          const tempPath = path.join(downloadDir, fileName);
-          await download.saveAs(tempPath);
-          if (fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
+      // 删除UUID格式的冗余文件（包括下载时的和目录中残留的）
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const files = fs.readdirSync(downloadDir);
+      for (const file of files) {
+        const baseName = path.basename(file, path.extname(file));
+        if (uuidRegex.test(baseName)) {
+          const uuidFilePath = path.join(downloadDir, file);
+          try {
+            fs.unlinkSync(uuidFilePath);
+          } catch (e) {
             this.emit('log', {
-              message: `${filePath}处理完成`,
-              type: 'success',
+              message: `删除UUID文件失败: ${(e as Error).message},请手动删除。`,
+              type: 'warning',
             });
           }
         }
       }
 
-      if (!targetPath) {
-        return { success: false, message: '未找到有效的下载文件' };
-      }
+      // 关闭标签页
+      await page.close();
 
-      // 不关闭浏览器，保持实例运行
       return {
         success: true,
-        message: `文件已成功处理并保存至: ${targetPath}`,
+        message: `处理完成，文件保存至：${targetPath}`,
         filePath: targetPath,
       };
     } catch (error: any) {
-      console.error('操作过程中出现错误:', error.message);
       this.emit('log', {
-        message: `操作过程中出现错误: ${error.message}`,
+        message: `操作失败：${error.message}`,
         type: 'error',
       });
-    } finally {
-      console.log('操作完成');
+      if (page) await page.close().catch(() => {});
+      return { success: false, message: error.message };
     }
-  }
-
-  private async renameWithRetry(
-    oldPath: string,
-    newPath: string,
-    maxRetries = 5,
-    delay = 1000
-  ): Promise<boolean> {
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        // 检查原路径是否存在
-        if (!fs.existsSync(oldPath)) {
-          console.log(`原路径不存在，跳过重命名: ${oldPath}`);
-          return false;
-        }
-
-        // 若新路径已存在，先删除（避免重命名冲突）
-        if (fs.existsSync(newPath)) {
-          try {
-            fs.rmdirSync(newPath, { recursive: true });
-            console.log(`已删除已存在的目标路径: ${newPath}`);
-          } catch (rmErr: any) {
-            console.warn(
-              `删除目标路径失败，将尝试直接重命名: ${rmErr.message}`
-            );
-          }
-        }
-
-        // 执行重命名
-        fs.renameSync(oldPath, newPath);
-        return true;
-      } catch (err: any) {
-        // 非权限错误直接返回失败
-        if (err.code !== 'EPERM' && err.code !== 'EBUSY') {
-          console.error(`重命名失败（非占用错误）: ${err.message}`);
-          return false;
-        }
-
-        // 最后一次重试失败
-        if (i === maxRetries - 1) {
-          console.error(
-            `达到最大重试次数(${maxRetries})，重命名失败: ${err.message}`
-          );
-          return false;
-        }
-
-        // 延迟后重试
-        console.log(`因文件占用，将在${delay}ms后进行第${i + 2}次重试...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    return false;
   }
 
   /**
    * 通过指定页面检查登录状态
    */
   public async CheckKaipaiLoginStatus() {
-    let isLoggedIn = false;
-    let page: any;
     try {
-      // 获取当前系统用户名
-      const username = os.userInfo().username;
-
       // 确定下载目录
       const defaultDownloadDir = path.join(
         os.homedir(),
@@ -618,7 +677,7 @@ class PlaywrightScript extends EventEmitter {
         'kaipai_output'
       );
 
-      // 初始化浏览器实例 - 即使之前已关闭也会重新创建
+      // 初始化浏览器实例
       await PlaywrightScript.initBrowser(defaultDownloadDir);
 
       if (!PlaywrightScript.browser) {
@@ -628,24 +687,85 @@ class PlaywrightScript extends EventEmitter {
       // 创建新标签页
       const page = await PlaywrightScript.browser.newPage();
 
-      // 导航到目标URL
-      // console.log(`正在访问页面: https://www.kaipai.com/home`);
+      // 导航到目标URL并等待加载完成
       await page.goto('https://www.kaipai.com/home');
       await page.waitForLoadState('networkidle');
-      // console.log('页面加载完成');
 
       // 检查是否存在登录标识元素
-      // console.log('开始检测登录状态...');
       const avatarSelector = '.index_accountAvatar__gOrHw';
       const elementCount = await page.locator(avatarSelector).count();
-      const isLoggedIn = elementCount > 0;
+      let isLoggedIn = elementCount > 0;
 
-      // console.log(`登录状态检测结果: ${isLoggedIn ? '已登录' : '未登录'}`);
+      // 未登录则执行自动登录流程
+      if (!isLoggedIn) {
+        this.emit('log', { message: '开始执行自动登录...', type: 'info' });
 
-      // 不关闭浏览器，保持实例运行
+        try {
+          // 1. 点击登录按钮打开弹窗
+          await page.click('.index_account-action__g6gW5');
+          await page.waitForTimeout(500); // 等待弹窗加载
+
+          // 2. 点击微信图标切换到手机号登录（根据实际页面逻辑调整）
+          const wechatLocator = page.locator('[key="wechat"]');
+          await wechatLocator.waitFor({ state: 'visible' });
+          await wechatLocator.click();
+          await page.waitForTimeout(500);
+
+          // 3. 点击注册链接切换到密码登录
+          const registerLinkLocator = page.locator('.register-link');
+          await registerLinkLocator.waitFor({ state: 'visible' });
+          await registerLinkLocator.click();
+          await page.waitForTimeout(500);
+
+          // 4. 定位输入框容器并输入账号密码
+          const inputGroupLocator = page.locator('.input-group');
+
+          // 手机号输入框（input-group下第一个input-item）
+          const phoneInputLocator = inputGroupLocator
+            .locator('.input-item')
+            .nth(0)
+            .locator('input');
+          await phoneInputLocator.waitFor({ state: 'visible' });
+          await phoneInputLocator.fill('13688629385');
+
+          // 密码输入框（input-group下第二个input-item）
+          const passwordInputLocator = inputGroupLocator
+            .locator('.input-item')
+            .nth(1)
+            .locator('input');
+          await passwordInputLocator.waitFor({ state: 'visible' });
+          await passwordInputLocator.fill('weibiz5568!');
+
+          // 5. 点击提交按钮登录
+          const submitButtonLocator = page.locator('.form-submit');
+          await submitButtonLocator.waitFor({ state: 'visible' });
+          await submitButtonLocator.click();
+
+          // 6. 等待登录完成并验证登录状态
+          await page.waitForLoadState('networkidle');
+          const postLoginCount = await page.locator(avatarSelector).count();
+          isLoggedIn = postLoginCount > 0;
+
+          if (isLoggedIn) {
+            this.emit('log', { message: '自动登录成功', type: 'success' });
+          } else {
+            this.emit('log', {
+              message: '自动登录后未检测到登录状态',
+              type: 'warning',
+            });
+          }
+        } catch (loginError) {
+          this.emit('log', {
+            message: `自动登录过程出错: ${(loginError as Error).message}`,
+            type: 'error',
+          });
+          throw new Error(`自动登录失败: ${(loginError as Error).message}`);
+        }
+      }
+
       this.emit('log', {
         message: `开拍登录状态检测结果: ${isLoggedIn ? '已登录' : '未登录'}`,
-        type: 'info',
+        type: isLoggedIn ? 'success' : 'warning',
       });
 
       return {
@@ -653,24 +773,14 @@ class PlaywrightScript extends EventEmitter {
         message: isLoggedIn
           ? '检测到用户已登录（发现账户头像元素）'
           : '未检测到用户登录状态（未发现账户头像元素）',
-        isLoggedIn: isLoggedIn, // 明确返回登录状态
+        isLoggedIn: isLoggedIn,
       };
     } catch (error: any) {
-      // console.error('登录状态检测过程中出现错误:', error.message);
-
       return {
         success: false,
         message: `登录状态检测失败: ${error.message}`,
-        isLoggedIn: null, // 错误情况下登录状态为null
+        isLoggedIn: null,
       };
-    } finally {
-      // 关闭当前标签页，但保留浏览器实例
-      if (page && !page.isClosed()) {
-        await page.close().catch((error: any) => {
-          console.error('关闭标签页时出错:', error);
-        });
-      }
-      console.log('登录状态检查完成，标签页已关闭');
     }
   }
 }

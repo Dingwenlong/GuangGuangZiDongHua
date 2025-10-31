@@ -134,10 +134,10 @@ class AudioProcessor extends EventEmitter {
    */
   public async processAudio(audioPath: string): Promise<void> {
     try {
-      this.emit('log', {
-        message: `开始处理音频文件: ${path.basename(audioPath)}`,
-        type: 'info',
-      } as LogEvent);
+      // this.emit('log', {
+      //   message: `开始处理音频文件: ${path.basename(audioPath)}`,
+      //   type: 'info',
+      // } as LogEvent);
       // 首先检查文件是否存在
       if (!fs.existsSync(audioPath)) {
         this.emit('log', {
@@ -179,12 +179,12 @@ class AudioProcessor extends EventEmitter {
 
       // 如果视频文件存在且尚未处理过，自动处理视频
       if (fs.existsSync(videoPath) && !this.processedPrompts.has(videoPath)) {
-        this.emit('log', {
-          message: `发现同名视频文件，开始处理视频: ${path.basename(
-            videoPath
-          )}`,
-          type: 'info',
-        } as LogEvent);
+        // this.emit('log', {
+        //   message: `发现同名视频文件，开始处理视频: ${path.basename(
+        //     videoPath
+        //   )}`,
+        //   type: 'info',
+        // } as LogEvent);
 
         const videoParams: ProcessParams = {
           audioPath,
@@ -276,13 +276,6 @@ class AudioProcessor extends EventEmitter {
         return;
       }
 
-      this.emit('log', {
-        message: `开始处理${
-          isVideoProcessing ? '视频' : '音频'
-        }: ${path.basename(targetPath)}`,
-        type: 'info',
-      } as LogEvent);
-
       // 读取工作流模板（音频使用workflow_09，视频使用workflow_10）
       const templatePath = isVideoProcessing
         ? this.workflowTemplatePath10
@@ -308,12 +301,12 @@ class AudioProcessor extends EventEmitter {
       promptData = JSON.parse(updatedWorkflow);
       // 调用接口获取promptId
       const promptId = await this.callPromptApi(promptData, isVideoProcessing);
-      this.emit('log', {
-        message: `获取到${
-          isVideoProcessing ? '视频' : '音频'
-        }处理任务ID: ${promptId}`,
-        type: 'info',
-      } as LogEvent);
+      // this.emit('log', {
+      //   message: `获取到${
+      //     isVideoProcessing ? '视频' : '音频'
+      //   }处理任务ID: ${promptId}`,
+      //   type: 'info',
+      // } as LogEvent);
 
       // 存储结果并进行后续处理
       if (promptId) {
@@ -432,10 +425,10 @@ class AudioProcessor extends EventEmitter {
       try {
         const response = await this.httpGetRequest(url);
         const historyData = JSON.parse(response);
-        this.emit('log', {
-          message: `轮询任务状态返回数据: ${JSON.stringify(historyData)}`,
-          type: 'info',
-        } as LogEvent);
+        // this.emit('log', {
+        //   message: `轮询任务状态返回数据: ${JSON.stringify(historyData)}`,
+        //   type: 'info',
+        // } as LogEvent);
 
         // 检查是否返回了非空对象
         if (historyData && Object.keys(historyData).length > 0) {
@@ -568,11 +561,6 @@ class AudioProcessor extends EventEmitter {
         throw new Error('音频路径无效');
       }
 
-      this.emit('log', {
-        message: `新文件名: ${newFileName}`,
-        type: 'info',
-      } as LogEvent);
-
       // 保存文件的完整路径
       let savePath = path.join(mediaDir, newFileName);
 
@@ -664,7 +652,82 @@ class AudioProcessor extends EventEmitter {
 
       // 如果为视频则代表处理完成，触发完成的处理
       if (isVideoProcessing) {
-        this.emit('s5OkCallback', savePath);
+        // 检查并处理S4文件夹到S5文件夹的文件移动逻辑
+        try {
+          // 获取当前视频所在的S4文件夹路径
+          const currentDir = path.dirname(savePath);
+          const parentDir = path.dirname(currentDir);
+          const dirName = path.basename(currentDir);
+
+          // 检查文件夹是否以S4开头
+          if (dirName.startsWith('S4')) {
+            // 创建对应的S5文件夹路径
+            const newDirName = dirName.replace('S4', 'S5');
+            const newDirPath = path.join(parentDir, newDirName);
+
+            // 获取当前文件名
+            const fileName = path.basename(savePath);
+            // 创建新的保存路径（在S5文件夹中）
+            const newSavePath = path.join(newDirPath, fileName);
+
+            try {
+              // 先创建S5文件夹（如果不存在）
+              if (!fs.existsSync(newDirPath)) {
+                fs.mkdirSync(newDirPath, { recursive: true });
+                this.emit('log', {
+                  message: `已创建S5文件夹: ${newDirPath}`,
+                  type: 'info',
+                } as LogEvent);
+              }
+
+              // 将当前处理完成的文件移动到S5文件夹
+              if (fs.existsSync(savePath)) {
+                // 如果目标文件已存在，先删除它
+                if (fs.existsSync(newSavePath)) {
+                  fs.unlinkSync(newSavePath);
+                }
+                // 移动文件
+                fs.renameSync(savePath, newSavePath);
+
+                // 更新保存路径为S5文件夹中的路径
+                savePath = newSavePath;
+              }
+
+              // 检查S4文件夹是否为空
+              const files = fs.readdirSync(currentDir);
+              if (files.length === 0) {
+                // 删除空的S4文件夹
+                fs.rmdirSync(currentDir);
+                this.emit('log', {
+                  message: `已删除空的S4文件夹: ${currentDir}`,
+                  type: 'info',
+                } as LogEvent);
+              }
+            } catch (moveError) {
+              this.emit('log', {
+                message: `移动文件到S5文件夹或删除S4文件夹时出错: ${
+                  moveError instanceof Error
+                    ? moveError.message
+                    : String(moveError)
+                }`,
+                type: 'warning',
+              } as LogEvent);
+            }
+          }
+        } catch (folderError) {
+          this.emit('log', {
+            message: `处理文件夹时出错: ${
+              folderError instanceof Error
+                ? folderError.message
+                : String(folderError)
+            }`,
+            type: 'warning',
+          } as LogEvent);
+        }
+
+        setTimeout(() => {
+          this.emit('s5OkCallback', savePath);
+        }, 3 * 1000);
       }
 
       // this.emit('fileDownloaded', {
@@ -828,10 +891,10 @@ class AudioProcessor extends EventEmitter {
       ? server
       : `http://${server}`;
     const url = `${normalizedServer}:${port}/prompt`;
-    this.emit('log', {
-      message: `调用API: ${url}获取prompt_id`,
-      type: 'info',
-    } as LogEvent);
+    // this.emit('log', {
+    //   message: `调用API: ${url}获取prompt_id`,
+    //   type: 'info',
+    // } as LogEvent);
 
     // 构建请求数据
     const requestDataObj = {

@@ -73,7 +73,6 @@ class AudioExtractor extends EventEmitter {
       // 触发提取完成事件
       const result: AudioExtractResult = { inputPath: videoPath, outputPath };
       // this.emit('audioExtractComplete', result);
-      // this.emit('s5OkCallback', result); // s5完成回调
 
       return result;
     } catch (error) {

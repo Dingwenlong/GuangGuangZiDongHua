@@ -88,7 +88,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     audioExtractor,
     audioProcessor
   );
-  const isTest = true;
+  const isTest = false;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await workbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
@@ -124,7 +124,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     async () => {
       const task = await workbenchManager.dequeueTask('s2TasksQueue');
       if (!task) return;
-      console.log('执行任务s2');
 
       const videoFilePath = task as string;
       if (isTest) {
@@ -225,8 +224,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     async () => {
       const task = await workbenchManager.dequeueTask('s6TasksQueue');
       if (!task) return;
-      console.log('执行任务s6');
-
       const videoFilePath = task as string;
       // if (isTest) {
       //   // 测试过程直接重命名文件为S6
@@ -286,7 +283,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   audioProcessor.on('s5OkCallback', savePath => {
     // 增加第六步队列
     workbenchManager.enqueueTask('s6TasksQueue', savePath);
-    console.log('新增s6任务:', savePath);
+    // console.log('新增s6任务:', savePath);
   });
   // ----------------------其他的---------------------
   // 输出日志
@@ -384,6 +381,13 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       handler: async (_, arg: { filePath: string; targetDir: string }) => {
         const { filePath, targetDir } = arg;
         return await playwrightScript.runWatermarkRemoval(filePath, targetDir);
+      },
+    },
+    {
+      channel: 'RunVideoQualityFix',
+      handler: async (_, arg: { filePath: string; targetDir: string }) => {
+        const { filePath, targetDir } = arg;
+        return await playwrightScript.RunVideoQualityFix(filePath, targetDir);
       },
     },
     {
