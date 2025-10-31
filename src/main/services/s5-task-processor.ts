@@ -71,7 +71,7 @@ class S5TaskProcessor {
       console.log('服务正在重启中，等待3分钟后再继续处理任务');
       return;
     }
-    console.log('开始处理S5任务');
+    // console.log('开始处理S5任务');
 
     const task = await this.workbenchManager.dequeueTask('s5TasksQueue');
     if (!task) return;

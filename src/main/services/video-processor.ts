@@ -273,13 +273,17 @@ class VideoProcessor extends EventEmitter {
     filePath: string,
     eventType: string
   ): Promise<void> {
-    // 基础检查
-    if (!this.isVideoFile(filePath) || !this.isInProductDirectory(filePath)) {
+    if (await this.doneForVideoProcess(filePath)) {
       return;
     }
 
-    // 检查是否是处理后的视频文件
-    if (this.isProcessedVideoFile(filePath)) {
+    // 基础检查
+    if (!isVideoFile(filePath) || !this.isInProductDirectory(filePath)) {
+      return;
+    }
+
+    if (isProcessedVideoFile(filePath)) {
+      // 检查是否是处理后的视频文件
       return;
     }
 
@@ -305,6 +309,17 @@ class VideoProcessor extends EventEmitter {
         'error'
       );
     }
+  }
+
+  private async doneForVideoProcess(filePath: string) {
+    const fileName = path.basename(filePath);
+    const fileDir = path.dirname(filePath);
+    if (fileName === '0000.txt' && fileDir.indexOf('S1') > -1) {
+      await renameProductDirs([fileDir], 'S1---', 'X1---');
+      this.writeLog(`${fileDir}目录重命名为X1`);
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -559,7 +574,15 @@ class VideoProcessor extends EventEmitter {
         subtitleRemoveOver: false,
       } as S3VideosChunk;
 
-      const productDirs = this.getProductDirectories().sort().slice(0, 5);
+      const productDirs = this.getProductDirectories()
+        .sort((a, b) => {
+          const stepPartsA = a.split('---');
+          const stepPartsB = b.split('---');
+          return stepPartsA[0] === stepPartsB[0]
+            ? stepPartsA[1].localeCompare(stepPartsB[1])
+            : stepPartsA[0].localeCompare(stepPartsB[0]);
+        })
+        .slice(0, 5);
       const allVideoFiles: string[] = [];
       productDirs.forEach(dir => {
         // 升序，取前四个
@@ -721,11 +744,6 @@ class VideoProcessor extends EventEmitter {
    * 工具方法
    */
 
-  // 判断是否为视频文件
-  private isVideoFile(filePath: string): boolean {
-    return isVideoFile(filePath);
-  }
-
   // 判断是否在商品目录中
   private isInProductDirectory(filePath: string): boolean {
     const dirName = path.dirname(filePath);
@@ -734,11 +752,6 @@ class VideoProcessor extends EventEmitter {
       baseDir.startsWith('S1---') &&
       !path.basename(filePath).startsWith('S1---')
     );
-  }
-
-  // 判断是否为已处理的视频文件
-  private isProcessedVideoFile(filePath: string): boolean {
-    return isProcessedVideoFile(filePath);
   }
 
   // 检查文件是否正在处理
@@ -851,10 +864,7 @@ class VideoProcessor extends EventEmitter {
       const files = fs.readdirSync(dir);
       files.forEach(file => {
         const filePath = path.join(dir, file);
-        if (
-          this.isVideoFile(filePath) &&
-          !this.isProcessedVideoFile(filePath)
-        ) {
+        if (isVideoFile(filePath) && !isProcessedVideoFile(filePath)) {
           this.handleFileEvent(filePath, 'scan');
           foundCount++;
         }

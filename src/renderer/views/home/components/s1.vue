@@ -133,7 +133,13 @@ onMounted(() => {
             const [first, seconds, ..._] = dir.name;
             return dir.type === 'directory' && first === 'S'; //&& seconds === '1';
           })
-          .sort((a, b) => a.name.localeCompare(b.name))
+          .sort((a, b) => {
+            const stepPartsA = a.name.split('---');
+            const stepPartsB = b.name.split('---');
+            return stepPartsA[0] === stepPartsB[0]
+              ? stepPartsA[1].localeCompare(stepPartsB[1])
+              : stepPartsA[0].localeCompare(stepPartsB[0]);
+          })
           .map(dir => {
             const children = dir.children as any[];
             return {
