@@ -6,7 +6,6 @@
       <!-- <span class="text-[#666666] text-[12px]"
         >S3/S4为自动工作流，不支持单独使用</span
       > -->
-      <Button type="primary" @click="testProcessAudio">测试</Button>
       <!-- <div></div> -->
       <div
         class="w-2/12 h-32 text-[12px] leading-35 text-gray-400 content-center text-right whitespace-nowrap">
@@ -63,14 +62,6 @@ const s4 = ref({
   autoHandOnWorkflow: true,
 });
 const tableData = ref<any>([]);
-
-const testProcessAudio = async () => {
-  // 更新 s4 的 running 状态
-  // ipcRendererChannel.UpdateWorkbenchData.invoke({
-  //   stepNo: 's4',
-  //   sData: { autoHandOnWorkflow: s4.value.autoHandOnWorkflow, running: true },
-  // });
-};
 
 function openFolderHandler(dir: string) {
   shell.openPath(path.join(s5.taskDirectory, dir));

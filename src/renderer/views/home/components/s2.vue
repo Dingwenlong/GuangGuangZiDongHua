@@ -127,7 +127,7 @@ function setCookie() {
   try {
     // 处理文件路径（使用/代替\避免转义问题）
     const firstFilePath =
-      'C:\\Users\\ASUS\\Downloads\\ces\\S2-aaa\\S1---33019725083-1-192.mp4';
+      'C:\\Users\\ASUS\\Downloads\\ces\\S2-aaa\\S1-testMP4.mp4';
 
     // 调用去水印脚本
     ipcRendererChannel.RunWatermarkRemoval.invoke({

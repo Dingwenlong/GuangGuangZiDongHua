@@ -88,7 +88,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     audioExtractor,
     audioProcessor
   );
-  const isTest = true;
+  const isTest = false;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await workbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
@@ -124,7 +124,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     async () => {
       const task = await workbenchManager.dequeueTask('s2TasksQueue');
       if (!task) return;
-      console.log('执行任务s2');
 
       const videoFilePath = task as string;
       if (isTest) {
@@ -214,19 +213,17 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
 
   // s6
-  // 每5秒执行一次，并发数为1
+  // 每5秒执行一次，并发数为100
   scheduler.addTask(
     {
       name: 's6Task',
       interval: 5000,
-      concurrency: 1,
+      concurrency: 100,
       enabled: true,
     },
     async () => {
       const task = await workbenchManager.dequeueTask('s6TasksQueue');
       if (!task) return;
-      console.log('执行任务s6');
-
       const videoFilePath = task as string;
       // if (isTest) {
       //   // 测试过程直接重命名文件为S6
@@ -283,10 +280,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     }
   });
   // 第五步完成之后（从audioProcessor监听事件）
-  audioProcessor.on('s5OkCallback', savePath => {
+  audioProcessor.on('s5OkCallback', (savePath: string[]) => {
     // 增加第六步队列
-    workbenchManager.enqueueTask('s6TasksQueue', savePath);
-    console.log('新增s6任务:', savePath);
+    for (const path of savePath) {
+      workbenchManager.enqueueTask('s6TasksQueue', path);
+    }
+    // console.log('新增s6任务:', savePath);
   });
   // ----------------------其他的---------------------
   // 输出日志
@@ -384,6 +383,13 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       handler: async (_, arg: { filePath: string; targetDir: string }) => {
         const { filePath, targetDir } = arg;
         return await playwrightScript.runWatermarkRemoval(filePath, targetDir);
+      },
+    },
+    {
+      channel: 'RunVideoQualityFix',
+      handler: async (_, arg: { filePath: string; targetDir: string }) => {
+        const { filePath, targetDir } = arg;
+        return await playwrightScript.RunVideoQualityFix(filePath, targetDir);
       },
     },
     {

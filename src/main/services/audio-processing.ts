@@ -134,10 +134,10 @@ class AudioProcessor extends EventEmitter {
    */
   public async processAudio(audioPath: string): Promise<void> {
     try {
-      this.emit('log', {
-        message: `开始处理音频文件: ${path.basename(audioPath)}`,
-        type: 'info',
-      } as LogEvent);
+      // this.emit('log', {
+      //   message: `开始处理音频文件: ${path.basename(audioPath)}`,
+      //   type: 'info',
+      // } as LogEvent);
       // 首先检查文件是否存在
       if (!fs.existsSync(audioPath)) {
         this.emit('log', {
@@ -179,12 +179,12 @@ class AudioProcessor extends EventEmitter {
 
       // 如果视频文件存在且尚未处理过，自动处理视频
       if (fs.existsSync(videoPath) && !this.processedPrompts.has(videoPath)) {
-        this.emit('log', {
-          message: `发现同名视频文件，开始处理视频: ${path.basename(
-            videoPath
-          )}`,
-          type: 'info',
-        } as LogEvent);
+        // this.emit('log', {
+        //   message: `发现同名视频文件，开始处理视频: ${path.basename(
+        //     videoPath
+        //   )}`,
+        //   type: 'info',
+        // } as LogEvent);
 
         const videoParams: ProcessParams = {
           audioPath,
@@ -276,13 +276,6 @@ class AudioProcessor extends EventEmitter {
         return;
       }
 
-      this.emit('log', {
-        message: `开始处理${
-          isVideoProcessing ? '视频' : '音频'
-        }: ${path.basename(targetPath)}`,
-        type: 'info',
-      } as LogEvent);
-
       // 读取工作流模板（音频使用workflow_09，视频使用workflow_10）
       const templatePath = isVideoProcessing
         ? this.workflowTemplatePath10
@@ -308,12 +301,12 @@ class AudioProcessor extends EventEmitter {
       promptData = JSON.parse(updatedWorkflow);
       // 调用接口获取promptId
       const promptId = await this.callPromptApi(promptData, isVideoProcessing);
-      this.emit('log', {
-        message: `获取到${
-          isVideoProcessing ? '视频' : '音频'
-        }处理任务ID: ${promptId}`,
-        type: 'info',
-      } as LogEvent);
+      // this.emit('log', {
+      //   message: `获取到${
+      //     isVideoProcessing ? '视频' : '音频'
+      //   }处理任务ID: ${promptId}`,
+      //   type: 'info',
+      // } as LogEvent);
 
       // 存储结果并进行后续处理
       if (promptId) {
@@ -432,10 +425,10 @@ class AudioProcessor extends EventEmitter {
       try {
         const response = await this.httpGetRequest(url);
         const historyData = JSON.parse(response);
-        this.emit('log', {
-          message: `轮询任务状态返回数据: ${JSON.stringify(historyData)}`,
-          type: 'info',
-        } as LogEvent);
+        // this.emit('log', {
+        //   message: `轮询任务状态返回数据: ${JSON.stringify(historyData)}`,
+        //   type: 'info',
+        // } as LogEvent);
 
         // 检查是否返回了非空对象
         if (historyData && Object.keys(historyData).length > 0) {
@@ -568,11 +561,6 @@ class AudioProcessor extends EventEmitter {
         throw new Error('音频路径无效');
       }
 
-      this.emit('log', {
-        message: `新文件名: ${newFileName}`,
-        type: 'info',
-      } as LogEvent);
-
       // 保存文件的完整路径
       let savePath = path.join(mediaDir, newFileName);
 
@@ -664,16 +652,104 @@ class AudioProcessor extends EventEmitter {
 
       // 如果为视频则代表处理完成，触发完成的处理
       if (isVideoProcessing) {
-        this.emit('s5OkCallback', savePath);
-      }
+        try {
+          // 获取当前视频所在的S4文件夹路径
+          const currentDir = path.dirname(savePath);
+          const parentDir = path.dirname(currentDir);
+          const dirName = path.basename(currentDir);
+          const fileName = path.basename(savePath);
 
-      // this.emit('fileDownloaded', {
-      //   originalUrl: fileUrl,
-      //   savePath: savePath,
-      //   newFileName: newFileName,
-      //   isVideo: isVideoProcessing,
-      //   originalPath: originalPath,
-      // });
+          // 步骤1: 只将文件名更改为S5开头，不创建新文件夹
+          if (fileName.startsWith('S4')) {
+            const newFileName = fileName.replace('S4', 'S5');
+            const newFilePath = path.join(currentDir, newFileName);
+
+            if (fs.existsSync(savePath) && savePath !== newFilePath) {
+              // 如果目标文件已存在，先删除它
+              if (fs.existsSync(newFilePath)) {
+                fs.unlinkSync(newFilePath);
+              }
+              // 重命名文件
+              fs.renameSync(savePath, newFilePath);
+              savePath = newFilePath;
+
+              this.emit('log', {
+                message: `已将文件重命名为S5开头: ${newFileName}`,
+                type: 'info',
+              } as LogEvent);
+            }
+          }
+
+          // 步骤2: 检查当前文件夹下是否有四个S4开头的文件（现在应该都是S5开头了）
+          if (dirName.startsWith('S4')) {
+            try {
+              // 获取当前文件夹下所有以S5开头的文件
+              const files = fs.readdirSync(currentDir);
+              const s5Files = files.filter(
+                file => file.startsWith('S5') && file.endsWith('.mp4')
+              );
+
+              this.emit('log', {
+                message: `检测到当前文件夹中S5开头的视频文件数量: ${s5Files.length}`,
+                type: 'info',
+              } as LogEvent);
+
+              // 当有四个S5文件时，将外面一层文件夹的S4前缀改为S5
+              if (s5Files.length === 4) {
+                // 创建对应的S5文件夹路径
+                const newDirName = dirName.replace('S4', 'S5');
+                const newDirPath = path.join(parentDir, newDirName);
+
+                // 如果S5文件夹不存在，则重命名整个S4文件夹
+                if (!fs.existsSync(newDirPath)) {
+                  fs.renameSync(currentDir, newDirPath);
+                  this.emit('log', {
+                    message: `已将文件夹 ${dirName} 重命名为 ${newDirName}`,
+                    type: 'success',
+                  } as LogEvent);
+
+                  // 构建四个文件的完整路径数组
+                  const updatedFilePaths = s5Files.map(file =>
+                    path.join(newDirPath, file)
+                  );
+
+                  // 触发s5OkCallback事件，传入四个文件的路径数组
+                  setTimeout(() => {
+                    this.emit('s5OkCallback', updatedFilePaths);
+                    this.emit('log', {
+                      message: `已触发s5OkCallback，传入${updatedFilePaths.length}个文件路径`,
+                      type: 'success',
+                    } as LogEvent);
+                  }, 3 * 1000);
+                } else {
+                  this.emit('log', {
+                    message: `目标文件夹 ${newDirName} 已存在，无法重命名`,
+                    type: 'warning',
+                  } as LogEvent);
+                }
+              }
+            } catch (checkError) {
+              this.emit('log', {
+                message: `检查文件夹中S5文件数量时出错: ${
+                  checkError instanceof Error
+                    ? checkError.message
+                    : String(checkError)
+                }`,
+                type: 'warning',
+              } as LogEvent);
+            }
+          }
+        } catch (folderError) {
+          this.emit('log', {
+            message: `处理文件夹时出错: ${
+              folderError instanceof Error
+                ? folderError.message
+                : String(folderError)
+            }`,
+            type: 'warning',
+          } as LogEvent);
+        }
+      }
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -828,10 +904,10 @@ class AudioProcessor extends EventEmitter {
       ? server
       : `http://${server}`;
     const url = `${normalizedServer}:${port}/prompt`;
-    this.emit('log', {
-      message: `调用API: ${url}获取prompt_id`,
-      type: 'info',
-    } as LogEvent);
+    // this.emit('log', {
+    //   message: `调用API: ${url}获取prompt_id`,
+    //   type: 'info',
+    // } as LogEvent);
 
     // 构建请求数据
     const requestDataObj = {
