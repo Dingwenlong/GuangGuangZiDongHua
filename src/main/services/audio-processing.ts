@@ -716,10 +716,12 @@ class AudioProcessor extends EventEmitter {
                   // 触发s5OkCallback事件，传入四个文件的路径数组
                   setTimeout(() => {
                     this.emit('s5OkCallback', updatedFilePaths);
-                    this.emit('log', {
-                      message: `已触发s5OkCallback，传入${updatedFilePaths.length}个文件路径`,
-                      type: 'success',
-                    } as LogEvent);
+                    // this.emit('log', {
+                    //   message: `已触发s5OkCallback，传入${
+                    //     updatedFilePaths.length
+                    //   }个文件路径,文件路径为: ${updatedFilePaths.join(', ')}`,
+                    //   type: 'success',
+                    // } as LogEvent);
                   }, 3 * 1000);
                 } else {
                   this.emit('log', {

@@ -118,7 +118,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       name: 's2Task',
       interval: 5000,
-      concurrency: 1,
+      concurrency: 5,
       enabled: true,
     },
     async () => {
@@ -222,26 +222,18 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       enabled: true,
     },
     async () => {
-      // 循环获取任务直到队列为空
-      while (true) {
-        const task = await workbenchManager.dequeueTask('s6TasksQueue');
-        if (!task) break; // 队列为空，退出循环
+      const task = await workbenchManager.dequeueTask('s6TasksQueue');
+      if (!task) return;
 
-        const videoFilePath = task as string;
-        try {
-          // 处理任务
-          await playwrightScript.RunVideoQualityFix(
-            videoFilePath,
-            path.dirname(videoFilePath)
-          );
-
-          // 任务处理完成后等待5秒再处理下一个
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        } catch (error) {
-          console.error('处理S6任务出错:', error);
-          // 出错也等待5秒再继续
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        }
+      const videoFilePath = task as string;
+      try {
+        // 处理任务
+        await playwrightScript.RunVideoQualityFix(
+          videoFilePath,
+          path.dirname(videoFilePath)
+        );
+      } catch (error) {
+        console.error('处理S6任务出错:', error);
       }
     }
   );
@@ -290,7 +282,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   audioProcessor.on('s5OkCallback', (savePath: string[]) => {
     // 增加第六步队列
     for (const path of savePath) {
-      workbenchManager.enqueueTask('s6TasksQueue', path);
+      setTimeout(() => {
+        workbenchManager.enqueueTask('s6TasksQueue', path);
+      }, 1000);
     }
     // console.log('新增s6任务:', savePath);
   });
