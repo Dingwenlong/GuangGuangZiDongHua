@@ -133,12 +133,15 @@ onMounted(() => {
             const [first, seconds, ..._] = dir.name;
             return dir.type === 'directory' && first === 'S'; //&& seconds === '1';
           })
+          .sort((a, b) => a.name.localeCompare(b.name))
           .map(dir => {
+            const children = dir.children as any[];
             return {
               taskDirectory: s1.taskDirectory,
               productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
-              videoMaterial: dir.children
+              videoMaterial: children
                 .filter((file: any) => file.isVideo && file.type === 'file')
+                .sort((a, b) => a.name.localeCompare(b.name))
                 .map((file: any) => file.name),
             };
           });
