@@ -222,20 +222,27 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       enabled: true,
     },
     async () => {
-      const task = await workbenchManager.dequeueTask('s6TasksQueue');
-      if (!task) return;
-      const videoFilePath = task as string;
-      // if (isTest) {
-      //   // 测试过程直接重命名文件为S6
-      //   const targetPath = videoFilePath.replace('S6---', 'S7---');
-      //   fs.renameSync(videoFilePath, targetPath);
-      //   await playwrightScript.okCallback(targetPath);
-      // } else {
-      await playwrightScript.RunVideoQualityFix(
-        videoFilePath,
-        path.dirname(videoFilePath)
-      );
-      // }
+      // 循环获取任务直到队列为空
+      while (true) {
+        const task = await workbenchManager.dequeueTask('s6TasksQueue');
+        if (!task) break; // 队列为空，退出循环
+
+        const videoFilePath = task as string;
+        try {
+          // 处理任务
+          await playwrightScript.RunVideoQualityFix(
+            videoFilePath,
+            path.dirname(videoFilePath)
+          );
+
+          // 任务处理完成后等待5秒再处理下一个
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (error) {
+          console.error('处理S6任务出错:', error);
+          // 出错也等待5秒再继续
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
     }
   );
   workbenchManager.watch('s6', (newValue: WorkbenchStoreSchema['s6']) => {
