@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { EventEmitter } from 'events';
-import WorkbenchManager from './workbench-manager';
 
 class PlaywrightScript extends EventEmitter {
   // 共享浏览器实例
@@ -75,7 +74,10 @@ class PlaywrightScript extends EventEmitter {
 
       fs.mkdirSync(downloadDir, { recursive: true });
 
-      this.emit('log', { message: '开始处理视频去水印', type: 'info' });
+      this.emit('log', {
+        message: `开始处理视频去水印：${filePath}`,
+        type: 'info',
+      });
 
       // 初始化浏览器实例
       await PlaywrightScript.initBrowser(downloadDir);
@@ -280,8 +282,6 @@ class PlaywrightScript extends EventEmitter {
         page.off('download', handleDownload);
         if (page) await page.close().catch(() => {});
         return { success: false, message: `下载触发失败: ${err.message}` };
-      } finally {
-        page.off('download', handleDownload);
       }
 
       if (allDownloads.length === 0) {
@@ -289,6 +289,8 @@ class PlaywrightScript extends EventEmitter {
         if (page) await page.close().catch(() => {});
         return { success: false, message: '未捕获到任何下载文件' };
       }
+
+      this.emit('log', { message: `下载完成，开始处理文件`, type: 'info' });
 
       // 处理下载文件（S1改为S2）
       let targetPath = null;
@@ -397,6 +399,10 @@ class PlaywrightScript extends EventEmitter {
 
       // 关闭标签页
       await page.close();
+      this.emit('log', {
+        message: `触发成功的回调，文件路径: ${targetPath}`,
+        type: 'info',
+      });
       this.okCallback(targetPath);
       return {
         success: true,
@@ -481,7 +487,7 @@ class PlaywrightScript extends EventEmitter {
         timeout: 60000,
       });
       await page.click(
-        '.index_categorgList__dF7ji > .index_categoryItem__pPv2U:nth-child(2)'
+        '.index_categorgList__dF7ji > .index_categoryItem__pPv2U:nth-child(3)'
       );
 
       // 点击开始处理
@@ -689,14 +695,6 @@ class PlaywrightScript extends EventEmitter {
               });
             }
           }
-        }
-        const workbenchManager = new WorkbenchManager();
-        const task = await workbenchManager.dequeueTask('s6TasksQueue');
-        if (task) {
-          const videoFilePath = task as string;
-
-          // 递归调用处理下一个S5文件
-          await this.RunVideoQualityFix(videoFilePath, downloadDir);
         }
       } catch (checkError) {
         this.emit('log', {

@@ -213,12 +213,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   });
 
   // s6
-  // 每5秒执行一次，并发数为100
+  // 每5秒执行一次，并发数为5
   scheduler.addTask(
     {
       name: 's6Task',
       interval: 5000,
-      concurrency: 100,
+      concurrency: 5,
       enabled: true,
     },
     async () => {
