@@ -188,6 +188,9 @@ class WorkbenchManager {
   // 新增：存储上一次的数据快照
   private previousData: WorkbenchStoreSchema | null = null;
 
+  // 新增：互斥锁，用于防止并发写入问题
+  private mutex: Promise<void> = Promise.resolve();
+
   constructor() {
     const userDataPath = app.getPath('userData');
     const dbPath = join(userDataPath, 'workbench.json');
@@ -210,6 +213,40 @@ class WorkbenchManager {
 
     // 初始化数据快照
     this.previousData = JSON.parse(JSON.stringify(this.db.data));
+  }
+
+  /**
+   * 获取互斥锁
+   * @returns 返回一个释放锁的函数
+   */
+  private acquireLock(): () => void {
+    let release: () => void;
+
+    // 创建一个新的 Promise，它会在当前锁释放后解析
+    const newLock = new Promise<void>(resolve => {
+      release = resolve;
+    });
+
+    // 当前锁完成后，将锁替换为新的锁
+    const oldLock = this.mutex;
+    this.mutex = oldLock.then(() => newLock);
+
+    // 返回释放锁的函数
+    return release!;
+  }
+
+  /**
+   * 使用锁包装异步操作
+   * @param operation 要执行的异步操作
+   * @returns 操作的结果
+   */
+  private async withLock<T>(operation: () => Promise<T>): Promise<T> {
+    const release = this.acquireLock();
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
 
   /**
@@ -319,24 +356,12 @@ class WorkbenchManager {
   public async getByKey<K extends keyof WorkbenchStoreSchema>(
     key: K
   ): Promise<WorkbenchStoreSchema[K]> {
-    await this.db.read();
-    console.log(`获取: ${key} ${JSON.stringify(this.db.data[key])}`);
-    return this.db.data[key];
-  }
-
-  /**
-   * 更新
-   */
-  public async updateStep<
-    K extends keyof Omit<WorkbenchStoreSchema, 's3TasksQueue'>
-  >(key: K, sData: WorkbenchStoreSchema[K]): Promise<void> {
-    await this.db.read();
-    this.db.data[key] = sData;
-    console.log(`更新: ${key} ${JSON.stringify(this.db.data[key])}`);
-    await this.db.write();
-
-    // 检查变化并触发观察者
-    this.checkChanges();
+    // 使用锁确保读取操作的一致性
+    return this.withLock(async () => {
+      await this.db.read();
+      console.log(`获取: ${key} ${JSON.stringify(this.db.data[key])}`);
+      return this.db.data[key];
+    });
   }
 
   /**
@@ -353,29 +378,32 @@ class WorkbenchManager {
     >,
     data: string | S3VideosChunk | S4VideosChunk
   ): Promise<void> {
-    await this.db.read();
+    // 使用锁确保入队操作的原子性
+    return this.withLock(async () => {
+      await this.db.read();
 
-    if (key === 's2TasksQueue') {
-      this.db.data[key].push(data as string);
-    }
-    if (key === 's3TasksQueue') {
-      this.db.data[key].push(data as S3VideosChunk);
-    }
-    if (key === 's4TasksQueue') {
-      this.db.data[key].push(data as S4VideosChunk);
-    }
-    if (key === 's5TasksQueue') {
-      this.db.data[key].push(data as string);
-    }
-    if (key === 's6TasksQueue') {
-      this.db.data[key].push(data as string);
-    }
+      if (key === 's2TasksQueue') {
+        this.db.data[key].push(data as string);
+      }
+      if (key === 's3TasksQueue') {
+        this.db.data[key].push(data as S3VideosChunk);
+      }
+      if (key === 's4TasksQueue') {
+        this.db.data[key].push(data as S4VideosChunk);
+      }
+      if (key === 's5TasksQueue') {
+        this.db.data[key].push(data as string);
+      }
+      if (key === 's6TasksQueue') {
+        this.db.data[key].push(data as string);
+      }
 
-    console.log(`已添加任务: ${data}`);
-    await this.db.write();
+      console.log(`已添加任务: ${data}`);
+      await this.db.write();
 
-    // 检查变化并触发观察者
-    this.checkChanges();
+      // 检查变化并触发观察者
+      this.checkChanges();
+    });
   }
 
   /**
@@ -393,40 +421,47 @@ class WorkbenchManager {
       | 's6TasksQueue'
     >
   ): Promise<S2VideosChunk | S3VideosChunk | S4VideosChunk | undefined> {
-    await this.db.read();
+    // 使用锁确保出队操作的原子性
+    return this.withLock(async () => {
+      await this.db.read();
 
-    // 检查队列是否为空
-    if (this.db.data[key].length === 0) {
-      return undefined;
-    }
-
-    let array = this.db.data[key];
-    let removedTask: S2VideosChunk | S3VideosChunk | S4VideosChunk | undefined;
-
-    if (key === 's3TasksQueue') {
-      // 找到第一个字幕处理完的任务
-      const index = (array as S3VideosChunk[]).findIndex(
-        x => x.subtitleRemoveOver
-      );
-
-      if (index !== -1) {
-        // 从原始队列中移除该任务
-        removedTask = array.splice(index, 1)[0];
+      // 检查队列是否为空
+      if (this.db.data[key].length === 0) {
+        return undefined;
       }
-    } else {
-      // 其他队列直接移除第一个元素（先进先出）
-      removedTask = array.shift();
-    }
 
-    if (removedTask) {
-      console.log(`已从 ${key} 中移除任务:`, removedTask);
-      await this.db.write();
+      let array = this.db.data[key];
+      let removedTask:
+        | S2VideosChunk
+        | S3VideosChunk
+        | S4VideosChunk
+        | undefined;
 
-      // 检查变化并触发观察者
-      this.checkChanges();
-    }
+      if (key === 's3TasksQueue') {
+        // 找到第一个字幕处理完的任务
+        const index = (array as S3VideosChunk[]).findIndex(
+          x => x.subtitleRemoveOver
+        );
 
-    return removedTask;
+        if (index !== -1) {
+          // 从原始队列中移除该任务
+          removedTask = array.splice(index, 1)[0];
+        }
+      } else {
+        // 其他队列直接移除第一个元素（先进先出）
+        removedTask = array.shift();
+      }
+
+      if (removedTask) {
+        console.log(`已从 ${key} 中移除任务:`, removedTask);
+        await this.db.write();
+
+        // 检查变化并触发观察者
+        this.checkChanges();
+      }
+
+      return removedTask;
+    });
   }
 
   /**
@@ -439,33 +474,54 @@ class WorkbenchManager {
     videoFilePath: string,
     subtitleRemoveOver: boolean
   ): Promise<boolean> {
-    await this.db.read();
+    // 使用锁确保更新操作的原子性
+    return this.withLock(async () => {
+      await this.db.read();
 
-    // 查找匹配的任务
-    const taskIndex = this.db.data.s3TasksQueue.findIndex(
-      task => task.videoFilePath === videoFilePath
-    );
+      // 查找匹配的任务
+      const taskIndex = this.db.data.s3TasksQueue.findIndex(
+        task => task.videoFilePath === videoFilePath
+      );
 
-    if (taskIndex === -1) {
-      console.warn(`未找到视频路径为 ${videoFilePath} 的任务`);
-      return false;
-    }
+      if (taskIndex === -1) {
+        console.warn(`未找到视频路径为 ${videoFilePath} 的任务`);
+        return false;
+      }
 
-    // 更新状态
-    const oldStatus = this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver;
-    this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver =
-      subtitleRemoveOver;
+      // 更新状态
+      const oldStatus = this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver;
+      this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver =
+        subtitleRemoveOver;
 
-    console.log(
-      `更新字幕处理状态: ${videoFilePath} ${oldStatus} -> ${subtitleRemoveOver}`
-    );
+      console.log(
+        `更新字幕处理状态: ${videoFilePath} ${oldStatus} -> ${subtitleRemoveOver}`
+      );
 
-    await this.db.write();
+      await this.db.write();
 
-    // 检查变化并触发观察者
-    this.checkChanges();
+      // 检查变化并触发观察者
+      this.checkChanges();
 
-    return true;
+      return true;
+    });
+  }
+
+  /**
+   * 更新
+   */
+  public async updateStep<
+    K extends keyof Omit<WorkbenchStoreSchema, 's3TasksQueue'>
+  >(key: K, sData: WorkbenchStoreSchema[K]): Promise<void> {
+    // 使用锁确保更新操作的原子性
+    return this.withLock(async () => {
+      await this.db.read();
+      this.db.data[key] = sData;
+      console.log(`更新: ${key} ${JSON.stringify(this.db.data[key])}`);
+      await this.db.write();
+
+      // 检查变化并触发观察者
+      this.checkChanges();
+    });
   }
 }
 
