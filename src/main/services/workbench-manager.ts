@@ -376,7 +376,7 @@ class WorkbenchManager {
       | 's5TasksQueue'
       | 's6TasksQueue'
     >,
-    data: string | S3VideosChunk | S4VideosChunk
+    data: string | string[] | S3VideosChunk | S4VideosChunk
   ): Promise<void> {
     // 使用锁确保入队操作的原子性
     return this.withLock(async () => {
@@ -392,7 +392,10 @@ class WorkbenchManager {
         this.db.data[key].push(data as S4VideosChunk);
       }
       if (key === 's5TasksQueue') {
-        this.db.data[key].push(data as string);
+        const itemsToAdd = Array.isArray(data) ? data : [data];
+        // 使用 spread operator 和 push 合并数组
+        (this.db.data[key] as string[]).push(...(itemsToAdd as string[]));
+        // this.db.data[key].push(data as string);
       }
       if (key === 's6TasksQueue') {
         this.db.data[key].push(data as string);
