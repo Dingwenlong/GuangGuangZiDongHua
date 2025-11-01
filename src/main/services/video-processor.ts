@@ -677,11 +677,19 @@ class VideoProcessor extends EventEmitter {
       await renameProductDirs(productDirs, 'S2---', 'S3---');
       this.writeLog(`${productDirs}目录重命名为S3`);
 
-      this.writeLog(`视频拆分成功: ${videosChunk.videoFilePath}`, 'success');
+      this.writeLog(
+        `视频 ${videosChunk.videoFilePath} 拆分成功: ${videosChunk.videoFilePath}`,
+        'success'
+      );
 
       this.emit('s3OkCallback', newPathOfChains);
     } catch (error) {
-      this.writeLog(`视频拆分失败: ${(error as Error).message}`, 'error');
+      this.writeLog(
+        `视频 ${videosChunk.videoFilePath} 拆分失败: ${
+          (error as Error).message
+        }`,
+        'error'
+      );
     } finally {
       this.status.processingStatus = '空闲';
       this.updateStatus();
