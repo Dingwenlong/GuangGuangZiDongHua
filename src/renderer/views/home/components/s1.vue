@@ -89,7 +89,7 @@ import {
   type TableColumnType,
 } from 'ant-design-vue';
 import { nanoid } from 'nanoid';
-import { sanitizeFolderName } from '@renderer/utils/string'
+import { sanitizeFolderName } from '@renderer/utils/string';
 
 const { shell, ipcRendererChannel } = window;
 
@@ -115,7 +115,6 @@ onMounted(() => {
       stepNo: 's1',
       sData: { ...newValue },
     });
-
     if (newValue.taskDirectory != oldValue.taskDirectory)
       await ipcRendererChannel.StopMonitoringDirectory.invoke(
         oldValue.taskDirectory
@@ -218,7 +217,10 @@ async function batchCreationFolderHandler() {
     .filter(([title, productId]) => title && productId && title !== '商品名称')
     .map(
       ([title, productId], i) =>
-        `S1---${i + 1}---${sanitizeFolderName(title)}---${productId.replace(/\r/g, '')}---${nanoid(8)}`
+        `S1---${i + 1}---${sanitizeFolderName(title)}---${productId.replace(
+          /\r/g,
+          ''
+        )}---${nanoid(8)}`
     );
 
   await Promise.all(
