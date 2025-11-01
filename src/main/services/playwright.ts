@@ -403,7 +403,9 @@ class PlaywrightScript extends EventEmitter {
         message: `触发成功的回调，文件路径: ${targetPath}`,
         type: 'info',
       });
-      this.okCallback(targetPath);
+      setTimeout(() => {
+        this.emit('s5OkCallback', [targetPath]);
+      }, 5000);
       return {
         success: true,
         message: `文件已成功处理并保存至: ${targetPath}`,
@@ -705,6 +707,10 @@ class PlaywrightScript extends EventEmitter {
         });
         // 不影响主流程，继续返回成功结果
       }
+      this.emit('log', {
+        message: `处理完成，文件保存至：${targetPath}`,
+        type: 'success',
+      });
 
       return {
         success: true,
