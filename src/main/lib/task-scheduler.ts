@@ -1,5 +1,5 @@
 import { Observable, Subscription, Subject } from 'rxjs';
-import { exhaustMap, takeUntil, tap } from 'rxjs/operators';
+import { mergeMap, takeUntil, tap } from 'rxjs/operators';
 
 export interface TaskConfig {
   name: string;
@@ -111,7 +111,8 @@ class TaskScheduler {
           task.lastExecution = new Date();
         }),
         // 使用 exhaustMap 确保前一个处理完成后再开始下一个
-        exhaustMap(() => {
+        // 将 exhaustMap(...) 换成 mergeMap(...)
+        mergeMap(async () => {
           // 检查并发限制
           if (task.runningCount >= task.config.concurrency) {
             console.log(`Task "${name}" skipped: concurrency limit reached`);
@@ -123,19 +124,20 @@ class TaskScheduler {
           task.executionCount++;
 
           // 执行任务
-          return (taskFn ? taskFn() : this.executeTask(name))
-            .then(result => {
-              // console.log(`Task "${name}" completed successfully`, result);
-              return result;
-            })
-            .catch(error => {
+          try {
+            try {
+              const result_1 = await (taskFn
+                ? taskFn()
+                : this.executeTask(name));
+              return result_1;
+            } catch (error) {
               console.error(`Task "${name}" failed:`, error);
               throw error;
-            })
-            .finally(() => {
-              // 减少运行计数
-              task.runningCount--;
-            });
+            }
+          } finally {
+            // 减少运行计数
+            task.runningCount--;
+          }
         }),
         takeUntil(task.stop$)
       )
