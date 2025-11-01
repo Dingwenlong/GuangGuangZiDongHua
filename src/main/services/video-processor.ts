@@ -579,7 +579,7 @@ class VideoProcessor extends EventEmitter {
           const stepPartsA = a.split('---');
           const stepPartsB = b.split('---');
           return stepPartsA[0] === stepPartsB[0]
-            ? stepPartsA[1].localeCompare(stepPartsB[1])
+            ? Number(stepPartsA[1]) - Number(stepPartsB[1])
             : stepPartsA[0].localeCompare(stepPartsB[0]);
         })
         .slice(0, 5);

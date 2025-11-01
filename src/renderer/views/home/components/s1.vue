@@ -137,7 +137,7 @@ onMounted(() => {
             const stepPartsA = a.name.split('---');
             const stepPartsB = b.name.split('---');
             return stepPartsA[0] === stepPartsB[0]
-              ? stepPartsA[1].localeCompare(stepPartsB[1])
+              ? Number(stepPartsA[1]) - Number(stepPartsB[1])
               : stepPartsA[0].localeCompare(stepPartsB[0]);
           })
           .map(dir => {
