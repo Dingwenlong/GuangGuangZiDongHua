@@ -404,7 +404,7 @@ class PlaywrightScript extends EventEmitter {
         type: 'info',
       });
       setTimeout(() => {
-        this.emit('s5OkCallback', [targetPath]);
+        this.okCallback(targetPath);
       }, 5000);
       return {
         success: true,
@@ -707,6 +707,22 @@ class PlaywrightScript extends EventEmitter {
         });
         // 不影响主流程，继续返回成功结果
       }
+      // 清理原始S5文件
+      if (filePath && fs.existsSync(filePath) && filePath.includes('S5')) {
+        try {
+          fs.unlinkSync(filePath);
+          this.emit('log', {
+            message: `已清理原始S5文件：${filePath}`,
+            type: 'info',
+          });
+        } catch (e) {
+          this.emit('log', {
+            message: `清理S5文件失败：${(e as Error).message}`,
+            type: 'warning',
+          });
+        }
+      }
+
       this.emit('log', {
         message: `处理完成，文件保存至：${targetPath}`,
         type: 'success',
