@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { EventEmitter } from 'events';
+import WorkbenchManager from './workbench-manager';
 
 class PlaywrightScript extends EventEmitter {
   // 共享浏览器实例
@@ -688,31 +689,14 @@ class PlaywrightScript extends EventEmitter {
               });
             }
           }
-        } else {
-          // 还有没处理的，继续触发S6的步骤
-          const s5Files = dirFiles.filter(
-            file => file.startsWith('S5') && file.endsWith('.mp4')
-          );
+        }
+        const workbenchManager = new WorkbenchManager();
+        const task = await workbenchManager.dequeueTask('s6TasksQueue');
+        if (task) {
+          const videoFilePath = task as string;
 
-          if (s5Files.length > 0) {
-            this.emit('log', {
-              message: `检测到还有 ${s5Files.length} 个S5文件需要处理`,
-              type: 'info',
-            });
-
-            // 获取第一个S5文件的完整路径
-            const nextS5File = path.join(downloadDir, s5Files[0]);
-
-            if (fs.existsSync(nextS5File)) {
-              this.emit('log', {
-                message: `继续处理S5文件: ${nextS5File}`,
-                type: 'info',
-              });
-
-              // 递归调用处理下一个S5文件
-              await this.RunVideoQualityFix(nextS5File, downloadDir);
-            }
-          }
+          // 递归调用处理下一个S5文件
+          await this.RunVideoQualityFix(videoFilePath, downloadDir);
         }
       } catch (checkError) {
         this.emit('log', {
