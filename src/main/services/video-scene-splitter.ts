@@ -187,13 +187,13 @@ export class VideoSceneSplitter extends EventEmitter {
         const outFileName = `${path.basename(
           newFolderName
         )}---${i}${path.extname(montage[0])}`;
+        // 为下一步提供的文件路径
+        videos.push(path.join(newFolderName, outFileName));
         // 当前文件路径
         await this.montage(
           montage,
           path.join(videosChunk.folderName, outFileName)
         );
-        // 为下一步提供的文件路径
-        videos.push(path.join(newFolderName, outFileName));
         i++;
       }
       // 删除S3---开头的视频
@@ -211,7 +211,9 @@ export class VideoSceneSplitter extends EventEmitter {
       await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
       this.writeLog(`${videosChunk.folderName}目录已重命名为S4`);
       this.emit('s4OkCallback', videos);
-      this.writeLog(`视频混剪任务混剪完成${videosChunk.folderName}`);
+      this.writeLog(
+        `视频混剪任务混剪完成 ${videosChunk.folderName}, ${videos}`
+      );
     } catch (error) {
       this.writeLog(
         `视频${videosChunk.folderName}切片混剪异常：${error}`,
@@ -270,9 +272,6 @@ export class VideoSceneSplitter extends EventEmitter {
       const segments: string[] = [];
       let currentTime = 0;
       let segmentCount = 0;
-
-      // 生成基础文件名
-      const baseName = path.parse(videoPath).name;
 
       // 主处理循环
       while (currentTime < videoDuration && segmentCount < config.maxSegments) {
@@ -386,9 +385,9 @@ export class VideoSceneSplitter extends EventEmitter {
    * 蒙太奇（混剪）
    */
   public async montage(allVideoFiles: string[], outputPath: string) {
-    this.writeLog(`开始混剪 ${allVideoFiles}-->${outputPath}`);
+    this.writeLog(`开始混剪合并视频 ${allVideoFiles}-->${outputPath}`);
     await this.ffmpegUtil.concatVideos(allVideoFiles, outputPath);
-    this.writeLog(`视频混剪成功: ${outputPath}`, 'success');
+    this.writeLog(`视频混剪合并视频成功: ${outputPath}`, 'success');
   }
 
   /**

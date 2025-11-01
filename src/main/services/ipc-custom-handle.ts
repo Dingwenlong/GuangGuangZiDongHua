@@ -19,6 +19,7 @@ import { formatArrayDiff } from '@main/utils/array';
 import VideoSceneSplitter from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
 import S5TaskProcessor from './s5-task-processor';
+import log from '@main/utils/log';
 
 /**
  * 自定义全局
@@ -274,9 +275,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   );
   // 第四步完成之后
   videoSceneSplitter.on('s4OkCallback', async (videos: string[]) => {
-    for (const video of videos) {
-      await workbenchManager.enqueueTask('s5TasksQueue', video);
-    }
+    log.debug('s4OkCallback', videos.toString());
+    // for (const video of videos) {
+    await workbenchManager.enqueueTask('s5TasksQueue', videos);
+    // }
   });
   // 第五步完成之后（从audioProcessor监听事件）
   audioProcessor.on('s5OkCallback', async (savePath: string[]) => {
