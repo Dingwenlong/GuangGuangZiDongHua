@@ -656,8 +656,28 @@ class PlaywrightScript extends EventEmitter {
           type: 'info',
         });
 
-        // 如果有四个S6开头的文件，尝试重命名父级文件夹
+        // 如果有四个S6开头的文件，尝试重命名父级文件夹并清理S5文件
         if (s6Files.length === 4) {
+          // 清理下载目录中所有的S5文件
+          try {
+            const s5Files = dirFiles.filter(file => file.startsWith('S5'));
+            for (const s5File of s5Files) {
+              const s5FilePath = path.join(downloadDir, s5File);
+              if (fs.existsSync(s5FilePath)) {
+                fs.unlinkSync(s5FilePath);
+                this.emit('log', {
+                  message: `在检测到4个S6文件时清理S5文件：${s5FilePath}`,
+                  type: 'info',
+                });
+              }
+            }
+          } catch (cleanupError) {
+            this.emit('log', {
+              message: `清理S5文件时出错: ${(cleanupError as Error).message}`,
+              type: 'warning',
+            });
+          }
+
           // 解析文件路径以查找可能的S5父文件夹
           const pathParts = targetPath.split(path.sep);
           let s5FolderIndex = -1;
