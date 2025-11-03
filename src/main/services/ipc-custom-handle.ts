@@ -97,7 +97,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
 
     if (!status.monitoring) {
       videoProcessor.start();
-      console.log('执行任务s1');
     }
   };
   firstStart();
