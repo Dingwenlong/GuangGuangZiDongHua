@@ -5,6 +5,7 @@ import config from '@config/index';
 import type MainInit from './window-manager';
 import authManager from './auth-manager';
 import WorkbenchManager, {
+  WorkbenchTaskStatus,
   type S3VideosChunk,
   type S4VideosChunk,
   type WorkbenchStoreSchema,
@@ -15,11 +16,9 @@ import VideoProcessor from './video-processor';
 import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
-import { formatArrayDiff } from '@main/utils/array';
 import VideoSceneSplitter from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
 import S5TaskProcessor from './s5-task-processor';
-import log from '@main/utils/log';
 
 /**
  * 自定义全局
@@ -83,12 +82,8 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const videoSceneSplitter = new VideoSceneSplitter();
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
-  const s5TaskProcessor = new S5TaskProcessor(
-    WorkbenchManager,
-    audioExtractor,
-    audioProcessor
-  );
-  const isTest = false;
+  const s5TaskProcessor = new S5TaskProcessor(audioExtractor, audioProcessor);
+  const isTest = true;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await WorkbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
@@ -125,7 +120,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       const task = await WorkbenchManager.dequeueTask('s2TasksQueue');
       if (!task) return;
 
-      const videoFilePath = task as string;
+      const [videoFilePath, id] = task as [string, number];
       if (isTest) {
         // 测试过程直接重命名文件为S2
         const targetPath = videoFilePath.replace('S1---', 'S2---');
@@ -137,6 +132,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
           path.dirname(videoFilePath)
         );
       }
+      // 通知任务完成
+      await WorkbenchManager.updateTaskStatus(
+        's2TasksQueue',
+        id,
+        WorkbenchTaskStatus.COMPLETED
+      );
     }
   );
   WorkbenchManager.watch('s2', (newValue: WorkbenchStoreSchema['s2']) => {
@@ -155,9 +156,15 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     async () => {
       const task = await WorkbenchManager.dequeueTask('s3TasksQueue');
       if (!task) return;
-      console.log('执行任务s3');
 
-      await videoProcessor.splitVideo(task as S3VideosChunk);
+      const [s3VideosChunk, id] = task as [S3VideosChunk, number];
+      await videoProcessor.splitVideo(s3VideosChunk);
+      // 通知任务完成
+      await WorkbenchManager.updateTaskStatus(
+        's3TasksQueue',
+        id,
+        WorkbenchTaskStatus.COMPLETED
+      );
     }
   );
   WorkbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
@@ -176,18 +183,22 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     async () => {
       const task = await WorkbenchManager.dequeueTask('s4TasksQueue');
       if (!task) return;
-      console.log('执行任务s4');
 
-      const s4VideosChunk = task as S4VideosChunk;
       const s3s4 = await WorkbenchManager.getByKey('s3s4');
-      const options = {
+      const [s4VideosChunk, id] = task as [S4VideosChunk, number];
+      await videoSceneSplitter.workflow(s4VideosChunk, {
         initialLength: 4, // 初始
         extendedLength: 5, // 延长
         lookahead: 2, // 检查2秒
         maxSegments: 4, // 最多4个片段
         sceneThreshold: s3s4.storyboardSceneThreshold, // 场景变化阈值
-      };
-      await videoSceneSplitter.workflow(s4VideosChunk, options);
+      });
+      // 通知任务完成
+      await WorkbenchManager.updateTaskStatus(
+        's4TasksQueue',
+        id,
+        WorkbenchTaskStatus.COMPLETED
+      );
     }
   );
   WorkbenchManager.watch('s3s4', (newValue: WorkbenchStoreSchema['s3s4']) => {
@@ -225,7 +236,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       const task = await WorkbenchManager.dequeueTask('s6TasksQueue');
       if (!task) return;
 
-      const videoFilePath = task as string;
+      const [videoFilePath, id] = task as [string, number];
       try {
         // 处理任务
         await playwrightScript.RunVideoQualityFix(
@@ -235,6 +246,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       } catch (error) {
         console.error('处理S6任务出错:', error);
       }
+      // 通知任务完成
+      await WorkbenchManager.updateTaskStatus(
+        's6TasksQueue',
+        id,
+        WorkbenchTaskStatus.COMPLETED
+      );
     }
   );
   WorkbenchManager.watch('s6', (newValue: WorkbenchStoreSchema['s6']) => {
@@ -274,10 +291,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   );
   // 第四步完成之后
   videoSceneSplitter.on('s4OkCallback', async (videos: string[]) => {
-    log.debug('s4OkCallback', videos.toString());
-    // for (const video of videos) {
     await WorkbenchManager.enqueueTask('s5TasksQueue', videos);
-    // }
   });
   // 第五步完成之后（从audioProcessor监听事件）
   audioProcessor.on('s5OkCallback', async (savePath: string[]) => {

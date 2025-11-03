@@ -5,6 +5,7 @@ import { app } from 'electron';
 import { merge, isEqual } from 'lodash-es';
 import config from '@config/index';
 import { diffArrays, type ArrayDiffResult } from '@main/utils/array';
+import { sqInsert, sqQuery, sqUpdate } from '../lib/sqllite3';
 
 /**
  * 视频分镜
@@ -139,8 +140,26 @@ export interface WorkbenchStoreSchema {
   s6TasksQueue: string[];
 }
 
+type WorkbenchConfigStoreSchema = Omit<
+  WorkbenchStoreSchema,
+  | 's2TasksQueue'
+  | 's3TasksQueue'
+  | 's4TasksQueue'
+  | 's5TasksQueue'
+  | 's6TasksQueue'
+>;
+
+type WorkbenchQueuesStoreSchema = Pick<
+  WorkbenchStoreSchema,
+  | 's2TasksQueue'
+  | 's3TasksQueue'
+  | 's4TasksQueue'
+  | 's5TasksQueue'
+  | 's6TasksQueue'
+>;
+
 // 默认数据
-const defaultData: WorkbenchStoreSchema = merge(
+const defaultData: WorkbenchConfigStoreSchema = merge(
   {
     s1: {
       taskDirectory: '',
@@ -169,18 +188,20 @@ const defaultData: WorkbenchStoreSchema = merge(
       autoHandOnWorkflow: true,
       running: false,
     },
-
-    s2TasksQueue: [],
-    s3TasksQueue: [],
-    s4TasksQueue: [],
-    s5TasksQueue: [],
-    s6TasksQueue: [],
   },
   config.workBenchDefault
 );
 
+// 任务状态枚举
+export enum WorkbenchTaskStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+}
+
 class WorkbenchManager {
-  private db: Low<WorkbenchStoreSchema>;
+  private db: Low<WorkbenchConfigStoreSchema>;
 
   // 新增：用于存储观察者
   private watchers: Map<string, Set<(newValue: any, oldValue: any) => void>> =
@@ -188,14 +209,11 @@ class WorkbenchManager {
   // 新增：存储上一次的数据快照
   private previousData: WorkbenchStoreSchema | null = null;
 
-  // 新增：互斥锁，用于防止并发写入问题
-  private mutex: Promise<void> = Promise.resolve();
-
   constructor() {
     const userDataPath = app.getPath('userData');
     const dbPath = join(userDataPath, 'workbench.json');
-    const adapter = new JSONFile<WorkbenchStoreSchema>(dbPath);
-    this.db = new Low<WorkbenchStoreSchema>(adapter, defaultData);
+    const adapter = new JSONFile<WorkbenchConfigStoreSchema>(dbPath);
+    this.db = new Low<WorkbenchConfigStoreSchema>(adapter, defaultData);
     this.init();
   }
 
@@ -203,6 +221,7 @@ class WorkbenchManager {
    * 初始化数据库
    */
   private async init(): Promise<void> {
+    // 初始化lowdb
     await this.db.read();
 
     // 如果数据为空，则设置默认值
@@ -213,39 +232,89 @@ class WorkbenchManager {
 
     // 初始化数据快照
     this.previousData = JSON.parse(JSON.stringify(this.db.data));
+
+    // 初始化SQLite3
+    await this.initializeSchema();
   }
 
   /**
-   * 获取互斥锁
-   * @returns 返回一个释放锁的函数
+   * 重写initializeSchema方法，创建队列相关的表
    */
-  private acquireLock(): () => void {
-    let release: () => void;
-
-    // 创建一个新的 Promise，它会在当前锁释放后解析
-    const newLock = new Promise<void>(resolve => {
-      release = resolve;
-    });
-
-    // 当前锁完成后，将锁替换为新的锁
-    const oldLock = this.mutex;
-    this.mutex = oldLock.then(() => newLock);
-
-    // 返回释放锁的函数
-    return release!;
-  }
-
-  /**
-   * 使用锁包装异步操作
-   * @param operation 要执行的异步操作
-   * @returns 操作的结果
-   */
-  private async withLock<T>(operation: () => Promise<T>): Promise<T> {
-    const release = this.acquireLock();
+  private async initializeSchema(): Promise<void> {
     try {
-      return await operation();
-    } finally {
-      release();
+      // 创建s2任务队列表
+      await sqQuery({
+        sql: `
+          CREATE TABLE IF NOT EXISTS s2_tasks_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_data TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        `,
+      });
+
+      // 创建s3任务队列表
+      await sqQuery({
+        sql: `
+          CREATE TABLE IF NOT EXISTS s3_tasks_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_file_path TEXT NOT NULL,
+            subtitle_remove_over INTEGER NOT NULL DEFAULT 0,
+            path_of_chains TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        `,
+      });
+
+      // 创建s4任务队列表
+      await sqQuery({
+        sql: `
+          CREATE TABLE IF NOT EXISTS s4_tasks_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_name TEXT NOT NULL,
+            videos TEXT NOT NULL,
+            child_folders TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        `,
+      });
+
+      // 创建s5任务队列表
+      await sqQuery({
+        sql: `
+          CREATE TABLE IF NOT EXISTS s5_tasks_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_data TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        `,
+      });
+
+      // 创建s6任务队列表
+      await sqQuery({
+        sql: `
+          CREATE TABLE IF NOT EXISTS s6_tasks_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_data TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          )
+        `,
+      });
+
+      console.log('Queue database schema initialized.');
+    } catch (err) {
+      console.error('Error initializing queue database schema:', err);
+      throw err;
     }
   }
 
@@ -353,60 +422,99 @@ class WorkbenchManager {
   /**
    * 获取
    */
-  public async getByKey<K extends keyof WorkbenchStoreSchema>(
+  public async getByKey<K extends keyof WorkbenchConfigStoreSchema>(
     key: K
-  ): Promise<WorkbenchStoreSchema[K]> {
-    // 使用锁确保读取操作的一致性
-    return this.withLock(async () => {
-      await this.db.read();
-      console.log(`获取: ${key} ${JSON.stringify(this.db.data[key])}`);
-      return this.db.data[key];
-    });
+  ): Promise<WorkbenchConfigStoreSchema[K]> {
+    await this.db.read();
+    console.log(`获取: ${key} ${JSON.stringify(this.db.data[key])}`);
+    return this.db.data[key];
   }
 
   /**
    * 将任务入列
    */
   public async enqueueTask(
-    key: keyof Pick<
-      WorkbenchStoreSchema,
-      | 's2TasksQueue'
-      | 's3TasksQueue'
-      | 's4TasksQueue'
-      | 's5TasksQueue'
-      | 's6TasksQueue'
-    >,
+    key: keyof WorkbenchQueuesStoreSchema,
     data: string | string[] | S3VideosChunk | S4VideosChunk
   ): Promise<void> {
-    // 使用锁确保入队操作的原子性
-    return this.withLock(async () => {
-      await this.db.read();
+    const now = Date.now();
 
+    try {
       if (key === 's2TasksQueue') {
-        this.db.data[key].push(data as string);
-      }
-      if (key === 's3TasksQueue') {
-        this.db.data[key].push(data as S3VideosChunk);
-      }
-      if (key === 's4TasksQueue') {
-        this.db.data[key].push(data as S4VideosChunk);
-      }
-      if (key === 's5TasksQueue') {
+        await sqInsert({
+          table: 's2_tasks_queue',
+          data: {
+            task_data: data as string,
+            status: WorkbenchTaskStatus.PENDING,
+            created_at: now,
+            updated_at: now,
+          },
+        });
+      } else if (key === 's3TasksQueue') {
         const itemsToAdd = Array.isArray(data) ? data : [data];
-        // 使用 spread operator 和 push 合并数组
-        (this.db.data[key] as string[]).push(...(itemsToAdd as string[]));
-        // this.db.data[key].push(data as string);
+        for (const item of itemsToAdd) {
+          const taskData = item as S3VideosChunk;
+          await sqInsert({
+            table: 's3_tasks_queue',
+            data: {
+              video_file_path: taskData.videoFilePath,
+              subtitle_remove_over: taskData.subtitleRemoveOver ? 1 : 0,
+              path_of_chains: JSON.stringify(taskData.pathOfChains),
+              status: WorkbenchTaskStatus.PENDING,
+              created_at: now,
+              updated_at: now,
+            },
+          });
+        }
+      } else if (key === 's4TasksQueue') {
+        const itemsToAdd = Array.isArray(data) ? data : [data];
+        for (const item of itemsToAdd) {
+          const taskData = item as S4VideosChunk;
+          await sqInsert({
+            table: 's4_tasks_queue',
+            data: {
+              folder_name: taskData.folderName,
+              videos: JSON.stringify(taskData.videos),
+              child_folders: taskData.childFolders
+                ? JSON.stringify(taskData.childFolders)
+                : null,
+              status: WorkbenchTaskStatus.PENDING,
+              created_at: now,
+              updated_at: now,
+            },
+          });
+        }
+      } else if (key === 's5TasksQueue') {
+        const itemsToAdd = Array.isArray(data) ? data : [data];
+        for (const item of itemsToAdd) {
+          await sqInsert({
+            table: 's5_tasks_queue',
+            data: {
+              task_data: item as string,
+              status: WorkbenchTaskStatus.PENDING,
+              created_at: now,
+              updated_at: now,
+            },
+          });
+        }
+      } else if (key === 's6TasksQueue') {
+        const itemsToAdd = Array.isArray(data) ? data : [data];
+        for (const item of itemsToAdd) {
+          await sqInsert({
+            table: 's6_tasks_queue',
+            data: {
+              task_data: item as string,
+              status: WorkbenchTaskStatus.PENDING,
+              created_at: now,
+              updated_at: now,
+            },
+          });
+        }
       }
-      if (key === 's6TasksQueue') {
-        this.db.data[key].push(data as string);
-      }
-
-      console.log(`已添加任务: ${data}`);
-      await this.db.write();
-
-      // 检查变化并触发观察者
-      this.checkChanges();
-    });
+    } catch (error) {
+      console.error(`添加任务到 ${key} 失败:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -423,48 +531,111 @@ class WorkbenchManager {
       | 's5TasksQueue'
       | 's6TasksQueue'
     >
-  ): Promise<S2VideosChunk | S3VideosChunk | S4VideosChunk | undefined> {
-    // 使用锁确保出队操作的原子性
-    return this.withLock(async () => {
-      await this.db.read();
+  ): Promise<
+    | [S2VideosChunk, number]
+    | [S3VideosChunk, number]
+    | [S4VideosChunk, number]
+    | undefined
+  > {
+    try {
+      let tableName = '';
+      let task: any;
 
-      // 检查队列是否为空
-      if (this.db.data[key].length === 0) {
-        return undefined;
+      switch (key) {
+        case 's2TasksQueue':
+          tableName = 's2_tasks_queue';
+          break;
+        case 's3TasksQueue':
+          tableName = 's3_tasks_queue';
+          break;
+        case 's4TasksQueue':
+          tableName = 's4_tasks_queue';
+          break;
+        case 's5TasksQueue':
+          tableName = 's5_tasks_queue';
+          break;
+        case 's6TasksQueue':
+          tableName = 's6_tasks_queue';
+          break;
       }
-
-      let array = this.db.data[key];
-      let removedTask:
-        | S2VideosChunk
-        | S3VideosChunk
-        | S4VideosChunk
-        | undefined;
 
       if (key === 's3TasksQueue') {
         // 找到第一个字幕处理完的任务
-        const index = (array as S3VideosChunk[]).findIndex(
-          x => x.subtitleRemoveOver
-        );
+        const rows = await sqQuery({
+          sql: `SELECT * FROM ${tableName} WHERE status = ? AND subtitle_remove_over = ? ORDER BY created_at ASC LIMIT 1`,
+          params: [WorkbenchTaskStatus.PENDING, 1],
+        });
 
-        if (index !== -1) {
-          // 从原始队列中移除该任务
-          removedTask = array.splice(index, 1)[0];
+        if (rows.length > 0) {
+          task = rows[0];
+
+          // 更新任务状态为处理中
+          await sqUpdate({
+            table: tableName,
+            data: {
+              status: WorkbenchTaskStatus.PROCESSING,
+              updated_at: Date.now(),
+            },
+            condition: `id = ${task.id}`,
+          });
+
+          // 转换为S3VideosChunk格式
+          return [
+            {
+              videoFilePath: task.video_file_path,
+              subtitleRemoveOver: task.subtitle_remove_over === 1,
+              pathOfChains: JSON.parse(task.path_of_chains),
+            } as S3VideosChunk,
+            task.id,
+          ];
         }
       } else {
-        // 其他队列直接移除第一个元素（先进先出）
-        removedTask = array.shift();
+        // 其他队列直接获取第一个元素（先进先出）
+        const rows = await sqQuery({
+          sql: `SELECT * FROM ${tableName} WHERE status = ? ORDER BY created_at ASC LIMIT 1`,
+          params: [WorkbenchTaskStatus.PENDING],
+        });
+
+        if (rows.length > 0) {
+          task = rows[0];
+
+          // 更新任务状态为处理中
+          await sqUpdate({
+            table: tableName,
+            data: {
+              status: WorkbenchTaskStatus.PROCESSING,
+              updated_at: Date.now(),
+            },
+            condition: `id = ${task.id}`,
+          });
+
+          // 根据不同队列类型返回不同格式的数据
+          if (
+            key === 's2TasksQueue' ||
+            key === 's5TasksQueue' ||
+            key === 's6TasksQueue'
+          ) {
+            return [task.task_data as string, task.id];
+          } else if (key === 's4TasksQueue') {
+            return [
+              {
+                folderName: task.folder_name,
+                videos: JSON.parse(task.videos),
+                childFolders: task.child_folders
+                  ? JSON.parse(task.child_folders)
+                  : undefined,
+              } as S4VideosChunk,
+              task.id,
+            ];
+          }
+        }
       }
 
-      if (removedTask) {
-        console.log(`已从 ${key} 中移除任务:`, removedTask);
-        await this.db.write();
-
-        // 检查变化并触发观察者
-        this.checkChanges();
-      }
-
-      return removedTask;
-    });
+      return undefined;
+    } catch (error) {
+      console.error(`从 ${key} 中移除任务失败:`, error);
+      throw error;
+    }
   }
 
   /**
@@ -477,54 +648,182 @@ class WorkbenchManager {
     videoFilePath: string,
     subtitleRemoveOver: boolean
   ): Promise<boolean> {
-    // 使用锁确保更新操作的原子性
-    return this.withLock(async () => {
-      await this.db.read();
-
+    try {
       // 查找匹配的任务
-      const taskIndex = this.db.data.s3TasksQueue.findIndex(
-        task => task.videoFilePath === videoFilePath
-      );
+      const rows = await sqQuery({
+        sql: `SELECT * FROM s3_tasks_queue WHERE video_file_path = ?`,
+        params: [videoFilePath],
+      });
 
-      if (taskIndex === -1) {
+      if (rows.length === 0) {
         console.warn(`未找到视频路径为 ${videoFilePath} 的任务`);
         return false;
       }
 
+      const task = rows[0];
+      const oldStatus = task.subtitle_remove_over === 1;
+
       // 更新状态
-      const oldStatus = this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver;
-      this.db.data.s3TasksQueue[taskIndex].subtitleRemoveOver =
-        subtitleRemoveOver;
+      await sqUpdate({
+        table: 's3_tasks_queue',
+        data: {
+          subtitle_remove_over: subtitleRemoveOver ? 1 : 0,
+          updated_at: Date.now(),
+        },
+        condition: `id = ${task.id}`,
+      });
 
       console.log(
         `更新字幕处理状态: ${videoFilePath} ${oldStatus} -> ${subtitleRemoveOver}`
       );
 
-      await this.db.write();
-
-      // 检查变化并触发观察者
-      this.checkChanges();
-
       return true;
-    });
+    } catch (error) {
+      console.error(`更新字幕处理状态失败:`, error);
+      return false;
+    }
   }
 
   /**
    * 更新
    */
-  public async updateStep<
-    K extends keyof Omit<WorkbenchStoreSchema, 's3TasksQueue'>
-  >(key: K, sData: WorkbenchStoreSchema[K]): Promise<void> {
-    // 使用锁确保更新操作的原子性
-    return this.withLock(async () => {
-      await this.db.read();
-      this.db.data[key] = sData;
-      console.log(`更新: ${key} ${JSON.stringify(this.db.data[key])}`);
-      await this.db.write();
+  public async updateStep<K extends keyof WorkbenchConfigStoreSchema>(
+    key: K,
+    sData: WorkbenchConfigStoreSchema[K]
+  ): Promise<void> {
+    await this.db.read();
+    this.db.data[key] = sData;
+    console.log(`更新: ${key} ${JSON.stringify(this.db.data[key])}`);
+    await this.db.write();
 
-      // 检查变化并触发观察者
-      this.checkChanges();
-    });
+    // 检查变化并触发观察者
+    this.checkChanges();
+  }
+
+  /**
+   * 获取队列中的所有任务
+   * @param key 队列键名
+   * @returns 返回队列中的所有任务
+   */
+  public async getAllTasks(
+    key: keyof Pick<
+      WorkbenchStoreSchema,
+      | 's2TasksQueue'
+      | 's3TasksQueue'
+      | 's4TasksQueue'
+      | 's5TasksQueue'
+      | 's6TasksQueue'
+    >
+  ): Promise<any[]> {
+    try {
+      let tableName = '';
+
+      switch (key) {
+        case 's2TasksQueue':
+          tableName = 's2_tasks_queue';
+          break;
+        case 's3TasksQueue':
+          tableName = 's3_tasks_queue';
+          break;
+        case 's4TasksQueue':
+          tableName = 's4_tasks_queue';
+          break;
+        case 's5TasksQueue':
+          tableName = 's5_tasks_queue';
+          break;
+        case 's6TasksQueue':
+          tableName = 's6_tasks_queue';
+          break;
+      }
+
+      const rows = await sqQuery({
+        sql: `SELECT * FROM ${tableName} ORDER BY created_at ASC`,
+        params: [],
+      });
+
+      // 根据不同队列类型转换数据格式
+      if (
+        key === 's2TasksQueue' ||
+        key === 's5TasksQueue' ||
+        key === 's6TasksQueue'
+      ) {
+        return rows.map((row: any) => row.task_data);
+      } else if (key === 's3TasksQueue') {
+        return rows.map((row: any) => ({
+          videoFilePath: row.video_file_path,
+          subtitleRemoveOver: row.subtitle_remove_over === 1,
+          pathOfChains: JSON.parse(row.path_of_chains),
+        }));
+      } else if (key === 's4TasksQueue') {
+        return rows.map((row: any) => ({
+          folderName: row.folder_name,
+          videos: JSON.parse(row.videos),
+          childFolders: row.child_folders
+            ? JSON.parse(row.child_folders)
+            : undefined,
+        }));
+      }
+
+      return [];
+    } catch (error) {
+      console.error(`获取 ${key} 中的所有任务失败:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * 更新任务状态
+   * @param key 队列键名
+   * @param taskId 任务ID
+   * @param status 新状态
+   */
+  public async updateTaskStatus(
+    key: keyof Pick<
+      WorkbenchStoreSchema,
+      | 's2TasksQueue'
+      | 's3TasksQueue'
+      | 's4TasksQueue'
+      | 's5TasksQueue'
+      | 's6TasksQueue'
+    >,
+    taskId: number,
+    status: WorkbenchTaskStatus
+  ): Promise<boolean> {
+    try {
+      let tableName = '';
+
+      switch (key) {
+        case 's2TasksQueue':
+          tableName = 's2_tasks_queue';
+          break;
+        case 's3TasksQueue':
+          tableName = 's3_tasks_queue';
+          break;
+        case 's4TasksQueue':
+          tableName = 's4_tasks_queue';
+          break;
+        case 's5TasksQueue':
+          tableName = 's5_tasks_queue';
+          break;
+        case 's6TasksQueue':
+          tableName = 's6_tasks_queue';
+          break;
+      }
+
+      await sqUpdate({
+        table: tableName,
+        data: {
+          status: status,
+          updated_at: Date.now(),
+        },
+        condition: `id = ${taskId}`,
+      });
+
+      return true;
+    } catch (error) {
+      console.error(`更新任务状态失败:`, error);
+      return false;
+    }
   }
 }
 

@@ -1,15 +1,15 @@
-import path from 'path'
-import { nodeResolve } from '@rollup/plugin-node-resolve'
-import { builtinModules } from 'module'
-import commonjs from '@rollup/plugin-commonjs'
-import replace from '@rollup/plugin-replace'
-import alias from '@rollup/plugin-alias'
-import json from '@rollup/plugin-json'
-import esbuild from 'rollup-plugin-esbuild'
-import obfuscator from 'rollup-plugin-obfuscator'
-import { defineConfig } from 'rollup'
-import { getConfig } from './utils'
-const config = getConfig()
+import path from 'path';
+import { nodeResolve } from '@rollup/plugin-node-resolve';
+import { builtinModules } from 'module';
+import commonjs from '@rollup/plugin-commonjs';
+import replace from '@rollup/plugin-replace';
+import alias from '@rollup/plugin-alias';
+import json from '@rollup/plugin-json';
+import esbuild from 'rollup-plugin-esbuild';
+import obfuscator from 'rollup-plugin-obfuscator';
+import { defineConfig } from 'rollup';
+import { getConfig } from './utils';
+const config = getConfig();
 
 export default (env = 'production', type = 'main') => {
   return defineConfig({
@@ -24,7 +24,7 @@ export default (env = 'production', type = 'main') => {
         'dist',
         'electron',
         'main',
-        `${type === 'main' ? type : 'preload'}.js`,
+        `${type === 'main' ? type : 'preload'}.js`
       ),
       format: 'cjs',
       name: type === 'main' ? 'MainProcess' : 'MainPreloadProcess',
@@ -90,6 +90,7 @@ export default (env = 'production', type = 'main') => {
       'ref-struct-napi',
       'semver',
       'glob',
+      'sqlite3',
     ],
-  })
-}
+  });
+};

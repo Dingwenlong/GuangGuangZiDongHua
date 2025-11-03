@@ -1,6 +1,5 @@
-import * as path from 'path';
 import * as fs from 'fs';
-import WorkbenchManager from './workbench-manager';
+import WorkbenchManager, { WorkbenchTaskStatus } from './workbench-manager';
 import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
 
@@ -9,7 +8,6 @@ import AudioProcessor from './audio-processing';
  * 负责处理音频提取和音频处理任务
  */
 class S5TaskProcessor {
-  private workbenchManager: WorkbenchManager;
   private audioExtractor: AudioExtractor;
   private audioProcessor: AudioProcessor;
   private audioProcessCount: number = 0;
@@ -20,12 +18,7 @@ class S5TaskProcessor {
   private enableRebootCheck: boolean = true; // 是否启用重启检测
   private rebootThreshold: number = 5; // 重启阈值
 
-  constructor(
-    workbenchManager: WorkbenchManager,
-    audioExtractor: AudioExtractor,
-    audioProcessor: AudioProcessor
-  ) {
-    this.workbenchManager = workbenchManager;
+  constructor(audioExtractor: AudioExtractor, audioProcessor: AudioProcessor) {
     this.audioExtractor = audioExtractor;
     this.audioProcessor = audioProcessor;
     // 初始化时读取配置
@@ -73,13 +66,13 @@ class S5TaskProcessor {
     }
     // console.log('开始处理S5任务');
 
-    const task = await this.workbenchManager.dequeueTask('s5TasksQueue');
+    const task = await WorkbenchManager.dequeueTask('s5TasksQueue');
     if (!task) return;
     console.log('执行任务s5');
 
     try {
       // 处理音频提取任务
-      const videoPath = task as string;
+      const [videoPath, id] = task as [string, number];
       // 提取音频
       const extractResult = await this.audioExtractor.extractAudio(videoPath);
       console.log('音频提取完成:', extractResult);
@@ -106,6 +99,12 @@ class S5TaskProcessor {
       await this.audioProcessor.processAudio(extractResult.outputPath);
       // console.log('音频处理完成');
 
+      // 通知任务完成
+      await WorkbenchManager.updateTaskStatus(
+        's5TasksQueue',
+        id,
+        WorkbenchTaskStatus.COMPLETED
+      );
       // 增加处理计数
       this.audioProcessCount++;
     } catch (error) {
