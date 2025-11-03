@@ -528,4 +528,4 @@ class WorkbenchManager {
   }
 }
 
-export default WorkbenchManager;
+export default new WorkbenchManager();
