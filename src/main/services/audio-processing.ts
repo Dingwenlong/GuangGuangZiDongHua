@@ -419,7 +419,7 @@ class AudioProcessor extends EventEmitter {
     const url = `${normalizedServer}:${port}/history/${promptId}`;
 
     const maxRetries = 60; // 最多重试60次
-    const retryInterval = 30 * 1000; // 每30秒轮询一次
+    const retryInterval = isVideoProcessing ? 15 * 1000 : 30 * 1000; // 视频处理每15秒轮询一次，音频处理每30秒轮询一次
 
     for (let i = 0; i < maxRetries; i++) {
       try {
