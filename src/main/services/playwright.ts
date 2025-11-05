@@ -328,14 +328,14 @@ class PlaywrightScript extends EventEmitter {
 
         if (!isUuidFile) {
           let processedName = fileName;
-          // 修改文件命名逻辑：先保存为Y1，处理后改为S2
+          // 修改文件命名逻辑：直接保存为S2
           if (processedName.startsWith('S1')) {
-            processedName = processedName.replace('S1', 'Y1');
-          } else if (!processedName.startsWith('Y1')) {
-            // 如果不是S1开头，添加Y1前缀
+            processedName = processedName.replace('S1', 'S2');
+          } else if (!processedName.startsWith('S2')) {
+            // 如果不是S1开头，添加S2前缀
             const ext = path.extname(processedName);
             const nameWithoutExt = processedName.replace(ext, '');
-            processedName = `Y1_${nameWithoutExt}${ext}`;
+            processedName = `S2_${nameWithoutExt}${ext}`;
           }
           if (!processedName.endsWith('.mp4')) {
             processedName = `${processedName}.mp4`;
@@ -432,31 +432,6 @@ class PlaywrightScript extends EventEmitter {
       ) {
         if (page) await page.close().catch(() => {});
         return { success: false, message: '未找到有效的下载文件' };
-      }
-
-      // 调用processVideoWithFFmpeg方法处理视频，复用现有的FFmpeg处理逻辑
-      try {
-        this.emit('log', { message: '开始处理下载的视频', type: 'info' });
-
-        // 调用processVideoWithFFmpeg方法处理视频
-        const processResult = await this.processVideoWithFFmpeg(targetPath);
-
-        if (processResult.success && processResult.filePath) {
-          // 更新targetPath为处理后的文件路径
-          targetPath = processResult.filePath;
-          this.emit('log', {
-            message: `成功处理完下载视频，新路径: ${targetPath}`,
-            type: 'success',
-          });
-        } else {
-          throw new Error(processResult.message || '视频处理失败');
-        }
-      } catch (error: any) {
-        this.emit('log', {
-          message: `视频时长调整失败: ${error.message}，将继续使用当前视频`,
-          type: 'warning',
-        });
-        // 继续使用当前视频，不中断流程
       }
 
       // 关闭标签页
