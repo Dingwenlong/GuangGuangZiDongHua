@@ -331,7 +331,7 @@ export class FFmpegUtil extends EventEmitter {
     return new Promise((resolve, reject) => {
       const command = ffmpeg(inputPath)
         .outputOptions([
-          `-vf setpts=${1 / speed}*PTS`,
+          `-vf setpts=${1 / speed}*PTS,scale=720:1280`, // 统一分辨率
           `-af atempo=${speed > 2 ? 2 : speed}`,
           ...(speed > 2 ? ['-af', `atempo=${speed / 2}`] : []),
           '-t 20',
@@ -340,7 +340,7 @@ export class FFmpegUtil extends EventEmitter {
           '-crf 23', // 质量参数
           '-c:a aac', // 音频编码器
           '-b:a 128k', // 音频比特率
-          '-vf scale=720:1280', // 统一分辨率
+          '-vf ',
           '-r 30', // 统一帧率
           '-movflags +faststart', // 优化网络播放
         ])

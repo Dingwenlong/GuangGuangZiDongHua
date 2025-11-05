@@ -438,7 +438,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         }
 
         const dirMonitor = new DirectoryMonitor(directory, {
-          maxDepth: 3, // 监控深度
+          maxDepth: 2, // 监控深度
           updateInterval: 30000, // 30秒更新一次
           debounceDelay: 500, // 500ms防抖延迟
         });
