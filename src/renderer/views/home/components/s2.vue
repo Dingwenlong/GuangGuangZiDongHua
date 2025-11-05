@@ -117,7 +117,7 @@ function startOrStopTaskHandler(start = true) {
     sData: { autoHandOnWorkflow: s2.value.autoHandOnWorkflow, running: start },
   });
 
-  setCookie();
+  // setCookie();
 }
 
 // 调用去水印脚本
@@ -127,12 +127,12 @@ function setCookie() {
   try {
     // 处理文件路径（使用/代替\避免转义问题）
     const firstFilePath =
-      'C:\\Users\\ASUS\\Downloads\\ces\\S2-aaa\\S1-testMP4.mp4';
+      'C:\\Users\\ASUS\\Downloads\\ces\\S1---1762226799878.mp4';
 
     // 调用去水印脚本
     ipcRendererChannel.RunWatermarkRemoval.invoke({
       filePath: firstFilePath,
-      targetDir: 'C:/Users/ASUS/Downloads/kaipai_output',
+      targetDir: 'C:/Users/ASUS/Downloads/ces',
     })
       .then((result: any) => {
         // 直接处理返回结果
