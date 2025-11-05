@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { EventEmitter } from 'events';
+import ffmpeg from 'fluent-ffmpeg';
+import { FFmpegUtil } from '../lib/ffmpeg';
 
 class PlaywrightScript extends EventEmitter {
   // 共享浏览器实例
@@ -72,7 +74,29 @@ class PlaywrightScript extends EventEmitter {
     try {
       const downloadDir = targetDir ? path.resolve(targetDir) : '';
 
+      // 确保目标目录存在
       fs.mkdirSync(downloadDir, { recursive: true });
+
+      // 创建专用临时文件夹（保留以便后续使用）
+      const tempFolder = path.join(downloadDir, 'ffmpeg_temp');
+      fs.mkdirSync(tempFolder, { recursive: true });
+      this.emit('log', {
+        message: `创建临时文件夹: ${tempFolder}`,
+        type: 'info',
+      });
+
+      // 验证临时文件夹可写性
+      try {
+        const testFile = path.join(tempFolder, 'test_write_permission.tmp');
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        this.emit('log', {
+          message: `临时文件夹可正常写入: ${tempFolder}`,
+          type: 'info',
+        });
+      } catch (err) {
+        throw new Error(`临时文件夹无写入权限: ${(err as Error).message}`);
+      }
 
       this.emit('log', {
         message: `开始处理视频去水印：${filePath}`,
@@ -292,8 +316,8 @@ class PlaywrightScript extends EventEmitter {
 
       this.emit('log', { message: `下载完成，开始处理文件`, type: 'info' });
 
-      // 处理下载文件（S1改为S2）
-      let targetPath = null;
+      // 处理下载文件（使用Y1作为中间格式，处理后改为S2）
+      let targetPath: any = null;
       const uuidPattern =
         /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/;
       const preDownloadFiles = new Set(fs.readdirSync(downloadDir));
@@ -304,24 +328,31 @@ class PlaywrightScript extends EventEmitter {
 
         if (!isUuidFile) {
           let processedName = fileName;
+          // 修改文件命名逻辑：先保存为Y1，处理后改为S2
           if (processedName.startsWith('S1')) {
-            processedName = processedName.replace('S1', 'S2');
+            processedName = processedName.replace('S1', 'Y1');
+          } else if (!processedName.startsWith('Y1')) {
+            // 如果不是S1开头，添加Y1前缀
+            const ext = path.extname(processedName);
+            const nameWithoutExt = processedName.replace(ext, '');
+            processedName = `Y1_${nameWithoutExt}${ext}`;
           }
           if (!processedName.endsWith('.mp4')) {
             processedName = `${processedName}.mp4`;
           }
 
           targetPath = path.join(downloadDir, processedName);
+          // 先保存为Y1路径（后续会被处理后的S2文件替换）
           if (fs.existsSync(targetPath)) {
             fs.unlinkSync(targetPath);
           }
           await download.saveAs(targetPath);
           this.emit('log', {
-            message: `文件下载完成，保存至${targetPath}`,
+            message: `原始文件下载完成，保存为Y1格式至${targetPath}`,
             type: 'success',
           });
         } else {
-          const tempPath = path.join(downloadDir, fileName);
+          const tempPath = path.join(tempFolder, fileName); // 临时UUID文件存入专用临时文件夹
           try {
             await download.saveAs(tempPath);
             if (fs.existsSync(tempPath)) {
@@ -336,19 +367,19 @@ class PlaywrightScript extends EventEmitter {
         }
       }
 
-      // 清理残留UUID文件
+      // 清理残留UUID文件（仅清理临时文件夹内的）
       const uuidRegex =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const files = fs.readdirSync(downloadDir);
-      for (const file of files) {
+      const tempFiles = fs.readdirSync(tempFolder);
+      for (const file of tempFiles) {
         const baseName = path.basename(file, path.extname(file));
         if (uuidRegex.test(baseName)) {
-          const uuidFilePath = path.join(downloadDir, file);
+          const uuidFilePath = path.join(tempFolder, file);
           try {
             fs.unlinkSync(uuidFilePath);
           } catch (e) {
             this.emit('log', {
-              message: `删除UUID文件失败: ${
+              message: `删除临时UUID文件失败: ${
                 (e as Error).message
               }，请手动删除。`,
               type: 'warning',
@@ -372,8 +403,14 @@ class PlaywrightScript extends EventEmitter {
           if (!preDownloadFiles.has(file) && !file.endsWith('.crdownload')) {
             const possiblePath = path.join(downloadDir, file);
             let processedName = file;
+            // 使用新的命名逻辑：下载时保存为Y1
             if (processedName.startsWith('S1')) {
-              processedName = processedName.replace('S1', 'S2');
+              processedName = processedName.replace('S1', 'Y1');
+            } else if (!processedName.startsWith('Y1')) {
+              // 如果不是S1开头，添加Y1前缀
+              const ext = path.extname(processedName);
+              const nameWithoutExt = processedName.replace(ext, '');
+              processedName = `Y1_${nameWithoutExt}${ext}`;
             }
             if (!processedName.endsWith('.mp4')) {
               processedName = `${processedName}.mp4`;
@@ -397,6 +434,31 @@ class PlaywrightScript extends EventEmitter {
         return { success: false, message: '未找到有效的下载文件' };
       }
 
+      // 调用processVideoWithFFmpeg方法处理视频，复用现有的FFmpeg处理逻辑
+      try {
+        this.emit('log', { message: '开始处理下载的视频', type: 'info' });
+
+        // 调用processVideoWithFFmpeg方法处理视频
+        const processResult = await this.processVideoWithFFmpeg(targetPath);
+
+        if (processResult.success && processResult.filePath) {
+          // 更新targetPath为处理后的文件路径
+          targetPath = processResult.filePath;
+          this.emit('log', {
+            message: `成功处理完下载视频，新路径: ${targetPath}`,
+            type: 'success',
+          });
+        } else {
+          throw new Error(processResult.message || '视频处理失败');
+        }
+      } catch (error: any) {
+        this.emit('log', {
+          message: `视频时长调整失败: ${error.message}，将继续使用当前视频`,
+          type: 'warning',
+        });
+        // 继续使用当前视频，不中断流程
+      }
+
       // 关闭标签页
       await page.close();
       this.emit('log', {
@@ -408,7 +470,7 @@ class PlaywrightScript extends EventEmitter {
       }, 5000);
       return {
         success: true,
-        message: `文件已成功处理并保存至: ${targetPath}`,
+        message: `文件已成功处理并保存至: ${targetPath}，临时文件夹保留: ${tempFolder}`,
         filePath: targetPath,
       };
     } catch (error: any) {
@@ -417,6 +479,242 @@ class PlaywrightScript extends EventEmitter {
         type: 'error',
       });
       if (page) await page.close().catch(() => {});
+      return {
+        success: false,
+        message: `操作失败: ${error.message}`,
+      };
+    }
+  }
+
+  // 辅助方法：等待文件可读写
+  private async waitForFileAvailable(
+    filePath: string,
+    maxRetries = 10,
+    delay = 1000
+  ): Promise<boolean> {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        await fs.promises.access(
+          filePath,
+          fs.constants.R_OK | fs.constants.W_OK
+        );
+        const fd = await fs.promises.open(filePath, 'r+');
+        await fd.close();
+        return true;
+      } catch {
+        if (i === maxRetries - 1) break;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    throw new Error(`文件无法访问或被锁定: ${filePath}`);
+  }
+
+  // 辅助方法：生成有效的音频变速滤镜
+  private getValidAtempoFilters(speedRatio: number): string[] {
+    const filters: string[] = [];
+    let remaining = speedRatio;
+
+    // 限制极值，避免计算异常
+    remaining = Math.max(0.5, Math.min(10, remaining));
+
+    while (remaining > 2) {
+      filters.push('atempo=2.0');
+      remaining /= 2;
+    }
+
+    while (remaining < 0.5) {
+      filters.push('atempo=0.5');
+      remaining *= 2;
+    }
+
+    // 确保不出现科学计数法
+    filters.push(`atempo=${remaining.toFixed(6)}`);
+    return filters;
+  }
+
+  /**
+   * 使用FFmpeg处理视频，调整时长为400秒
+   * @param filePath 视频文件路径
+   * @param targetDir 目标目录
+   * @returns 处理结果
+   */
+  public async processVideoWithFFmpeg(
+    filePath: string
+  ): Promise<{ success: boolean; message: string; filePath?: string }> {
+    try {
+      // 验证文件路径
+      if (!filePath || !fs.existsSync(filePath)) {
+        const errorMsg = filePath
+          ? `文件不存在，请检查路径: ${filePath}`
+          : '未提供有效的文件路径';
+        throw new Error(errorMsg);
+      }
+
+      const actualTargetDir = path.dirname(filePath);
+
+      // 确保目标目录存在
+      fs.mkdirSync(actualTargetDir, { recursive: true });
+
+      // 创建专用临时文件夹
+      const tempFolder = path.join(actualTargetDir, 'ffmpeg_temp');
+      fs.mkdirSync(tempFolder, { recursive: true });
+      this.emit('log', {
+        message: `创建临时文件夹: ${tempFolder}`,
+        type: 'info',
+      });
+
+      this.emit('log', {
+        message: `开始使用FFmpeg处理视频: ${filePath}`,
+        type: 'info',
+      });
+
+      // 检查文件可用性（避免文件被锁定）
+      await this.waitForFileAvailable(filePath);
+
+      // 获取视频的实际时长
+      const ffmpegUtil = FFmpegUtil.getInstance();
+      const videoDuration = await ffmpegUtil.getVideoDuration(filePath);
+
+      // 计算变速比例，限制在0.5-10倍
+      let speedRatio = videoDuration / 400;
+      speedRatio = Math.max(0.5, Math.min(10, speedRatio));
+
+      // 验证变速比例合法性
+      if (isNaN(speedRatio) || speedRatio <= 0) {
+        throw new Error(`无效的变速比例: ${speedRatio}`);
+      }
+
+      this.emit('log', {
+        message: `原始视频时长: ${videoDuration.toFixed(
+          2
+        )}秒，目标时长: 400秒，变速比例: ${speedRatio.toFixed(2)}`,
+        type: 'info',
+      });
+
+      // 在专用临时文件夹内创建临时输出文件
+      const tempFileName = `temp_${Date.now()}.mp4`;
+      let tempOutputPath = path.join(tempFolder, tempFileName);
+
+      this.emit('log', {
+        message: `FFmpeg临时输出路径: ${tempOutputPath}`,
+        type: 'info',
+      });
+
+      // 处理音频变速参数
+      const atempoFilters = this.getValidAtempoFilters(speedRatio);
+
+      // 准备输出文件路径
+      let targetPath: string;
+      const originalFileName = path.basename(filePath);
+
+      // 应用Y1/S2命名规则
+      let processedName = originalFileName;
+      if (processedName.startsWith('S1')) {
+        processedName = processedName.replace('S1', 'Y1');
+      } else if (!processedName.startsWith('Y1')) {
+        // 如果不是S1开头，添加Y1前缀
+        const ext = path.extname(processedName);
+        const nameWithoutExt = processedName.replace(ext, '');
+        processedName = `Y1_${nameWithoutExt}${ext}`;
+      }
+      if (!processedName.endsWith('.mp4')) {
+        processedName = `${processedName}.mp4`;
+      }
+
+      // 先设置为Y1路径
+      const y1Path = path.join(actualTargetDir, processedName);
+
+      // 使用fluent-ffmpeg处理
+      await new Promise<void>((resolve, reject) => {
+        // 构建命令
+        const command = ffmpeg(filePath).outputOptions([
+          `-vf setpts=${(1 / speedRatio).toFixed(2)}*PTS`,
+          '-f mp4',
+          '-c:v libx264',
+          '-preset fast',
+          '-crf 23',
+          '-c:a aac',
+          '-b:a 128k',
+          '-movflags +faststart',
+          '-threads 0',
+        ]);
+
+        // 添加音频滤镜
+        if (atempoFilters.length > 1) {
+          command.outputOptions('-filter_complex', atempoFilters.join(','));
+        } else {
+          command.outputOptions('-af', atempoFilters[0]);
+        }
+
+        // 直接使用路径，fluent-ffmpeg会自动处理特殊字符
+        command
+          .output(tempOutputPath)
+          .on('end', async () => {
+            try {
+              // 删除Y1文件（如果存在）
+              if (fs.existsSync(y1Path)) {
+                fs.unlinkSync(y1Path);
+                this.emit('log', {
+                  message: `已删除原Y1文件: ${y1Path}`,
+                  type: 'info',
+                });
+              }
+
+              // 创建S2文件名（将Y1改为S2）
+              const s2FileName = processedName.replace(/^Y1/, 'S2');
+              const s2Path = path.join(actualTargetDir, s2FileName);
+
+              // 将处理后的临时文件重命名为S2文件
+              await fs.promises.rename(tempOutputPath, s2Path);
+
+              // 更新targetPath为S2文件路径
+              targetPath = s2Path;
+
+              this.emit('log', {
+                message: `视频处理完成，已保存为S2格式至: ${targetPath}`,
+                type: 'success',
+              });
+              resolve();
+            } catch (err) {
+              reject(new Error(`文件重命名失败: ${(err as Error).message}`));
+            }
+          })
+          .on('error', err => {
+            this.emit('log', {
+              message: `FFmpeg处理错误: ${err.message}`,
+              type: 'error',
+            });
+            // 清理临时文件
+            if (fs.existsSync(tempOutputPath)) {
+              fs.unlinkSync(tempOutputPath);
+            }
+            reject(new Error(`FFmpeg变速处理失败: ${err.message}`));
+          })
+          .run();
+      });
+
+      // 验证处理后的视频
+      if (!targetPath) {
+        throw new Error('targetPath 尚未赋值，无法获取视频时长');
+      }
+      const processedDuration = await ffmpegUtil.getVideoDuration(targetPath);
+      this.emit('log', {
+        message: `视频时长调整完成，处理后时长: ${processedDuration.toFixed(
+          2
+        )}秒`,
+        type: 'success',
+      });
+
+      return {
+        success: true,
+        message: `文件已成功处理并保存至: ${targetPath}`,
+        filePath: targetPath,
+      };
+    } catch (error: any) {
+      this.emit('log', {
+        message: `FFmpeg视频处理出错: ${error.message}`,
+        type: 'error',
+      });
       return {
         success: false,
         message: `操作失败: ${error.message}`,
