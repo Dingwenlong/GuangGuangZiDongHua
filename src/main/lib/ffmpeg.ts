@@ -340,7 +340,6 @@ export class FFmpegUtil extends EventEmitter {
           '-crf 23', // 质量参数
           '-c:a aac', // 音频编码器
           '-b:a 128k', // 音频比特率
-          '-vf ',
           '-r 30', // 统一帧率
           '-movflags +faststart', // 优化网络播放
         ])
