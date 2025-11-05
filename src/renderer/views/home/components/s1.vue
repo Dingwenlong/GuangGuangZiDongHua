@@ -101,6 +101,7 @@ const s1 = reactive({
   running: false,
 });
 const tableData = ref<any>([]);
+let startFolderIndex = 0;
 
 onMounted(() => {
   ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbench => {
@@ -128,10 +129,16 @@ onMounted(() => {
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
       if (arg.root === s1.taskDirectory) {
+        startFolderIndex = Math.max(
+          ...arg.structure.map(dir => {
+            const [step, no, ..._] = dir.name.split('---');
+            return step === 'S1' ? ~~no : 0;
+          })
+        );
         tableData.value = arg.structure
           .filter(dir => {
-            const [first, seconds, ..._] = dir.name;
-            return dir.type === 'directory' && first === 'S'; //&& seconds === '1';
+            const [first, ..._] = dir.name;
+            return dir.type === 'directory' && first === 'S';
           })
           .sort((a, b) => {
             const stepPartsA = a.name.split('---');
@@ -215,13 +222,13 @@ async function batchCreationFolderHandler() {
     .split('\n')
     .map(row => row.split('\t'))
     .filter(([title, productId]) => title && productId && title !== '商品名称')
-    .map(
-      ([title, productId], i) =>
-        `S1---${i + 1}---${sanitizeFolderName(title)}---${productId.replace(
-          /\r/g,
-          ''
-        )}---${nanoid(8)}`
-    );
+    .map(([title, productId], i) => {
+      startFolderIndex += 1;
+      return `S1---${startFolderIndex}---${sanitizeFolderName(title).replace(
+        ' ',
+        ''
+      )}---${productId.replace(/\r/g, '')}---${nanoid(8)}`;
+    });
 
   await Promise.all(
     directoryNames.map(name =>
