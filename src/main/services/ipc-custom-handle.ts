@@ -83,7 +83,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
   const s5TaskProcessor = new S5TaskProcessor(audioExtractor, audioProcessor);
-  const isTest = true;
+  const isTest = false;
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await WorkbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
