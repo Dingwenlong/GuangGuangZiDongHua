@@ -481,7 +481,7 @@ class VideoProcessor extends EventEmitter {
 
     try {
       if (duration >= 16 && duration <= 24) {
-        const speed = duration / 20;
+        const speed = duration / 21;
         await this.ffmpegUtil.adjustSpeed(inputPath, outputPath, speed);
       } else if (duration > 24) {
         await this.ffmpegUtil.trimVideo(inputPath, outputPath);
