@@ -149,7 +149,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       name: 's3Task',
       interval: 5000,
-      concurrency: 1,
+      concurrency: 2,
       enabled: true,
     },
     async () => {

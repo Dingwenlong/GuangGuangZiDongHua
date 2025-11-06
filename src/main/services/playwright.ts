@@ -176,8 +176,8 @@ class PlaywrightScript extends EventEmitter {
       await startButton.click();
       this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
 
-      // 点击开始后等待10秒
-      await new Promise(resolve => setTimeout(resolve, 10 * 1000));
+      // 点击开始后等待30秒
+      await new Promise(resolve => setTimeout(resolve, 30 * 1000));
 
       // 全局超时和检测间隔设置
       const maxWaitTime = 120 * 60 * 1000; // 2小时
@@ -768,8 +768,8 @@ class PlaywrightScript extends EventEmitter {
       // 点击开始处理
       await page.click('.index_button__WWpyb');
 
-      // 点击开始后等待5秒，避免网络延迟导致的状态误判
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // 点击开始后等待10秒，避免网络延迟导致的状态误判
+      await new Promise(resolve => setTimeout(resolve, 10000));
 
       // 全局超时和检测间隔设置
       const maxWaitTime = 120 * 60 * 1000; // 2小时
