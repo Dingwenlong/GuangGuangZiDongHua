@@ -575,6 +575,10 @@ class VideoProcessor extends EventEmitter {
       } as S3VideosChunk;
 
       const productDirs = this.getProductDirectories()
+        .filter(dir => {
+          const videos = this.getProcessedVideos(dir);
+          return videos.length >= 4;
+        })
         .sort((a, b) => {
           const stepPartsA = a.split('---');
           const stepPartsB = b.split('---');
