@@ -16,6 +16,7 @@ import VideoProcessor from './video-processor';
 import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
+import GuangheTaobao from './guanghe-taobao';
 import VideoSceneSplitter from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
 import S5TaskProcessor from './s5-task-processor';
@@ -76,6 +77,7 @@ export const ipcCustomLoginHandlers = (mainInit: MainInit): IpcHandler[] => {
 export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const mainWindow = mainInit.mainWindow!;
   const playwrightScript = new PlaywrightScript();
+  const guangheTaobao = new GuangheTaobao();
   const audioExtractor = new AudioExtractor();
   const audioProcessor = new AudioProcessor();
   const videoProcessor = new VideoProcessor('');
@@ -107,12 +109,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     await firstStart(newValue);
   });
   // s2
-  // 每5秒执行一次，并发数为1
+  // 每5秒执行一次，并发数为2
   scheduler.addTask(
     {
       name: 's2Task',
       interval: 5000,
-      concurrency: 1,
+      concurrency: 2,
       enabled: true,
     },
     async () => {
@@ -149,7 +151,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       name: 's3Task',
       interval: 5000,
-      concurrency: 2,
+      concurrency: 1,
       enabled: true,
     },
     async () => {
@@ -243,14 +245,15 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
           path.dirname(videoFilePath)
         );
       } catch (error) {
-        console.error('处理S6任务出错:', error);
+        console.error('处理S6任务出错，ID:', id, '错误:', error);
+        // 任务失败，更新状态为FAILED
+        await WorkbenchManager.updateTaskStatus(
+          's6TasksQueue',
+          id,
+          WorkbenchTaskStatus.FAILED
+        );
+        console.log('S6任务失败并更新状态为FAILED，ID:', id);
       }
-      // 通知任务完成
-      await WorkbenchManager.updateTaskStatus(
-        's6TasksQueue',
-        id,
-        WorkbenchTaskStatus.COMPLETED
-      );
     }
   );
   WorkbenchManager.watch('s6', (newValue: WorkbenchStoreSchema['s6']) => {
@@ -504,6 +507,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       handler: async (event, arg: { videoPath: string }) => {
         const { videoPath } = arg;
         return await audioExtractor.extractAudio(videoPath);
+      },
+    },
+    {
+      channel: 'guangheTaobao',
+      handler: async (event, arg: { videoPath: string }) => {
+        return await guangheTaobao.GuangheTaobaoIssue();
       },
     },
   ];

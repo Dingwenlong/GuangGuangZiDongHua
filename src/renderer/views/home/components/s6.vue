@@ -122,18 +122,23 @@ function startOrStopTaskHandler(start = true) {
     stepNo: 's6',
     sData: { ...s6.value, running: start },
   });
-  // setCookie();
+  setCookie();
+  // guanghe();
 }
 
-// 调用去水印脚本
+function guanghe() {
+  ipcRendererChannel.guangheTaobao.invoke();
+}
+
+// 调用高清化脚本
 function setCookie() {
-  console.log('设置Cookie并执行去水印');
+  console.log('设置Cookie并执行高清化');
 
   try {
     // 处理文件路径（使用/代替\避免转义问题）
     const firstFilePath = 'C:\\Users\\ASUS\\Downloads\\S5-testMP4.mp4';
 
-    // 调用去水印脚本
+    // 调用高清化脚本
     ipcRendererChannel.RunVideoQualityFix.invoke({
       filePath: firstFilePath,
       targetDir: 'C:/Users/ASUS/Downloads/kaipai_output',

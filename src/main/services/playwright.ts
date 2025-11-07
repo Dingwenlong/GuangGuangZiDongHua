@@ -736,7 +736,10 @@ class PlaywrightScript extends EventEmitter {
         : `${originalFileName}.mp4`;
       const targetPath = path.join(downloadDir, targetFileName);
 
-      this.emit('log', { message: '开始处理视频质量修复', type: 'info' });
+      this.emit('log', {
+        message: `开始处理视频质量修复，目标文件: ${filePath}`,
+        type: 'info',
+      });
 
       // 初始化浏览器和页面
       await PlaywrightScript.initBrowser(downloadDir);
@@ -768,15 +771,15 @@ class PlaywrightScript extends EventEmitter {
       // 点击开始处理
       await page.click('.index_button__WWpyb');
 
-      // 点击开始后等待10秒，避免网络延迟导致的状态误判
-      await new Promise(resolve => setTimeout(resolve, 10000));
+      // 点击开始后等待20秒，避免网络延迟导致的状态误判
+      await new Promise(resolve => setTimeout(resolve, 20000));
 
       // 全局超时和检测间隔设置
       const maxWaitTime = 120 * 60 * 1000; // 2小时
       const checkInterval = 10 * 1000; // 10秒
 
       // 等待任务项DOM稳定
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 30000));
 
       // 监控第一个任务项
       const trackListSelector = '.index_trackList__1mQ3P';
@@ -835,6 +838,11 @@ class PlaywrightScript extends EventEmitter {
       });
       await exportButton.click();
 
+      this.emit('log', {
+        message: `导出按钮点击成功，等待下载完成...`,
+        type: 'info',
+      });
+
       // 检查目录变化（备用方案）
       const checkDownloadDir = async () => {
         const originalFiles = new Set(fs.readdirSync(downloadDir));
@@ -872,7 +880,7 @@ class PlaywrightScript extends EventEmitter {
       }
 
       // 等待文件写入完成
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 10 * 1000));
 
       // 验证临时文件
       if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
@@ -912,9 +920,6 @@ class PlaywrightScript extends EventEmitter {
           }
         }
       }
-
-      // 关闭标签页
-      await page.close();
 
       // 检测目录中是否有四个S6开头的文件，如果有则将父级S5文件夹重命名为S6
       try {
@@ -1016,8 +1021,11 @@ class PlaywrightScript extends EventEmitter {
         }
       }
 
+      // 关闭标签页
+      await page.close();
+
       this.emit('log', {
-        message: `处理完成，文件保存至：${targetPath}`,
+        message: `高清处理完成，文件保存至：${targetPath}`,
         type: 'success',
       });
 
