@@ -123,7 +123,7 @@ const { shell, ipcRendererChannel } = window;
 
 const s7 = reactive({
   taskDirectory: '',
-  running: false,
+  running: true,
 });
 const tableData = ref<any>([]);
 
@@ -200,6 +200,7 @@ onMounted(() => {
         tableData.value = arg.structure
           .filter(dir => dir.type === 'directory')
           .map(dir => {
+            // 添加过滤机制
             const children = dir.children as any[];
             return {
               first: dir.path.replace(s7.taskDirectory + '\\', ''),
