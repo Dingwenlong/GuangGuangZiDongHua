@@ -40,6 +40,9 @@
 .ant-btn {
   box-shadow: none !important;
   color: #fff !important;
+  &.ant-btn-default {
+    color: #001428 !important;
+  }
   &.ant-btn-primary {
     background-color: #001428 !important;
   }

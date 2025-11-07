@@ -89,6 +89,10 @@ export interface WorkbenchStoreSchema {
     autoHandOnWorkflow: boolean;
     running: boolean;
   };
+  s7: {
+    taskDirectory?: string;
+    running: boolean;
+  };
   /**
    * 第二步任务队列
    */
@@ -187,6 +191,10 @@ const defaultData: WorkbenchConfigStoreSchema = merge(
     s6: {
       autoHandOnWorkflow: true,
       running: false,
+    },
+    s7: {
+      taskDirectory: '',
+      running: true,
     },
   },
   config.workBenchDefault

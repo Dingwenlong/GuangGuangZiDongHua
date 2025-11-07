@@ -33,6 +33,9 @@
       <div class="h-full" v-show="menus[5].checked">
         <S6 />
       </div>
+      <div class="h-full" v-show="menus[6].checked">
+        <S7 />
+      </div>
     </div>
     <div class="min-w-3/12 max-w-3/12 bg-gray-100">
       <LogPanel :logs="logData" />
@@ -48,6 +51,7 @@ import S2 from './components/s2.vue';
 import S3S4 from './components/s3s4.vue';
 import S5 from './components/s5.vue';
 import S6 from './components/s6.vue';
+import S7 from './components/s7.vue';
 import MoFang from '@renderer/assets/icons/webp/mo-fang.webp';
 
 const { ipcRendererChannel } = window;

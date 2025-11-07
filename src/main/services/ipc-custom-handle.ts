@@ -20,6 +20,7 @@ import GuangheTaobao from './guanghe-taobao';
 import VideoSceneSplitter from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
 import S5TaskProcessor from './s5-task-processor';
+import { GuangProcessor } from './guang-processor';
 
 /**
  * 自定义全局
@@ -82,10 +83,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const audioProcessor = new AudioProcessor();
   const videoProcessor = new VideoProcessor('');
   const videoSceneSplitter = new VideoSceneSplitter();
-  const dirMonitors: DirectoryMonitor[] = [];
   const scheduler = new TaskScheduler();
   const s5TaskProcessor = new S5TaskProcessor(audioExtractor, audioProcessor);
+  const guangProcessor = new GuangProcessor();
+  const dirMonitors: DirectoryMonitor[] = [];
   const isTest = false;
+
   const firstStart = async (newValue?: WorkbenchStoreSchema['s1']) => {
     if (!newValue) newValue = await WorkbenchManager.getByKey('s1');
     const status = videoProcessor.getStatus();
@@ -260,6 +263,18 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     if (!newValue.running) scheduler.disableTask('s6Task');
     else scheduler.enableTask('s6Task');
   });
+  // s7
+  WorkbenchManager.watch(
+    's7',
+    async (
+      newValue: WorkbenchStoreSchema['s7'],
+      oldValue: WorkbenchStoreSchema['s7']
+    ) => {
+      if (oldValue.running) guangProcessor.stop();
+      if (newValue.running && newValue.taskDirectory)
+        guangProcessor.start(newValue.taskDirectory);
+    }
+  );
   // 启动所有任务
   scheduler.startAllTasks();
   // ----------------------执行完每一步之后的回调处理---------------------
@@ -385,6 +400,13 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   audioExtractor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
       message: '[audioExtractor]' + message,
+      type,
+    });
+  });
+
+  guangProcessor.on('log', ({ message, type }) => {
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: '[guangProcessor]' + message,
       type,
     });
   });

@@ -85,7 +85,7 @@ class DirectoryMonitor extends EventEmitter {
     this.emitDirectoryStructure();
 
     this.emit('log', {
-      message: `目录监控已启动，监控目录: ${this.monitorDirectory}`,
+      message: `[DirectoryMonitor]目录监控已启动，监控目录: ${this.monitorDirectory}`,
       type: 'success',
     });
   }
@@ -97,7 +97,10 @@ class DirectoryMonitor extends EventEmitter {
     if (this.isDestroyed) return;
 
     this.cleanupResources();
-    this.emit('log', { message: '目录监控已完全停止', type: 'info' });
+    this.emit('log', {
+      message: '[DirectoryMonitor]目录监控已完全停止',
+      type: 'info',
+    });
   }
 
   private cleanupResources(): void {
@@ -148,11 +151,15 @@ class DirectoryMonitor extends EventEmitter {
       .on('addDir', () => this.scheduleUpdate())
       .on('unlinkDir', () => this.scheduleUpdate())
       .on('ready', () => {
-        this.emit('log', { message: '目录监控系统就绪', type: 'success' });
+        this.emit('log', {
+          message:
+            '[DirectoryMonitor]目录监控系统就绪:' + this.monitorDirectory,
+          type: 'success',
+        });
       })
       .on('error', (error: Error) => {
         this.emit('log', {
-          message: `目录监控错误: ${error.message}, ${this.monitorDirectory}`,
+          message: `[DirectoryMonitor]目录监控错误: ${error.message}, ${this.monitorDirectory}`,
           type: 'error',
         });
       });
