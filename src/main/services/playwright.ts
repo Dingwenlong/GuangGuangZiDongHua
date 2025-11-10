@@ -5,6 +5,7 @@ import os from 'os';
 import { EventEmitter } from 'events';
 import ffmpeg from 'fluent-ffmpeg';
 import { FFmpegUtil } from '../lib/ffmpeg';
+import { writeLog, type LogEvent } from '@main/utils/log';
 
 class PlaywrightScript extends EventEmitter {
   // 共享浏览器实例
@@ -102,6 +103,7 @@ class PlaywrightScript extends EventEmitter {
         message: `开始处理视频去水印：${filePath}`,
         type: 'info',
       });
+      this.writeLog(`开始处理视频去水印：${filePath}`, 'info');
 
       // 初始化浏览器实例
       await PlaywrightScript.initBrowser(downloadDir);
@@ -173,8 +175,9 @@ class PlaywrightScript extends EventEmitter {
       const startButton = await page.waitForSelector(startBtnSelector, {
         timeout: 60000,
       });
-      await startButton.click();
+      // await startButton.click();
       this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
+      this.writeLog(`${filePath}上传成功，开始处理`, 'info');
 
       // 点击开始后等待30秒
       await new Promise(resolve => setTimeout(resolve, 30 * 1000));
@@ -440,9 +443,13 @@ class PlaywrightScript extends EventEmitter {
         message: `触发成功的回调，文件路径: ${targetPath}`,
         type: 'info',
       });
+      this.writeLog(
+        `S2处理完成，触发成功的回调，文件路径: ${targetPath}`,
+        'info'
+      );
       setTimeout(() => {
         this.okCallback(targetPath);
-      }, 5000);
+      }, 2000);
       return {
         success: true,
         message: `文件已成功处理并保存至: ${targetPath}，临时文件夹保留: ${tempFolder}`,
@@ -453,6 +460,7 @@ class PlaywrightScript extends EventEmitter {
         message: `视频去水印出错: ${error.message}`,
         type: 'error',
       });
+      this.writeLog(`S2操作失败：${error.message}`, 'error');
       if (page) await page.close().catch(() => {});
       return {
         success: false,
@@ -740,6 +748,7 @@ class PlaywrightScript extends EventEmitter {
         message: `开始处理视频质量修复，目标文件: ${filePath}`,
         type: 'info',
       });
+      this.writeLog(`开始处理视频质量修复，目标文件: ${filePath}`, 'info');
 
       // 初始化浏览器和页面
       await PlaywrightScript.initBrowser(downloadDir);
@@ -770,6 +779,7 @@ class PlaywrightScript extends EventEmitter {
 
       // 点击开始处理
       await page.click('.index_button__WWpyb');
+      this.writeLog(`${filePath} 上传成功，开始处理`, 'success');
 
       // 点击开始后等待20秒，避免网络延迟导致的状态误判
       await new Promise(resolve => setTimeout(resolve, 20000));
@@ -1028,6 +1038,7 @@ class PlaywrightScript extends EventEmitter {
         message: `高清处理完成，文件保存至：${targetPath}`,
         type: 'success',
       });
+      this.writeLog(`高清处理完成，文件保存至：${targetPath}`, 'success');
 
       return {
         success: true,
@@ -1039,6 +1050,7 @@ class PlaywrightScript extends EventEmitter {
         message: `操作失败：${error.message}`,
         type: 'error',
       });
+      this.writeLog(`S6操作失败：${error.message}`, 'error');
       if (page) await page.close().catch(() => {});
       return { success: false, message: error.message };
     }
@@ -1075,73 +1087,6 @@ class PlaywrightScript extends EventEmitter {
       const elementCount = await page.locator(avatarSelector).count();
       let isLoggedIn = elementCount > 0;
 
-      // 未登录则执行自动登录流程
-      if (!isLoggedIn) {
-        this.emit('log', { message: '开始执行自动登录...', type: 'info' });
-
-        try {
-          // 1. 点击登录按钮打开弹窗
-          await page.click('.index_account-action__g6gW5');
-          await page.waitForTimeout(500); // 等待弹窗加载
-
-          // 2. 点击微信图标切换到手机号登录（根据实际页面逻辑调整）
-          const wechatLocator = page.locator('[key="wechat"]');
-          await wechatLocator.waitFor({ state: 'visible' });
-          await wechatLocator.click();
-          await page.waitForTimeout(500);
-
-          // 3. 点击注册链接切换到密码登录
-          const registerLinkLocator = page.locator('.register-link');
-          await registerLinkLocator.waitFor({ state: 'visible' });
-          await registerLinkLocator.click();
-          await page.waitForTimeout(500);
-
-          // 4. 定位输入框容器并输入账号密码
-          const inputGroupLocator = page.locator('.input-group');
-
-          // 手机号输入框（input-group下第一个input-item）
-          const phoneInputLocator = inputGroupLocator
-            .locator('.input-item')
-            .nth(0)
-            .locator('input');
-          await phoneInputLocator.waitFor({ state: 'visible' });
-          await phoneInputLocator.fill('13688629385');
-
-          // 密码输入框（input-group下第二个input-item）
-          const passwordInputLocator = inputGroupLocator
-            .locator('.input-item')
-            .nth(1)
-            .locator('input');
-          await passwordInputLocator.waitFor({ state: 'visible' });
-          await passwordInputLocator.fill('weibiz5568!');
-
-          // 5. 点击提交按钮登录
-          const submitButtonLocator = page.locator('.form-submit');
-          await submitButtonLocator.waitFor({ state: 'visible' });
-          await submitButtonLocator.click();
-
-          // 6. 等待登录完成并验证登录状态
-          await page.waitForLoadState('networkidle');
-          const postLoginCount = await page.locator(avatarSelector).count();
-          isLoggedIn = postLoginCount > 0;
-
-          if (isLoggedIn) {
-            this.emit('log', { message: '自动登录成功', type: 'success' });
-          } else {
-            this.emit('log', {
-              message: '自动登录后未检测到登录状态',
-              type: 'warning',
-            });
-          }
-        } catch (loginError) {
-          this.emit('log', {
-            message: `自动登录过程出错: ${(loginError as Error).message}`,
-            type: 'error',
-          });
-          throw new Error(`自动登录失败: ${(loginError as Error).message}`);
-        }
-      }
-
       this.emit('log', {
         message: `开拍登录状态检测结果: ${isLoggedIn ? '已登录' : '未登录'}`,
         type: isLoggedIn ? 'success' : 'warning',
@@ -1161,6 +1106,15 @@ class PlaywrightScript extends EventEmitter {
         isLoggedIn: null,
       };
     }
+  }
+
+  private writeLog(message: string, type: LogEvent['type'] = 'info') {
+    if (!message) {
+      console.error('writeLog called with empty message');
+      return;
+    }
+
+    writeLog.call(this, message, type);
   }
 }
 

@@ -244,8 +244,8 @@ class PlaywrightScript extends EventEmitter {
    */
   private async simulateHumanInput(inputElement: any, text: string) {
     // 根据输入类型设置固定的延迟范围
-    let minDelay = 50;
-    let maxDelay = 200;
+    let minDelay = 100;
+    let maxDelay = 500;
 
     // 模拟人类逐个字符输入，每个字符有随机延迟
     for (let i = 0; i < text.length; i++) {
@@ -332,7 +332,12 @@ class PlaywrightScript extends EventEmitter {
     let page: any = null;
     let browser: any = null;
     const USerData = {
-      id: '4701623256',
+      guangId: '4701623256',
+
+      filePathArray: [
+        'C:\\Users\\ASUS\\Downloads\\ces\\S1---33019725083-1-192.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S2---33019725083-1-192.mp4',
+      ],
     };
     this.emit('log', {
       message: `开始发布到淘宝`,
@@ -408,7 +413,7 @@ class PlaywrightScript extends EventEmitter {
       // 使用通用输入方法
       if (await userNameInput.isVisible()) {
         console.log('发现用户名输入框');
-        await this.simulateHumanInput(userNameInput, USerData.id);
+        await this.simulateHumanInput(userNameInput, USerData.guangId);
       }
 
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -436,6 +441,125 @@ class PlaywrightScript extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 2000));
       // 点击批量发布
       await page.locator('.next-menu-spacing-lr > ul > li').last().click();
+
+      // 上传视频 - next-upload-dragable
+      try {
+        // 等待上传区域可见
+        console.log('等待上传区域加载...');
+        await page.waitForSelector('.next-upload-dragable', { timeout: 10000 });
+        console.log('上传区域已加载');
+
+        // 触发文件上传对话框
+        const uploadPromise = page.waitForEvent('filechooser', {
+          timeout: 10000,
+        });
+
+        console.log('点击上传区域...');
+        await page.click('.next-upload-dragable', { delay: 200 });
+
+        // 获取文件选择器
+        console.log('等待文件选择器弹出...');
+        const fileChooser = await uploadPromise;
+
+        // 检查文件路径数组是否有效
+        if (USerData.filePathArray && USerData.filePathArray.length > 0) {
+          console.log(`准备上传 ${USerData.filePathArray.length} 个文件`);
+
+          // 验证所有文件是否存在
+          const validFiles = [];
+          for (const filePath of USerData.filePathArray) {
+            if (fs.existsSync(filePath)) {
+              validFiles.push(filePath);
+            }
+          }
+
+          if (validFiles.length > 0) {
+            // 选择文件
+            await fileChooser.setFiles(validFiles);
+            console.log(`已选择 ${validFiles.length} 个有效文件进行上传`);
+
+            // 等待上传完成（根据实际情况调整等待时间或添加上传进度检测）
+            console.log('等待文件上传完成...');
+            await new Promise(resolve => setTimeout(resolve, 10 * 1000)); // 等待20秒
+            console.log('文件上传等待完成');
+          }
+        }
+      } catch (uploadError: any) {
+        console.error('视频上传过程中出错:', uploadError.message);
+      }
+
+      console.log('开始查找视频描述输入框...');
+      try {
+        // 获取iframe的contentFrame - 修正方法
+        console.log('获取iframe内容...');
+        const iframeSelector = 'iframe.publish-content--Cl3CtTGD';
+        // 等待iframe元素出现
+        await page.waitForSelector(iframeSelector, { timeout: 10000 });
+        // 获取iframe元素
+        const iframeElement = await page.$(iframeSelector);
+        let frame = null;
+
+        if (iframeElement) {
+          // 获取iframe的contentFrame
+          frame = await iframeElement.contentFrame();
+        }
+
+        if (frame) {
+          console.log('成功获取到iframe内容');
+
+          // 在iframe内查找视频描述输入框
+          const describeInputWrapper = await frame
+            .locator('.publish-content__title-input--inputWrap--3rmMJEo')
+            .locator('span')
+            .locator('input');
+
+          console.log('开始输入视频描述...');
+          await this.simulateHumanInput(
+            describeInputWrapper,
+            '暂时测试用视频描述'
+          );
+
+          // 开始输入标签
+          const cesArr = ['ces', '123', 'sdjao'];
+          const labelInput = await frame.locator('div[data-cangjie-editable]');
+          if (await labelInput.isVisible()) {
+            await labelInput.click();
+            await labelInput.press('Control+A'); // 全选内容
+            await labelInput.press('Delete'); // 删除选中内容
+
+            for (const item of cesArr) {
+              await this.simulateHumanInput(labelInput, `#${item}#`);
+            }
+          }
+
+          // 点击话题活动
+          await frame
+            .locator('.publish-content__topic-v2--select--1E8f4Wd ')
+            .click();
+
+          const dialogInput = await frame
+            .locator(
+              '.next-dialog-body > .topic-v2-picker > .top-form > .next-input'
+            )
+            .locator('input');
+          if (await dialogInput.isVisible()) {
+            await this.simulateHumanInput(dialogInput, '测试');
+            await dialogInput.press('Enter');
+
+            await new Promise(resolve => setTimeout(resolve, 3 * 1000)); // 等待3秒
+            await frame.locator('.right-list > div').nth(0).click();
+
+            await new Promise(resolve => setTimeout(resolve, 1 * 1000)); // 等待1秒
+            await frame.locator('.next-box > .next-btn-primary').click();
+
+
+
+            
+          }
+        }
+      } catch (describeError: any) {
+        console.error('视频描述输入框处理出错:', describeError.message);
+      }
 
       return {
         success: true,
