@@ -5,6 +5,7 @@ import os from 'os';
 import { EventEmitter } from 'events';
 import { execFile } from 'child_process';
 import http from 'http';
+import dayjs from 'dayjs';
 
 class PlaywrightScript extends EventEmitter {
   // 静态属性
@@ -328,6 +329,126 @@ class PlaywrightScript extends EventEmitter {
     }
   }
 
+  /**
+   * 为单个视频填写信息
+   * @param frame 视频编辑的iframe
+   */
+  private async fillVideoInfo(frame: any, UserData: any) {
+    try {
+      // 在iframe内查找视频描述输入框
+      const describeInputWrapper = await frame
+        .locator('.publish-content__title-input--inputWrap--3rmMJEo')
+        .locator('span')
+        .locator('input');
+
+      console.log('开始输入视频描述...');
+      await this.simulateHumanInput(
+        describeInputWrapper,
+        UserData.videoDescription
+      );
+
+      // 开始输入标签
+      const labelArr = UserData.videoTags.split(',');
+      const labelInput = await frame.locator('div[data-cangjie-editable]');
+      if (await labelInput.isVisible()) {
+        console.log('开始输入标签');
+        await labelInput.click();
+        await labelInput.press('Control+A'); // 全选内容
+        await labelInput.press('Delete'); // 删除选中内容
+
+        for (const item of labelArr) {
+          await this.simulateHumanInput(labelInput, `#${item}#`);
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      // 点击话题活动
+      await frame
+        .locator('.publish-content__topic-v2--select--1E8f4Wd ')
+        .click();
+      console.log('打开话题活动');
+
+      const dialogInput = await frame
+        .locator(
+          '.next-dialog-body > .topic-v2-picker > .top-form > .next-input'
+        )
+        .locator('input');
+      if (await dialogInput.isVisible()) {
+        await this.simulateHumanInput(dialogInput, UserData.topic);
+        await dialogInput.press('Enter');
+
+        await new Promise(resolve => setTimeout(resolve, 1 * 1000));
+        await frame.locator('.right-list > div').nth(0).click();
+
+        await new Promise(resolve => setTimeout(resolve, 1 * 1000));
+        await frame.locator('.next-box > .next-btn-primary').click();
+      }
+
+      // 选中定时发布
+      const timeOptionBox = await frame
+        .locator('.fixed-btn-container > div')
+        .nth(1)
+        .locator('div > div')
+        .nth(1);
+      const scheduleCheckbox = await timeOptionBox
+        .locator('div')
+        .first()
+        .locator('.next-radio-wrapper');
+      if (await scheduleCheckbox.isVisible()) {
+        await scheduleCheckbox.click();
+      }
+
+      // 为每个视频设置不同的发布时间，间隔1小时
+
+      // 注入时间
+      // 打开日期时间选择器弹窗
+      await timeOptionBox.locator('div').nth(1).click();
+
+      // 获取输入框
+      const dateInput = frame.locator(
+        '.next-date-picker-panel-input input[placeholder="YYYY/MM/DD"]'
+      );
+      const timeInput = frame.locator(
+        '.next-date-picker-panel-input input[placeholder="HH:mm"]'
+      );
+      console.log('开始输入定时发布时间');
+      const dateTimeObj = dayjs(UserData.publishTime); // 解析原始时间字符串
+      const date = dateTimeObj.format('YYYY/MM/DD'); // 提取日期
+      const time = dateTimeObj.format('HH:mm'); // 提取时间
+
+      console.log(`定时发布时间: ${date} and ${time}`);
+
+      // 输入日期
+      await dateInput.click();
+      await dateInput.press('Control+A'); // 全选内容
+      await dateInput.press('Delete'); // 删除选中内容
+      await this.simulateHumanInput(dateInput, date);
+      await dateInput.press('Enter');
+      await dateInput.press('Tab');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      // 输入时间
+
+      await timeInput.press('Delete'); // 删除选中内容
+      await this.simulateHumanInput(timeInput, time);
+      await timeInput.press('Enter');
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      // 点击确认按钮
+      await frame
+        .locator('.next-date-picker-panel-footer')
+        .locator('button')
+        .nth(1)
+        .click();
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      // 点击自主拍摄
+      await frame
+        .locator('.publish-content__publish-button--claim--1-9WKPP') // 唯一父容器
+        .locator('.next-radio-group') // 单选框组
+        .locator('.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))') // 包含“自主拍摄”文本的选项
+        .click();
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
   public async GuangheTaobaoIssue() {
     let page: any = null;
     let browser: any = null;
@@ -336,7 +457,7 @@ class PlaywrightScript extends EventEmitter {
 
       filePathArray: [
         'C:\\Users\\ASUS\\Downloads\\ces\\S1---33019725083-1-192.mp4',
-        'C:\\Users\\ASUS\\Downloads\\ces\\S2---33019725083-1-192.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S3---33019725083-1-192.mp4',
       ],
     };
     this.emit('log', {
@@ -505,56 +626,132 @@ class PlaywrightScript extends EventEmitter {
         }
 
         if (frame) {
-          console.log('成功获取到iframe内容');
+          // console.log('成功获取到iframe内容');
 
-          // 在iframe内查找视频描述输入框
-          const describeInputWrapper = await frame
-            .locator('.publish-content__title-input--inputWrap--3rmMJEo')
-            .locator('span')
-            .locator('input');
+          // // 在iframe内查找视频描述输入框
+          // const describeInputWrapper = await frame
+          //   .locator('.publish-content__title-input--inputWrap--3rmMJEo')
+          //   .locator('span')
+          //   .locator('input');
 
-          console.log('开始输入视频描述...');
-          await this.simulateHumanInput(
-            describeInputWrapper,
-            '暂时测试用视频描述'
-          );
+          // console.log('开始输入视频描述...');
+          // await this.simulateHumanInput(
+          //   describeInputWrapper,
+          //   '暂时测试用视频描述'
+          // );
 
-          // 开始输入标签
-          const cesArr = ['ces', '123', 'sdjao'];
-          const labelInput = await frame.locator('div[data-cangjie-editable]');
-          if (await labelInput.isVisible()) {
-            await labelInput.click();
-            await labelInput.press('Control+A'); // 全选内容
-            await labelInput.press('Delete'); // 删除选中内容
+          // // 开始输入标签
+          // const cesArr = ['ces', '123', 'sdjao'];
+          // const labelInput = await frame.locator('div[data-cangjie-editable]');
+          // if (await labelInput.isVisible()) {
+          //   console.log('开始输入标签');
+          //   await labelInput.click();
+          //   await labelInput.press('Control+A'); // 全选内容
+          //   await labelInput.press('Delete'); // 删除选中内容
 
-            for (const item of cesArr) {
-              await this.simulateHumanInput(labelInput, `#${item}#`);
-            }
-          }
+          //   for (const item of cesArr) {
+          //     await this.simulateHumanInput(labelInput, `#${item}#`);
+          //   }
+          // }
+          // await new Promise(resolve => setTimeout(resolve, 1500));
+          // // 点击话题活动
+          // await frame
+          //   .locator('.publish-content__topic-v2--select--1E8f4Wd ')
+          //   .click();
+          // console.log('打开话题活动');
 
-          // 点击话题活动
-          await frame
-            .locator('.publish-content__topic-v2--select--1E8f4Wd ')
-            .click();
+          // const dialogInput = await frame
+          //   .locator(
+          //     '.next-dialog-body > .topic-v2-picker > .top-form > .next-input'
+          //   )
+          //   .locator('input');
+          // if (await dialogInput.isVisible()) {
+          //   await this.simulateHumanInput(dialogInput, '测试');
+          //   await dialogInput.press('Enter');
 
-          const dialogInput = await frame
-            .locator(
-              '.next-dialog-body > .topic-v2-picker > .top-form > .next-input'
-            )
-            .locator('input');
-          if (await dialogInput.isVisible()) {
-            await this.simulateHumanInput(dialogInput, '测试');
-            await dialogInput.press('Enter');
+          //   await new Promise(resolve => setTimeout(resolve, 1 * 1000)); // 等待3秒
+          //   await frame.locator('.right-list > div').nth(0).click();
 
-            await new Promise(resolve => setTimeout(resolve, 3 * 1000)); // 等待3秒
-            await frame.locator('.right-list > div').nth(0).click();
+          //   await new Promise(resolve => setTimeout(resolve, 1 * 1000)); // 等待1秒
+          //   await frame.locator('.next-box > .next-btn-primary').click();
+          // }
 
-            await new Promise(resolve => setTimeout(resolve, 1 * 1000)); // 等待1秒
-            await frame.locator('.next-box > .next-btn-primary').click();
+          // // 选中定时发布
+          // const timeOptionBox = await frame
+          //   .locator('.fixed-btn-container > div')
+          //   .nth(1)
+          //   .locator('div > div')
+          //   .nth(1);
+          // const scheduleCheckbox = await timeOptionBox
+          //   .locator('div')
+          //   .first()
+          //   .locator('.next-radio-wrapper');
+          // if (await scheduleCheckbox.isVisible()) {
+          //   await scheduleCheckbox.click();
+          // }
 
+          // const datetime = '2025-11-20 12:11:10';
 
+          // // 注入时间
+          // // 打开日期时间选择器弹窗
+          // await timeOptionBox.locator('div').nth(1).click();
 
-            
+          // // 获取输入框
+          // const dateInput = frame.locator(
+          //   '.next-date-picker-panel-input input[placeholder="YYYY/MM/DD"]'
+          // );
+          // const timeInput = frame.locator(
+          //   '.next-date-picker-panel-input input[placeholder="HH:mm"]'
+          // );
+          // console.log('开始输入定时发布时间');
+          // const dateTimeObj = dayjs(datetime); // 解析原始时间字符串
+          // const date = dateTimeObj.format('YYYY/MM/DD'); // 提取日期
+          // const time = dateTimeObj.format('HH:mm'); // 提取时间
+
+          // console.log(`定时发布时间: ${date} and ${time}`);
+
+          // // 输入日期
+          // await dateInput.click();
+          // await dateInput.press('Control+A'); // 全选内容
+          // await dateInput.press('Delete'); // 删除选中内容
+          // await this.simulateHumanInput(dateInput, date);
+          // await dateInput.press('Enter');
+          // await dateInput.press('Tab');
+          // await new Promise(resolve => setTimeout(resolve, 1000));
+          // // 输入时间
+
+          // await timeInput.press('Delete'); // 删除选中内容
+          // await this.simulateHumanInput(timeInput, time);
+          // await timeInput.press('Enter');
+          // await new Promise(resolve => setTimeout(resolve, 1200));
+          // // 点击确认按钮
+          // await frame
+          //   .locator('.next-date-picker-panel-footer')
+          //   .locator('button')
+          //   .nth(1)
+          //   .click();
+          // await new Promise(resolve => setTimeout(resolve, 1200));
+          // // 点击自主拍摄
+          // await frame
+          //   .locator('.publish-content__publish-button--claim--1-9WKPP') // 唯一父容器
+          //   .locator('.next-radio-group') // 单选框组
+          //   .locator(
+          //     '.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))'
+          //   ) // 包含“自主拍摄”文本的选项
+          //   .click();
+          const userData = {
+            videoDescription: '暂时测试用视频描述',
+            videoTags: '测试,视频,自动发布',
+            topic: '测试',
+            publishTime: '2025-11-20 12:11:10',
+          };
+
+          // 获取所有视频的队列
+          const videoQueue = await frame.locator('.batchItemWrap').all();
+          for (const video of videoQueue) {
+            await video.click();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await this.fillVideoInfo(frame, userData);
           }
         }
       } catch (describeError: any) {

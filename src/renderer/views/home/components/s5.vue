@@ -93,11 +93,11 @@ onMounted(() => {
   // 绑定文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
-      console.log(arg);
+      // console.log(arg);
       tableData.value = arg.structure
         .filter(dir => {
           const [first, seconds, ..._] = dir.name;
-          console.log(dir.name);
+          // console.log(dir.name);
           return dir.type === 'directory' && first === 'S' && seconds === '4';
         })
         .map(dir => {

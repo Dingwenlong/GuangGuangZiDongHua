@@ -70,10 +70,12 @@ class PlaywrightScript extends EventEmitter {
     }
   }
 
-  public async runWatermarkRemoval(filePath?: string, targetDir?: string) {
+  public async runWatermarkRemoval(filePath: string, targetDir?: string) {
     let page: any = null;
     try {
-      const downloadDir = targetDir ? path.resolve(targetDir) : '';
+      const downloadDir = targetDir
+        ? path.resolve(targetDir)
+        : path.dirname(filePath);
 
       // 确保目标目录存在
       fs.mkdirSync(downloadDir, { recursive: true });
@@ -175,64 +177,35 @@ class PlaywrightScript extends EventEmitter {
       const startButton = await page.waitForSelector(startBtnSelector, {
         timeout: 60000,
       });
-      // await startButton.click();
+      await startButton.click();
       this.emit('log', { message: `${filePath}处理开始`, type: 'info' });
       this.writeLog(`${filePath}上传成功，开始处理`, 'info');
 
       // 点击开始后等待30秒
       await new Promise(resolve => setTimeout(resolve, 30 * 1000));
+      console.log('等待30秒后继续,检测列表第一个的导出按钮');
 
       // 全局超时和检测间隔设置
       const maxWaitTime = 120 * 60 * 1000; // 2小时
       const checkInterval = 30 * 1000; // 30秒
 
-      // 等待处理列表出现
-      const trackListSelector = '.index_trackList__1mQ3P';
-      let trackListFound = false;
-      const trackListStart = Date.now();
-      while (Date.now() - trackListStart < maxWaitTime) {
-        const trackList = await page.$(trackListSelector);
-        if (trackList) {
-          trackListFound = true;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
-      }
-      if (!trackListFound) {
-        throw new Error(`超过${maxWaitTime / 60000}分钟未找到处理列表`);
-      }
-
-      // 等待第一个处理项出现
-      const trackItemSelector = '.index_trackItem__vo4uQ';
-      let firstItemFound = false;
-      const firstItemStart = Date.now();
-      while (Date.now() - firstItemStart < maxWaitTime) {
-        const firstItem = await page.$(
-          `${trackListSelector} ${trackItemSelector}:first-child`
-        );
-        if (firstItem) {
-          firstItemFound = true;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
-      }
-      if (!firstItemFound) {
-        throw new Error(`超过${maxWaitTime / 60000}分钟未找到处理项`);
-      }
-
-      // 等待导出按钮可用
-      const exportButtonSelector = '.index_button__Zm8pL';
       let exportButton: any = null;
       const exportBtnStart = Date.now();
+      console.log(`开始检测导出按钮，${exportBtnStart}`);
+
       while (Date.now() - exportBtnStart < maxWaitTime) {
-        exportButton = await page.$(
-          `${trackListSelector} ${trackItemSelector}:first-child ${exportButtonSelector}`
-        );
+        console.log(`循环内当前检测时间：${Date.now()}`);
+        exportButton = await page
+          .locator('.index_trackList__1mQ3P')
+          .locator('.index_trackItem__vo4uQ ')
+          .first()
+          .locator('.index_button__Zm8pL');
 
         if (exportButton) {
           const isVisible = await exportButton.isVisible();
           const isEnabled = await exportButton.isEnabled();
           if (isVisible && isEnabled) {
+            console.log('导出按钮可见且可用，准备点击导出');
             break;
           }
         }
@@ -240,81 +213,75 @@ class PlaywrightScript extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, checkInterval));
       }
 
-      if (
-        !exportButton ||
-        !(await exportButton.isVisible()) ||
-        !(await exportButton.isEnabled())
-      ) {
-        throw new Error(`超过${maxWaitTime / 60000}分钟，导出按钮仍不可用`);
-      }
+      // 获取原始文件名（不包含扩展名），用于匹配下载的文件
+      const originalFileName = path.basename(filePath, path.extname(filePath));
 
       // 监听下载事件
       let allDownloads: any[] = [];
       const handleDownload = (download: any) => {
+        const downloadFileName = download.suggestedFilename();
         allDownloads.push(download);
         this.emit('log', {
-          message: `检测到下载文件: ${download.suggestedFilename()}`,
+          message: `检测到下载文件: ${downloadFileName}，文件路径将保存在: ${downloadDir}`,
           type: 'info',
         });
       };
 
       page.on('download', handleDownload);
 
+      // 等待下载事件 - 只处理与原始文件匹配的下载
+      const downloadStart = Date.now();
+      let targetDownload: any = null;
+
       try {
-        // 点击导出按钮
-        await exportButton.waitForElementState('enabled', {
-          timeout: maxWaitTime,
-        });
-        this.emit('log', { message: '尝试点击导出按钮', type: 'info' });
         await exportButton.click();
 
-        // 等待下载事件
-        const downloadStart = Date.now();
-        let downloadEvent: any = null;
         while (Date.now() - downloadStart < maxWaitTime) {
-          if (allDownloads.length > 0) {
-            downloadEvent = allDownloads[0];
-            break;
-          }
-          await new Promise(resolve => setTimeout(resolve, checkInterval));
-        }
+          // 遍历所有下载，查找匹配原始文件名的下载
+          for (const download of allDownloads) {
+            const downloadFileName = download.suggestedFilename();
+            // 检查下载文件名是否包含原始文件名的关键部分
+            if (downloadFileName.includes(originalFileName)) {
+              targetDownload = download;
+              this.emit('log', {
+                message: `找到匹配的下载文件: ${downloadFileName}`,
+                type: 'success',
+              });
 
-        if (!downloadEvent) {
-          // 尝试键盘操作
-          this.emit('log', { message: '尝试键盘操作触发下载', type: 'info' });
-          await exportButton.focus();
-          await page.keyboard.press('Enter');
-
-          // 再次等待下载
-          const keyboardDownloadStart = Date.now();
-          while (Date.now() - keyboardDownloadStart < maxWaitTime) {
-            if (allDownloads.length > 0) {
-              downloadEvent = allDownloads[0];
               break;
             }
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
           }
-        }
 
-        if (!downloadEvent) {
-          throw new Error(`超过${maxWaitTime / 60000}分钟未检测到下载事件`);
-        }
+          if (targetDownload) {
+            break;
+          }
 
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
       } catch (err: any) {
         this.emit('log', {
           message: `下载触发过程出错: ${err.message}`,
           type: 'error',
         });
         page.off('download', handleDownload);
-        if (page) await page.close().catch(() => {});
         return { success: false, message: `下载触发失败: ${err.message}` };
       }
 
-      if (allDownloads.length === 0) {
-        this.emit('log', { message: '未捕获到任何下载文件', type: 'warning' });
-        if (page) await page.close().catch(() => {});
-        return { success: false, message: '未捕获到任何下载文件' };
+      if (!targetDownload) {
+        this.emit('log', {
+          message: `未捕获到与原始文件匹配的下载（期望包含: ${originalFileName}）`,
+          type: 'warning',
+        });
+        return { success: false, message: '未捕获到匹配的下载文件' };
+      } else {
+        // 移除事件监听器
+        page.off('download', handleDownload);
+        const downloadFileName = targetDownload.suggestedFilename();
+        this.writeLog(`监听到匹配的下载文件: ${downloadFileName}`, 'info');
+        this.emit('log', {
+          message: `监听到匹配的下载文件: ${downloadFileName}`,
+          type: 'info',
+        });
       }
 
       this.emit('log', { message: `下载完成，开始处理文件`, type: 'info' });
@@ -428,17 +395,6 @@ class PlaywrightScript extends EventEmitter {
         }
       }
 
-      if (
-        !targetPath ||
-        !fs.existsSync(targetPath) ||
-        fs.statSync(targetPath).size === 0
-      ) {
-        if (page) await page.close().catch(() => {});
-        return { success: false, message: '未找到有效的下载文件' };
-      }
-
-      // 关闭标签页
-      await page.close();
       this.emit('log', {
         message: `触发成功的回调，文件路径: ${targetPath}`,
         type: 'info',
@@ -450,6 +406,9 @@ class PlaywrightScript extends EventEmitter {
       setTimeout(() => {
         this.okCallback(targetPath);
       }, 2000);
+      // 关闭标签页
+      await page.close();
+
       return {
         success: true,
         message: `文件已成功处理并保存至: ${targetPath}，临时文件夹保留: ${tempFolder}`,
@@ -587,7 +546,7 @@ class PlaywrightScript extends EventEmitter {
       const atempoFilters = this.getValidAtempoFilters(speedRatio);
 
       // 准备输出文件路径
-      let targetPath: string;
+      let targetPath: string | null = null;
       const originalFileName = path.basename(filePath);
 
       // 应用Y1/S2命名规则
@@ -725,10 +684,12 @@ class PlaywrightScript extends EventEmitter {
   /**
    * 视频质量修复处理
    */
-  public async RunVideoQualityFix(filePath?: string, targetDir?: string) {
+  public async RunVideoQualityFix(filePath: string, targetDir?: string) {
     let page: any = null;
     try {
-      const downloadDir = targetDir ? path.resolve(targetDir) : '';
+      const downloadDir = targetDir
+        ? path.resolve(targetDir)
+        : path.dirname(filePath);
       fs.mkdirSync(downloadDir, { recursive: true });
 
       // 验证文件并提取原始文件名
@@ -791,42 +752,25 @@ class PlaywrightScript extends EventEmitter {
       // 等待任务项DOM稳定
       await new Promise(resolve => setTimeout(resolve, 30000));
 
-      // 监控第一个任务项
-      const trackListSelector = '.index_trackList__1mQ3P';
-      const trackItemSelector = '.index_trackItem__vo4uQ';
-      const firstItemSelector = `${trackListSelector} ${trackItemSelector}:first-child`;
-      const exportBaseClass = 'index_button__Zm8pL';
-      const retryClass = 'index_grayButton__UaZr0';
-      const exportButtonSelector = `${firstItemSelector} .${exportBaseClass}:not(.${retryClass})`;
-
-      // 等待第一个任务项出现
-      let firstItemFound = false;
-      const firstItemStart = Date.now();
-      while (Date.now() - firstItemStart < maxWaitTime) {
-        const firstItem = await page.$(firstItemSelector);
-        if (firstItem) {
-          firstItemFound = true;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
-      }
-      if (!firstItemFound) {
-        throw new Error(`超过${maxWaitTime / 60000}分钟未找到第一个任务项`);
-      }
-
       // 等待导出按钮可用
       let exportButton: any = null;
-      let checkCount = 0;
       const exportBtnStart = Date.now();
       while (Date.now() - exportBtnStart < maxWaitTime) {
-        checkCount++;
-        exportButton = await page.$(exportButtonSelector);
+        exportButton = await page
+          .locator('.index_trackList__1mQ3P')
+          .locator('.index_trackItem__vo4uQ')
+          .first()
+          .locator('.index_button__Zm8pL');
 
         if (exportButton) {
           const isVisible = await exportButton.isVisible();
           const isEnabled = await exportButton.isEnabled();
 
           if (isVisible && isEnabled) {
+            this.emit('log', {
+              message: `导出按钮可见且可用，点击导出...`,
+              type: 'info',
+            });
             break;
           }
         }
@@ -842,74 +786,175 @@ class PlaywrightScript extends EventEmitter {
         throw new Error(`超过${maxWaitTime / 60000}分钟，导出按钮不可用`);
       }
 
-      // 点击导出按钮并监听下载
-      const downloadPromise = page.waitForEvent('download', {
-        timeout: maxWaitTime,
-      });
-      await exportButton.click();
+      // 获取原始文件名
+      const currentFileName = path.basename(filePath, path.extname(filePath));
+      const isS5File = currentFileName.startsWith('S5');
 
+      this.emit('log', {
+        message: `将使用${isS5File ? 'S5开头' : '文件名'}进行匹配`,
+        type: 'info',
+      });
+
+      // 点击导出按钮并设置自定义下载监听
       this.emit('log', {
         message: `导出按钮点击成功，等待下载完成...`,
         type: 'info',
       });
 
-      // 检查目录变化（备用方案）
-      const checkDownloadDir = async () => {
-        const originalFiles = new Set(fs.readdirSync(downloadDir));
-        return new Promise<string>((resolve, reject) => {
-          const interval = setInterval(() => {
-            const currentFiles = fs.readdirSync(downloadDir);
-            for (const file of currentFiles) {
-              if (!originalFiles.has(file) && !file.endsWith('.crdownload')) {
-                clearInterval(interval);
-                resolve(path.join(downloadDir, file));
-                return;
-              }
-            }
-          }, checkInterval);
-
-          setTimeout(() => {
-            clearInterval(interval);
-            reject(new Error('目录监控超时'));
-          }, maxWaitTime);
+      // 监听下载事件
+      let allDownloads: any[] = [];
+      const handleDownload = (download: any) => {
+        const downloadFileName = download.suggestedFilename();
+        allDownloads.push(download);
+        this.emit('log', {
+          message: `检测到下载文件: ${downloadFileName}，文件路径将保存在: ${downloadDir}`,
+          type: 'info',
         });
+        // 特别标记S5开头的文件
+        if (downloadFileName.startsWith('S5')) {
+          this.emit('log', {
+            message: `【重要】检测到S5开头的文件: ${downloadFileName}`,
+            type: 'info',
+          });
+        }
       };
 
-      // 并行等待：优先使用Playwright事件，失败则用目录监控
-      let download: any, tempPath: string;
+      page.on('download', handleDownload);
+
+      // 等待下载事件 - 只处理S5开头的文件
+      const downloadStart = Date.now();
+      let targetDownload: any = null;
+
       try {
-        download = await downloadPromise;
-        tempPath = path.join(downloadDir, download.suggestedFilename());
-        await download.saveAs(tempPath);
-      } catch (e) {
+        await exportButton.click();
+
+        while (Date.now() - downloadStart < maxWaitTime) {
+          // 遍历所有下载，只查找S5开头的文件
+          for (const download of allDownloads) {
+            const downloadFileName = download.suggestedFilename();
+            this.emit('log', {
+              message: `当前检测到下载文件: ${downloadFileName}`,
+              type: 'info',
+            });
+
+            // 只关注S5开头的文件，这是RunVideoQualityFix需要处理的文件
+            if (downloadFileName.startsWith('S5')) {
+              targetDownload = download;
+              this.emit('log', {
+                message: `找到匹配的S5文件: ${downloadFileName}`,
+                type: 'success',
+              });
+              break;
+            }
+          }
+
+          if (targetDownload) {
+            break;
+          }
+
+          // 显示当前下载状态，方便调试
+          if (allDownloads.length > 0 && Date.now() - downloadStart > 15000) {
+            const downloadNames = allDownloads
+              .map(d => d.suggestedFilename())
+              .join(', ');
+            this.emit('log', {
+              message: `等待S5文件下载中... 已检测到${allDownloads.length}个下载文件: ${downloadNames}`,
+              type: 'info',
+            });
+          }
+
+          await new Promise(resolve => setTimeout(resolve, checkInterval));
+        }
+      } catch (err: any) {
         this.emit('log', {
-          message: `下载事件监听失败，尝试目录监控: ${(e as Error).message}`,
+          message: `下载触发过程出错: ${err.message}`,
+          type: 'error',
+        });
+        page.off('download', handleDownload);
+        return { success: false, message: `下载触发失败: ${err.message}` };
+      }
+
+      // 移除事件监听器
+      page.off('download', handleDownload);
+
+      // 如果没有找到目标S5下载，返回失败
+      if (!targetDownload) {
+        this.emit('log', {
+          message: `未找到S5开头的下载文件，无法继续处理`,
           type: 'warning',
         });
-        tempPath = await checkDownloadDir();
-      }
-
-      // 等待文件写入完成
-      await new Promise(resolve => setTimeout(resolve, 10 * 1000));
-
-      // 验证临时文件
-      if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size === 0) {
-        throw new Error(`临时文件无效：${tempPath}`);
-      }
-
-      // 强制重命名为目标文件名
-      if (fs.existsSync(targetPath)) {
-        fs.unlinkSync(targetPath);
+        return { success: false, message: '未找到S5开头的下载文件' };
+      } else {
+        // 记录找到的下载文件信息
+        const downloadFileName = targetDownload.suggestedFilename();
+        this.writeLog(`监听到匹配的S5文件: ${downloadFileName}`, 'info');
         this.emit('log', {
-          message: `已删除旧文件：${targetPath}`,
+          message: `监听到匹配的S5文件: ${downloadFileName}`,
           type: 'info',
         });
       }
-      fs.renameSync(tempPath, targetPath);
 
-      // 验证最终文件
-      if (!fs.existsSync(targetPath) || fs.statSync(targetPath).size === 0) {
-        throw new Error(`最终文件无效：${targetPath}`);
+      this.emit('log', { message: `下载完成，开始处理文件`, type: 'info' });
+
+      // 保存下载的文件
+      const downloadFileName = targetDownload.suggestedFilename();
+      let tempPath = path.join(downloadDir, downloadFileName);
+      await targetDownload.saveAs(tempPath);
+      this.emit('log', {
+        message: `保存下载文件到: ${tempPath}`,
+        type: 'info',
+      });
+
+      // 等待文件写入完成
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 验证临时文件是否存在并且大小合理
+      if (!fs.existsSync(tempPath) || fs.statSync(tempPath).size < 1024) {
+        this.emit('log', {
+          message: `临时文件不存在或过小: ${tempPath}`,
+          type: 'error',
+        });
+        return { success: false, message: '下载文件无效' };
+      }
+
+      // 如果目标文件已存在，先删除旧文件
+      if (fs.existsSync(targetPath)) {
+        try {
+          fs.unlinkSync(targetPath);
+          this.emit('log', {
+            message: `删除旧文件: ${targetPath}`,
+            type: 'info',
+          });
+        } catch (error) {
+          this.emit('log', {
+            message: `删除旧文件失败: ${error}`,
+            type: 'warning',
+          });
+        }
+      }
+
+      // 强制重命名文件
+      try {
+        fs.renameSync(tempPath, targetPath);
+        this.emit('log', {
+          message: `文件重命名完成: ${tempPath} -> ${targetPath}`,
+          type: 'info',
+        });
+      } catch (error) {
+        this.emit('log', {
+          message: `文件重命名失败: ${error}`,
+          type: 'error',
+        });
+        return { success: false, message: '文件重命名失败' };
+      }
+
+      // 验证重命名后的文件
+      if (!fs.existsSync(targetPath) || fs.statSync(targetPath).size < 1024) {
+        this.emit('log', {
+          message: `重命名后文件不存在或过小: ${targetPath}`,
+          type: 'error',
+        });
+        return { success: false, message: '文件处理失败' };
       }
 
       // 删除UUID格式的冗余文件（包括下载时的和目录中残留的）
@@ -1034,10 +1079,6 @@ class PlaywrightScript extends EventEmitter {
       // 关闭标签页
       await page.close();
 
-      this.emit('log', {
-        message: `高清处理完成，文件保存至：${targetPath}`,
-        type: 'success',
-      });
       this.writeLog(`高清处理完成，文件保存至：${targetPath}`, 'success');
 
       return {
@@ -1062,11 +1103,7 @@ class PlaywrightScript extends EventEmitter {
   public async CheckKaipaiLoginStatus() {
     try {
       // 确定下载目录
-      const defaultDownloadDir = path.join(
-        os.homedir(),
-        'Downloads',
-        'kaipai_output'
-      );
+      const defaultDownloadDir = path.join(os.homedir(), 'Downloads', 'ces');
 
       // 初始化浏览器实例
       await PlaywrightScript.initBrowser(defaultDownloadDir);

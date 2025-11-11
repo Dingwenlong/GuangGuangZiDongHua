@@ -118,11 +118,20 @@ const videoMonitoringRunning = ref(false);
 
 function startOrStopTaskHandler(start = true) {
   // 更新 s6 的 running 状态
-  // ipcRendererChannel.UpdateWorkbenchData.invoke({
-  //   stepNo: 's6',
-  //   sData: { ...s6.value, running: start },
-  // });
-  // setCookie();
+  ipcRendererChannel.UpdateWorkbenchData.invoke({
+    stepNo: 's6',
+    sData: { ...s6.value, running: start },
+  });
+  // const dsjioa = [
+  //   // 'C:\\Users\\ASUS\\Downloads\\ces\\S5-123.mp4',
+  //   // 'C:\\Users\\ASUS\\Downloads\\ces\\S5-das.mp4',
+  //   // 'C:\\Users\\ASUS\\Downloads\\ces\\S5-asd\\S5-cxz.mp4',
+  //   'C:\\Users\\ASUS\\Downloads\\ces\\S5-asd\\S5-fdsdf.mp4',
+  // ];
+  // for (const filePath of dsjioa) {
+  //   setCookie(filePath);
+  // }
+
   guanghe();
 }
 
@@ -131,17 +140,17 @@ function guanghe() {
 }
 
 // 调用高清化脚本
-function setCookie() {
+function setCookie(filePath: string) {
   console.log('设置Cookie并执行高清化');
 
   try {
     // 处理文件路径（使用/代替\避免转义问题）
-    const firstFilePath = 'C:\\Users\\ASUS\\Downloads\\S5-testMP4.mp4';
+    // const firstFilePath = 'C:\\Users\\ASUS\\Downloads\\S5-testMP4.mp4';
 
     // 调用高清化脚本
     ipcRendererChannel.RunVideoQualityFix.invoke({
-      filePath: firstFilePath,
-      targetDir: 'C:/Users/ASUS/Downloads/kaipai_output',
+      filePath: filePath,
+      targetDir: 'C:/Users/ASUS/Downloads/ces/S5-asd',
     })
       .then((result: any) => {
         // 直接处理返回结果
