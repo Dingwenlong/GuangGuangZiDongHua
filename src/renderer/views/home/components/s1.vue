@@ -21,11 +21,8 @@
         </div>
         <div
           class="w-3/12 h-32 text-[12px] text-gray-400 content-center text-right">
-          自动持续检测{{ s1.autoMonitoring ? '开启' : '关闭' }}
-          <Switch
-            v-model:checked="s1.autoMonitoring"
-            class="mt-[-3px]"
-            size="small" />
+          自动持续检测{{ s1.running ? '开启' : '关闭' }}
+          <Switch v-model:checked="s1.running" class="mt-[-3px]" size="small" />
         </div>
       </div>
       <div class="w-full flex flex-row justify-end gap-10">
@@ -34,12 +31,6 @@
           :disabled="!s1.taskDirectory"
           @click="batchCreationFolderHandler"
           >批量创建商品文件夹</Button
-        >
-        <Button
-          type="primary"
-          :disabled="!s1.taskDirectory"
-          @click="() => (s1.running = !s1.running)"
-          >{{ !s1.running ? '开始' : '结束' }}执行自动工作流任务</Button
         >
       </div>
     </div>
@@ -96,7 +87,6 @@ const { shell, ipcRendererChannel } = window;
 const s1 = reactive({
   taskDirectory: '',
   materialDuration: '20',
-  autoMonitoring: true,
   intervalSeconds: 5,
   running: false,
 });
@@ -106,25 +96,23 @@ let startFolderIndex = 0;
 onMounted(() => {
   ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbench => {
     s1.taskDirectory = workbench.taskDirectory ?? '';
-    s1.autoMonitoring = workbench.autoMonitoring ?? true;
     s1.running = workbench.running ?? false;
-    if (s1.taskDirectory && s1.autoMonitoring && !s1.running) s1.running = true;
   });
-
   watch(s1, async (newValue, oldValue) => {
     ipcRendererChannel.UpdateWorkbenchData.invoke({
       stepNo: 's1',
       sData: { ...newValue },
     });
-    if (newValue.taskDirectory != oldValue.taskDirectory)
+    if (newValue.taskDirectory != oldValue.taskDirectory || !newValue.running)
       await ipcRendererChannel.StopMonitoringDirectory.invoke(
         oldValue.taskDirectory
       );
-    if (newValue.taskDirectory)
+    if (newValue.taskDirectory && newValue.running)
       await ipcRendererChannel.StartMonitoringDirectory.invoke(
         newValue.taskDirectory
       );
   });
+  if (s1.running) s1.running = false;
 
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
@@ -168,7 +156,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  // 移除文件夹变化监听事件
   ipcRendererChannel.MonitoringDirectoryCallback.removeAllListeners();
 });
 
@@ -221,13 +208,16 @@ async function batchCreationFolderHandler() {
   const directoryNames = clipboardText
     .split('\n')
     .map(row => row.split('\t'))
-    .filter(([title, productId]) => title && productId && title !== '商品名称')
-    .map(([title, productId], i) => {
+    .filter(
+      ([title, category, productId]) =>
+        title && category && productId && title !== '商品名称'
+    )
+    .map(([title, category, productId], i) => {
       startFolderIndex += 1;
       return `S1---${startFolderIndex}---${sanitizeFolderName(title).replace(
         ' ',
         ''
-      )}---${productId.replace(/\r/g, '')}---${nanoid(8)}`;
+      )}---${category}---${productId.replace(/\r/g, '')}---${nanoid(8)}`;
     });
 
   await Promise.all(

@@ -36,6 +36,9 @@
       <div class="h-full" v-show="menus[6].checked">
         <S7 />
       </div>
+      <div class="h-full" v-show="menus[7].checked">
+        <!-- <S8 /> -->
+      </div>
     </div>
     <div class="min-w-3/12 max-w-3/12 bg-gray-100">
       <LogPanel :logs="logData" />
@@ -52,6 +55,7 @@ import S3S4 from './components/s3s4.vue';
 import S5 from './components/s5.vue';
 import S6 from './components/s6.vue';
 import S7 from './components/s7.vue';
+import S8 from './components/s8.vue';
 import MoFang from '@renderer/assets/icons/webp/mo-fang.webp';
 
 const { ipcRendererChannel } = window;
@@ -60,7 +64,6 @@ const logData = ref<any[]>([]);
 
 onMounted(() => {
   ipcRendererChannel.LogUpdate.on((_, arg) => {
-    console.log(_, arg);
     const now = new Date();
     const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
       2,
@@ -97,7 +100,8 @@ const menus = ref<MenuItem[]>([
   { title: 'S4 - 视频分镜 - 混剪', checked: false },
   { title: 'S5 - 配音加字幕', checked: false },
   { title: 'S6 - 高清放大', checked: false },
-  { title: 'S7 - 光合发布', checked: false },
+  { title: 'S7 - 视频分发', checked: false },
+  { title: 'S8 - 光合发布', checked: false },
 ]);
 
 const selectMenu = (index: number) => {

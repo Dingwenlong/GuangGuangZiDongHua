@@ -66,7 +66,6 @@ export interface WorkbenchStoreSchema {
     taskDirectory?: string;
     materialDuration: number;
     intervalSeconds: number;
-    autoMonitoring: boolean;
     running: boolean;
   };
   s2: {
@@ -168,7 +167,6 @@ const defaultData: WorkbenchConfigStoreSchema = merge(
     s1: {
       taskDirectory: '',
       materialDuration: 20,
-      autoMonitoring: true,
       intervalSeconds: 5,
       running: false,
     },
