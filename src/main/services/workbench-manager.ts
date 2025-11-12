@@ -2,8 +2,7 @@ import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 import { join } from 'path';
 import { app } from 'electron';
-import { merge, isEqual } from 'lodash-es';
-import config from '@config/index';
+import { isEqual } from 'lodash-es';
 import { diffArrays, type ArrayDiffResult } from '@main/utils/array';
 import { sqInsert, sqQuery, sqUpdate } from '../lib/sqllite3';
 
@@ -63,7 +62,7 @@ export interface S4VideosChunk {
 // 定义存储的数据结构
 export interface WorkbenchStoreSchema {
   s1: {
-    taskDirectory?: string;
+    taskDirectory: string;
     materialDuration: number;
     intervalSeconds: number;
     running: boolean;
@@ -89,7 +88,11 @@ export interface WorkbenchStoreSchema {
     running: boolean;
   };
   s7: {
-    taskDirectory?: string;
+    taskDirectory: string;
+    running: boolean;
+  };
+  s8: {
+    taskDirectory: string;
     running: boolean;
   };
   /**
@@ -162,41 +165,42 @@ type WorkbenchQueuesStoreSchema = Pick<
 >;
 
 // 默认数据
-const defaultData: WorkbenchConfigStoreSchema = merge(
-  {
-    s1: {
-      taskDirectory: '',
-      materialDuration: 20,
-      intervalSeconds: 5,
-      running: false,
-    },
-    s2: {
-      autoHandOnWorkflow: true,
-      running: false,
-    },
-    s3s4: {
-      productMaterialNum: 4,
-      storyboardSceneThreshold: 0.3,
-      storyboardDuration1: 4,
-      storyboardDuration2: 6,
-      autoHandOnWorkflow: true,
-      running: true,
-    },
-    s5: {
-      autoHandOnWorkflow: true,
-      running: false,
-    },
-    s6: {
-      autoHandOnWorkflow: true,
-      running: false,
-    },
-    s7: {
-      taskDirectory: '',
-      running: true,
-    },
+const defaultData: WorkbenchConfigStoreSchema = {
+  s1: {
+    taskDirectory: '\\\\192.168.31.99\\影视存储\\逛逛客户端\\监控目录',
+    materialDuration: 20,
+    intervalSeconds: 5,
+    running: false,
   },
-  config.workBenchDefault
-);
+  s2: {
+    autoHandOnWorkflow: true,
+    running: false,
+  },
+  s3s4: {
+    productMaterialNum: 4,
+    storyboardSceneThreshold: 0.3,
+    storyboardDuration1: 4,
+    storyboardDuration2: 6,
+    autoHandOnWorkflow: true,
+    running: true,
+  },
+  s5: {
+    autoHandOnWorkflow: true,
+    running: false,
+  },
+  s6: {
+    autoHandOnWorkflow: true,
+    running: false,
+  },
+  s7: {
+    taskDirectory: '',
+    running: true,
+  },
+  s8: {
+    taskDirectory: '',
+    running: true,
+  },
+};
 
 // 任务状态枚举
 export enum WorkbenchTaskStatus {
@@ -215,12 +219,14 @@ class WorkbenchManager {
   // 新增：存储上一次的数据快照
   private previousData: WorkbenchStoreSchema | null = null;
 
+  private initPromise: Promise<void>;
+
   constructor() {
     const userDataPath = app.getPath('userData');
     const dbPath = join(userDataPath, 'workbench.json');
     const adapter = new JSONFile<WorkbenchConfigStoreSchema>(dbPath);
     this.db = new Low<WorkbenchConfigStoreSchema>(adapter, defaultData);
-    this.init();
+    this.initPromise = this.init();
   }
 
   /**
@@ -236,11 +242,30 @@ class WorkbenchManager {
       await this.db.write();
     }
 
+    if (this.db.data && !this.db.data.s7) {
+      this.db.data.s7 = {
+        taskDirectory: '',
+        running: false,
+      };
+      await this.db.write();
+    }
+
+    if (this.db.data && !this.db.data.s8) {
+      this.db.data.s8 = {
+        taskDirectory: '',
+        running: true,
+      };
+      await this.db.write();
+    }
     // 初始化数据快照
     this.previousData = JSON.parse(JSON.stringify(this.db.data));
 
     // 初始化SQLite3
     await this.initializeSchema();
+  }
+
+  public async waitForInit(): Promise<void> {
+    return this.initPromise;
   }
 
   /**

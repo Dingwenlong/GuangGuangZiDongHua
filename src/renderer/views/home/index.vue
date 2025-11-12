@@ -37,7 +37,7 @@
         <S7 />
       </div>
       <div class="h-full" v-show="menus[7].checked">
-        <!-- <S8 /> -->
+        <S8 />
       </div>
     </div>
     <div class="min-w-3/12 max-w-3/12 bg-gray-100">

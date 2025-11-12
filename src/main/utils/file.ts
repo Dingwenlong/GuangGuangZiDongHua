@@ -274,3 +274,23 @@ export async function renameProductDirs(
     }
   }
 }
+
+export async function cutFileToOtherDirectory(
+  sourceFilePath: string,
+  targetDirectory: string,
+  targetFileName: string
+): Promise<void> {
+  return new Promise<void>(async (resolve, reject) => {
+    try {
+      await fs.promises.access(targetDirectory);
+      await fs.promises.mkdir(targetDirectory, { recursive: true });
+
+      const targetFilePath = path.join(targetDirectory, targetFileName);
+      console.log('rename', sourceFilePath, targetFilePath);
+      fs.promises.rename(sourceFilePath, targetFilePath);
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}

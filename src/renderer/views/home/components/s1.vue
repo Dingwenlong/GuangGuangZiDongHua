@@ -1,8 +1,8 @@
 <template>
   <div
-    class="w-full h-full grid overflow-auto"
+    class="w-full h-full grid overflow-y-auto overflow-x-hidden"
     style="grid-template-rows: minmax(min-content, 120px) minmax(200px, 1fr)">
-    <div class="mb-15 flex flex-row items-center flex-wrap gap-10">
+    <div class="flex flex-row items-baseline flex-wrap gap-10">
       <div class="w-full flex justify-between flex-row items-center gap-10">
         <Input
           class="w-6/12!"
@@ -96,14 +96,21 @@ let startFolderIndex = 0;
 onMounted(() => {
   ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbench => {
     s1.taskDirectory = workbench.taskDirectory ?? '';
-    s1.running = workbench.running ?? false;
+    s1.running = false;
+    if (workbench.running) {
+      ipcRendererChannel.UpdateWorkbenchData.invoke({
+        stepNo: 's1',
+        sData: Object.assign({ ...s1 }, { running: false }),
+      });
+    }
   });
+
   watch(s1, async (newValue, oldValue) => {
     ipcRendererChannel.UpdateWorkbenchData.invoke({
       stepNo: 's1',
       sData: { ...newValue },
     });
-    if (newValue.taskDirectory != oldValue.taskDirectory || !newValue.running)
+    if (newValue.taskDirectory !== oldValue.taskDirectory || !newValue.running)
       await ipcRendererChannel.StopMonitoringDirectory.invoke(
         oldValue.taskDirectory
       );
@@ -112,7 +119,6 @@ onMounted(() => {
         newValue.taskDirectory
       );
   });
-  if (s1.running) s1.running = false;
 
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {

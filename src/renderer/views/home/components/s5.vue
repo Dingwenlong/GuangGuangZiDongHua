@@ -67,13 +67,6 @@ function openFolderHandler(dir: string) {
   shell.openPath(path.join(s5.taskDirectory, dir));
 }
 
-watch(s5, val => {
-  // 监听文件夹
-  if (val.taskDirectory) {
-    ipcRendererChannel.StartMonitoringDirectory.invoke(val.taskDirectory);
-  }
-});
-
 watch(s4.value, val => {
   ipcRendererChannel.UpdateWorkbenchData.invoke({
     stepNo: 's4',

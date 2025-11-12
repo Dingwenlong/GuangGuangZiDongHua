@@ -13,9 +13,4 @@ export default {
   UseStartupChart: true,
   IsUseSysTitle: false,
   IgnoreLogin: false,
-  workBenchDefault: {
-    s1: {
-      taskDirectory: '\\\\192.168.31.99\\影视存储\\逛逛客户端\\监控目录',
-    },
-  },
 };

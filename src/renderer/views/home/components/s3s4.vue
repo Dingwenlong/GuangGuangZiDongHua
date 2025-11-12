@@ -1,8 +1,8 @@
 <template>
   <div
     class="w-full h-full grid overflow-auto"
-    style="grid-template-rows: minmax(min-content, 120px) minmax(200px, 1fr)">
-    <div class="mb-15 flex flex-row items-center flex-wrap gap-10">
+    style="grid-template-rows: minmax(min-content, 50px) minmax(200px, 1fr)">
+    <div class="mb-15 flex flex-row items-baseline flex-wrap gap-10">
       <span class="text-[#666666] text-[12px]"
         >S3/S4为自动工作流，不支持单独使用</span
       >

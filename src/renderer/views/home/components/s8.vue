@@ -1,18 +1,17 @@
 <template>
   <div
-    class="w-full h-full grid overflow-auto"
-    style="grid-template-rows: minmax(min-content, 120px) minmax(200px, 1fr)">
-    <div class="mb-15 flex flex-row items-center flex-wrap gap-10">
+    class="w-full h-full grid overflow-y-auto overflow-x-hidden"
+    style="grid-template-rows: minmax(min-content, 50px) minmax(200px, 1fr)">
+    <div class="flex flex-row items-baseline flex-wrap gap-10">
       <div class="w-full flex justify-between flex-row items-center gap-10">
         <Input
           class="w-6/12!"
           readonly
-          v-model:value="s7.taskDirectory"
+          v-model:value="s8.taskDirectory"
           placeholder="点击选择任务监听目录文件夹"
           @click="selectDirectoryHandler" />
-      </div>
-      <div class="w-full flex flex-row justify-end gap-10">
-        <Button type="primary" :disabled="!s7.taskDirectory" @click="showModal"
+
+        <Button type="primary" :disabled="!s8.taskDirectory" @click="showModal"
           >批量创建逛逛号文件夹</Button
         >
       </div>
@@ -28,9 +27,9 @@
         }"
         bordered>
         <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'videoMaterial'">
+          <template v-if="column.dataIndex === 'second'">
             <p
-              v-for="(item, index) in record.videoMaterial"
+              v-for="(item, index) in record.second"
               :key="index"
               style="margin: 4px 0">
               {{ item }}
@@ -39,7 +38,7 @@
           <template v-else-if="column.key === 'action'" class="text-center">
             <Button
               type="text"
-              @click="openFolderHandler(s7.taskDirectory + '\\' + record.first)"
+              @click="openFolderHandler(s8.taskDirectory + '\\' + record.first)"
               >打开文件夹</Button
             >
           </template>
@@ -118,10 +117,11 @@ import {
 } from 'ant-design-vue';
 import { nanoid } from 'nanoid';
 import { sanitizeFolderName } from '@renderer/utils/string';
+import dayjs from 'dayjs';
 
 const { shell, ipcRendererChannel } = window;
 
-const s7 = reactive({
+const s8 = reactive({
   taskDirectory: '',
   running: true,
 });
@@ -172,9 +172,9 @@ const modalColumns: TableColumnType[] = [
 ];
 
 onMounted(() => {
-  watch(s7, async (newValue, oldValue) => {
+  watch(s8, async (newValue, oldValue) => {
     ipcRendererChannel.UpdateWorkbenchData.invoke({
-      stepNo: 's7',
+      stepNo: 's8',
       sData: { ...newValue },
     });
     if (
@@ -190,20 +190,20 @@ onMounted(() => {
       );
   });
 
-  ipcRendererChannel.GetWorkbenchData.invoke('s7').then(workbench => {
-    s7.taskDirectory = workbench.taskDirectory ?? '';
+  ipcRendererChannel.GetWorkbenchData.invoke('s8').then(workbench => {
+    s8.taskDirectory = workbench.taskDirectory ?? '';
   });
 
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
-      if (arg.root === s7.taskDirectory) {
+      if (arg.root === s8.taskDirectory) {
         tableData.value = arg.structure
           .filter(dir => dir.type === 'directory')
           .map(dir => {
             // 添加过滤机制
             const children = dir.children as any[];
             return {
-              first: dir.path.replace(s7.taskDirectory + '\\', ''),
+              first: dir.path.replace(s8.taskDirectory + '\\', ''),
               second: children.map((file: any) => file.name),
             };
           });
@@ -249,7 +249,7 @@ function openFolderHandler(dir: any) {
  * 选择文件夹
  */
 async function selectDirectoryHandler() {
-  s7.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
+  s8.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
 }
 
 /**
@@ -347,12 +347,7 @@ function handleModalCancel() {
  * 批量创建文件夹
  */
 async function batchCreationFolderHandler() {
-  const now = new Date();
-  const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-    2,
-    '0'
-  )}-${String(now.getDate()).padStart(2, '0')}`;
-
+  const timeStr = dayjs().format('YYYY-MM-DD');
   const directories = modalTableData.value.map(item => {
     return {
       dirName: sanitizeFolderName(
@@ -367,7 +362,7 @@ async function batchCreationFolderHandler() {
     await Promise.all(
       directories.map(dir =>
         ipcRendererChannel.CreateDirectory.invoke({
-          dirPath: s7.taskDirectory,
+          dirPath: s8.taskDirectory,
           dirName: dir.dirName,
           files: [
             {
