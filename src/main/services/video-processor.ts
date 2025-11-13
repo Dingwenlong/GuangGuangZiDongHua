@@ -56,6 +56,7 @@ class VideoProcessor extends EventEmitter {
 
   private shouldRunChecks: boolean = false;
   private checkPromise: Promise<void> | null = null;
+  private productTitleDir: string = '';
 
   constructor(monitorDirectory: string, options: VideoProcessorOptions = {}) {
     super();
@@ -67,6 +68,9 @@ class VideoProcessor extends EventEmitter {
       fileKeyMethod: 'path', // 'path' 或 'path-size-mtime'
       ...options,
     };
+
+    this.productTitleDir =
+      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\视频标题';
 
     // 处理状态跟踪
     this.currentlyProcessing = new Set<string>(); // 正在处理的文件键
@@ -493,6 +497,9 @@ class VideoProcessor extends EventEmitter {
       // 删除原视频
       await fs.promises.unlink(inputPath);
 
+      // 保存文件标题到JSON文件
+      await this.saveFileTitleToJson(productDir, inputPath);
+
       this.writeLog(
         `视频处理完成: ${outputFileName} (${duration.toFixed(2)}秒 → 20.00秒)`,
         'success'
@@ -506,6 +513,51 @@ class VideoProcessor extends EventEmitter {
     } finally {
       this.status.processingStatus = '空闲';
       this.updateStatus();
+    }
+  }
+
+  private async saveFileTitleToJson(
+    productDir: string,
+    fileName: string
+  ): Promise<void> {
+    try {
+      // 从目录名中提取商品ID
+      const dirName = path.basename(productDir);
+      const dirParts = dirName.split('---');
+      if (dirParts.length < 5) {
+        this.writeLog(`无法从目录名提取商品ID: ${dirName}`, 'warning');
+        return;
+      }
+      const productId = dirParts[4];
+
+      // 提取文件标题（去掉后缀）
+      const title = path.basename(fileName, path.extname(fileName));
+
+      // 保存到两个JSON文件
+      const platforms = ['gg', 'jd'];
+      for (const platform of platforms) {
+        const jsonFileName = `${productId}_${platform}.json`;
+        const jsonPath = path.join(this.productTitleDir, jsonFileName);
+
+        let data: string[] = [];
+        if (fs.existsSync(jsonPath)) {
+          const existingContent = await fs.promises.readFile(jsonPath, 'utf8');
+          data = JSON.parse(existingContent);
+        }
+
+        data.push(title);
+        await fs.promises.writeFile(
+          jsonPath,
+          JSON.stringify(data, null, 2),
+          'utf8'
+        );
+        this.writeLog(`已保存标题到${jsonFileName}: ${title}`, 'info');
+      }
+    } catch (error) {
+      this.writeLog(
+        `保存文件标题到JSON失败: ${(error as Error).message}`,
+        'error'
+      );
     }
   }
 

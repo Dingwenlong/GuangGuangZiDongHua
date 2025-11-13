@@ -275,11 +275,12 @@ async function loadClipboardData() {
         const columns = row.split('\t');
         return {
           key: nanoid(),
-          name: columns[0] || '',
-          category: columns[1] || '',
-          guangId: columns[2] || '',
-          tags: columns[3] || '',
-          topics: columns[4] || '',
+          mark: columns[0] || '',
+          name: columns[1] || '',
+          category: columns[2] || '',
+          guangId: columns[3] || '',
+          tags: columns[4] || '',
+          topics: columns[5] || '',
         };
       })
       .filter(item => item.name && item.name !== '逛逛昵称'); // 过滤掉标题行和空行
@@ -351,7 +352,7 @@ async function batchCreationFolderHandler() {
   const directories = modalTableData.value.map(item => {
     return {
       dirName: sanitizeFolderName(
-        `${item.name}---${item.category}---${item.guangId}---${timeStr}---0`
+        `${item.mark}---${item.name}---${item.category}---${item.guangId}---${timeStr}---0`
       ),
       tags: item.tags ? item.tags.split('|') : [],
       topics: item.topics ? item.topics.split('|') : [],
