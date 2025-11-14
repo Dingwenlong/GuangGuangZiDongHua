@@ -20,6 +20,8 @@ export class GuangProcessor extends EventEmitter {
   private watcher: FileWatcher | null;
   //0:停止 1:运行中 2:启动中 3:停止中
   private runningStatus: number = 0;
+  private fileEventQueue: Array<() => Promise<void>> = [];
+  private isProcessingQueue: boolean = false;
 
   constructor() {
     super();
@@ -78,11 +80,13 @@ export class GuangProcessor extends EventEmitter {
       .on('unlink', (filePath: string) =>
         this.handleFileEvent(filePath, 'unlink')
       )
-      .on('ready', () => {
+      .on('ready', async () => {
         this.writeLog('视频分发文件监控系统就绪', 'success');
 
-        // 扫描现有文件
-        setTimeout(() => this.scanExistingFiles(), 5000);
+        // 扫描现有文件（等待队列处理完成）
+        setTimeout(async () => {
+          await this.scanExistingFiles();
+        }, 5000);
       })
       .on('error', (error: Error) => {
         this.writeLog(`文件监控错误: ${error.message}`, 'error');
@@ -97,6 +101,11 @@ export class GuangProcessor extends EventEmitter {
         if (this.runningStatus !== 1) return reject('视频分发文件监控未在运行');
 
         this.runningStatus = 3;
+
+        // 清空队列
+        this.fileEventQueue = [];
+        this.isProcessingQueue = false;
+
         if (this.watcher) {
           this.watcher.stop();
           this.watcher = null;
@@ -116,12 +125,20 @@ export class GuangProcessor extends EventEmitter {
   private async scanExistingFiles(): Promise<void> {
     this.writeLog('开始扫描现有文件');
     const items = fs.readdirSync(this.watcher!.getPath());
+
+    // 将所有文件添加到队列中
     for (const file of items) {
-      await this.handleFileEvent(
-        path.join(this.watcher!.getPath(), file),
-        'scan'
-      );
+      this.fileEventQueue.push(async () => {
+        return this.processFileEvent(
+          path.join(this.watcher!.getPath(), file),
+          'scan'
+        );
+      });
     }
+
+    // 启动队列处理
+    await this.processQueue();
+
     this.writeLog(`扫描完成，发现 ${items.length} 个待处理文件`);
   }
 
@@ -129,6 +146,22 @@ export class GuangProcessor extends EventEmitter {
    * 处理文件事件
    */
   private async handleFileEvent(
+    filePath: string,
+    eventType: string
+  ): Promise<void> {
+    // 将任务添加到队列中，而不是直接执行
+    this.fileEventQueue.push(async () => {
+      return this.processFileEvent(filePath, eventType);
+    });
+
+    // 启动队列处理（如果尚未启动）
+    this.processQueue();
+  }
+
+  /**
+   * 实际处理文件事件的方法
+   */
+  private async processFileEvent(
     filePath: string,
     eventType: string
   ): Promise<void> {
@@ -201,6 +234,34 @@ export class GuangProcessor extends EventEmitter {
     }
   }
 
+  /**
+   * 串行处理队列中的任务
+   */
+  private async processQueue(): Promise<void> {
+    // 如果已经在处理队列，则直接返回
+    if (this.isProcessingQueue) {
+      return;
+    }
+
+    // 标记为正在处理队列
+    this.isProcessingQueue = true;
+
+    try {
+      // 处理队列中的所有任务
+      while (this.fileEventQueue.length > 0) {
+        const task = this.fileEventQueue.shift();
+        if (task) {
+          await task();
+        }
+      }
+    } catch (error) {
+      this.writeLog(`处理队列任务失败: ${(error as Error).message}`, 'error');
+    } finally {
+      // 标记为队列处理完成
+      this.isProcessingQueue = false;
+    }
+  }
+
   private getGuangHeAccount(category: string): string | null {
     if (!this.accountDirectory) return null;
 
@@ -211,19 +272,18 @@ export class GuangProcessor extends EventEmitter {
         const fullPath = path.join(this.accountDirectory, item);
         return fs.statSync(fullPath).isDirectory();
       })
-      .filter(item => item.includes(`---${category}---`))
-      .filter(
-        item =>
-          item.includes(`---${dayjs().format('YYYY-MM-DD')}---`) ||
-          item.includes(`---${dayjs().add(-1, 'd').format('YYYY-MM-DD')}---`) ||
-          item.includes(`---${dayjs().add(-2, 'd').format('YYYY-MM-DD')}---`)
-      )
-      .filter(
-        item =>
-          item.includes('---0') ||
-          item.includes('---1') ||
-          item.includes('---2')
-      )
+      .filter(item => {
+        // 目标账号目录 {逛逛昵称}---{类目}---{ID}---{日期}---{计数};
+        const [nickname, currCategory, guangId, date, count] =
+          item.split('---');
+        return (
+          !!currCategory &&
+          !!date &&
+          currCategory === category &&
+          dayjs(date) <= dayjs() &&
+          (count === '0' || count === '1' || count === '2')
+        );
+      })
       .sort((a, b) => {
         const aParts = a.split('---');
         const bParts = b.split('---');
