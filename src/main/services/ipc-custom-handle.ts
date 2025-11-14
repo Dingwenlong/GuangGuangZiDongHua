@@ -247,7 +247,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
           id,
           WorkbenchTaskStatus.FAILED
         );
-        console.log('S6任务失败并更新状态为FAILED，ID:', id);
       }
     }
   );
@@ -394,6 +393,12 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   playwrightScript.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
       message: '[playwrightScript]' + message,
+      type,
+    });
+  });
+  guangheTaobao.on('log', ({ message, type }) => {
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: '[guangheTaobao]' + message,
       type,
     });
   });

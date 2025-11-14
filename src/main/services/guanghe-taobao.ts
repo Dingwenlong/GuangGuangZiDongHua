@@ -401,161 +401,243 @@ class GuangheTaobao extends EventEmitter {
       await frame
         .locator('.publish-content__item-v2--items-trigger-hover--iJJrjD2')
         .click();
+      await new Promise(resolve => setTimeout(resolve, 2 * 1000));
       const itemList = await frame
         .locator('.publish-content__item-v2--tabName--3Lp7Xq6')
         .all();
+      console.log('关联商品选项数量:', itemList.length);
 
-      // 查找并点击内容为"选品车"的span
+      await new Promise(resolve => setTimeout(resolve, 2 * 1000));
+      // 检查是否有选品车
+      let hasProductCart = false;
       for (const item of itemList) {
         const text = await item.textContent();
         if (text && text.includes('选品车')) {
-          await item.click();
+          hasProductCart = true;
           break;
         }
       }
 
-      // 等待选品车内容加载
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log(`当前guangCatalogue: ${UserData.guangCatalogue}`);
+      console.log(`是否找到选品车: ${hasProductCart}`);
 
-      // 选择选品车中的第一个商品
-      try {
-        const Input = await frame.locator(
-          '.next-select-auto-complete > span > input'
-        );
-        await this.simulateHumanInput(Input, UserData.productId);
-        await Input.press('Enter');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      // 简化的选品车处理逻辑
+      const shouldUseProductCart =
+        UserData.guangCatalogue.startsWith('A0') ||
+        UserData.guangCatalogue.startsWith('A1');
 
-        const productSelect = await frame
-          .locator('.publish-content__item-v2--item--1zog_Vq')
-          .all();
-        if (productSelect.length > 0) {
-          await productSelect[0].click();
+      if (shouldUseProductCart) {
+        if (UserData.guangCatalogue.startsWith('A0')) {
+          if (hasProductCart) {
+            // A0有选品车，改为A1并继续发布
+            console.log('A0有选品车，改为A1并继续发布');
+            UserData.guangCatalogue = UserData.guangCatalogue.replace(
+              /^A0/,
+              'A1'
+            );
+            await this.selectProductFromCart(frame, UserData.productId);
+          } else {
+            // A0没有选品车，继续发布
+            console.log('A0没有选品车，继续发布');
+            const closeButton = await frame.locator('.next-dialog-close-icon');
+            await closeButton.click();
+          }
+        } else if (UserData.guangCatalogue.startsWith('A1')) {
+          if (hasProductCart) {
+            // A1有选品车，正常选择商品
+            console.log('A1有选品车，正常选择商品');
+            await this.selectProductFromCart(frame, UserData.productId);
+          } else {
+            // A1没有选品车，抛出错误让上层处理
+            console.error('A1没有选品车，抛出错误');
+            throw new Error('A1类型需要选品车，但未找到选品车选项');
+          }
         }
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        // 点击确认按钮
-        await frame
-          .locator('.publish-content__item-v2--dialog-footer-right--10eXc-h')
-          .locator('button')
-          .first()
-          .click();
-        await new Promise(resolve => setTimeout(resolve, 1200));
-      } catch (productError: any) {
-        console.error('选择商品过程中出错:', productError.message);
+      } else {
+        // 其他类型，按原有逻辑处理
+        console.log('其他类型，按原有逻辑处理选品车');
+        if (hasProductCart) {
+          await this.selectProductFromCart(frame, UserData.productId);
+        } else {
+          const closeButton = await frame.locator('.next-dialog-close-icon');
+          await closeButton.click();
+        }
       }
 
-      // 选中定时发布
-      const timeOptionBox = await frame
+      console.log('开始选中定时');
+      await frame
         .locator('.fixed-btn-container > div')
         .nth(1)
         .locator('div > div')
-        .nth(1);
-      const scheduleCheckbox = await timeOptionBox
+        .nth(1)
         .locator('div')
         .first()
-        .locator('.next-radio-wrapper');
-      if (await scheduleCheckbox.isVisible()) {
-        await scheduleCheckbox.click();
-      }
+        .locator('label')
+        .click();
 
-      // 注入时间
-      // 打开日期时间选择器弹窗
-      await timeOptionBox.locator('div').nth(1).click();
-
-      // 获取输入框
-      const dateInput = frame.locator(
-        '.next-date-picker-panel-input input[placeholder="YYYY/MM/DD"]'
-      );
-      const timeInput = frame.locator(
-        '.next-date-picker-panel-input input[placeholder="HH:mm"]'
-      );
-      console.log('开始输入定时发布时间');
-
-      // 获取当前时间和文件数组长度
-      const now = dayjs();
-      const totalVideos = this.filePathArray ? this.filePathArray.length : 0;
-      const currentIndex =
-        this.currentVideoIndex !== undefined ? this.currentVideoIndex : 0;
-
-      // 计算发布时间 - 新逻辑：第一个视频2小时，第二个4小时，第三个6小时...
-      // 但需要考虑不过第二天的规则
-      let publishTime;
-      const delayHours = (currentIndex + 1) * 2; // 第一个视频2小时，第二个4小时，以此类推
-      publishTime = now.add(delayHours, 'hour');
-
-      // 检查是否会跨天
-      const todayEnd = dayjs().endOf('day');
-      if (publishTime.isAfter(todayEnd)) {
-        // 如果会跨天，需要调整
-        const remainingHours = todayEnd.diff(now, 'hour', true);
-        if (currentIndex === 0) {
-          // 第一个视频跨天也按2小时处理，不做特殊调整
-          console.log('第一个视频按2小时间隔会跨天，保持2小时间隔');
-        } else {
-          // 后续视频需要在当天内合理分配
-          console.log(
-            `视频${currentIndex + 1}按${delayHours}小时间隔会跨天，需要调整`
-          );
-          // 计算当天剩余可用时间
-          const availableSlots = Math.floor(remainingHours / 2);
-          if (availableSlots > 0) {
-            // 按可用槽位比例分配
-            if (currentIndex <= availableSlots) {
-              // 仍然可以按2小时间隔
-              publishTime = now.add((currentIndex + 1) * 2, 'hour');
-            } else {
-              // 超出可用槽位，平均分配剩余时间
-              const avgDelay = remainingHours / (totalVideos || 1);
-              publishTime = now.add((currentIndex + 1) * avgDelay, 'hour');
-            }
-          }
-        }
-      }
-
-      // 格式化日期和时间
-      const publishDate = publishTime.format('YYYY/MM/DD');
-      const publishTimeStr = publishTime.format('HH:mm');
-
-      console.log(`定时发布时间: ${publishDate} ${publishTimeStr}`);
-
-      // 如果是第一个视频，直接点击确认，使用默认时间
-      if (currentIndex === 0) {
-        console.log('第一个视频使用默认2小时发布时间');
-        // 点击确认按钮
-        await frame
-          .locator('.next-date-picker-panel-footer')
-          .locator('button')
-          .nth(1)
-          .click();
-        await new Promise(resolve => setTimeout(resolve, 1200));
-      } else {
-        // 非第一个视频需要输入计算的时间
-        // 等待两秒
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        // 直接触发键盘的tab键
-        await frame.press('body', 'Tab');
-        // 输入时间
-        await timeInput.click({ timeout: 2000 });
-        await timeInput.press('Control+A'); // 全选内容
-        await timeInput.press('Delete'); // 删除选中内容
-        await this.simulateHumanInput(timeInput, publishTimeStr);
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        // 点击确认按钮
-        await frame
-          .locator('.next-date-picker-panel-footer')
-          .locator('button')
-          .nth(1)
-          .click();
-        await new Promise(resolve => setTimeout(resolve, 1200));
+      // 设置定时发布时间（从第二个视频开始）
+      if ((this.currentVideoIndex as number) > 0) {
+        await this.setScheduledTime(
+          frame,
+          this.currentVideoIndex as number,
+          this.filePathArray?.length || 1
+        );
       }
       // 点击自主拍摄
       // await frame
       //   .locator('.publish-content__publish-button--claim--1-9WKPP') // 唯一父容器
       //   .locator('.next-radio-group') // 单选框组
-      //   .locator('.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))') // 包含“自主拍摄”文本的选项
+      //   .locator('.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))') // 包含"自主拍摄"文本的选项
       //   .click();
     } catch (error: any) {
       throw error;
+    }
+  }
+
+  /**
+   * 从选品车选择商品
+   */
+  private async selectProductFromCart(frame: any, productId: string) {
+    // 点击选品车
+    const itemList = await frame
+      .locator('.publish-content__item-v2--tabName--3Lp7Xq6')
+      .all();
+    for (const item of itemList) {
+      const text = await item.textContent();
+      if (text && text.includes('选品车')) {
+        await item.click();
+        break;
+      }
+    }
+
+    // 等待选品车内容加载
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 选择选品车中的商品
+    try {
+      const Input = await frame.locator(
+        '.next-select-auto-complete > span > input'
+      );
+      await this.simulateHumanInput(Input, productId);
+      await Input.press('Enter');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const productSelect = await frame
+        .locator('.publish-content__item-v2--item--1zog_Vq')
+        .all();
+      if (productSelect.length > 0) {
+        await productSelect[0].click();
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 点击确认按钮
+      await frame
+        .locator('.publish-content__item-v2--dialog-footer-right--10eXc-h')
+        .locator('button')
+        .first()
+        .click();
+      await new Promise(resolve => setTimeout(resolve, 1200));
+    } catch (productError: any) {
+      console.error('选择商品过程中出错:', productError.message);
+    }
+  }
+
+  /**
+   * 设置定时发布时间
+   * @param frame iframe上下文
+   * @param videoIndex 当前视频索引（从0开始）
+   * @param totalVideos 总视频数量
+   */
+  private async setScheduledTime(
+    frame: any,
+    videoIndex: number,
+    totalVideos: number
+  ) {
+    try {
+      console.log(`设置第${videoIndex + 1}个视频的定时发布时间`);
+
+      // 基础时间：第一个视频使用2小时后时间
+      const baseTime = dayjs().add(2, 'hour');
+
+      // 计算剩余时间（到当天结束）
+      const endOfDay = dayjs().endOf('day');
+      const remainingTime = endOfDay.diff(baseTime, 'hour');
+
+      let scheduledTime;
+
+      // 检查是否跨天
+      const firstVideoCrossDay = baseTime.date() !== dayjs().date();
+
+      if (firstVideoCrossDay) {
+        // 如果第一个视频就跨天，保持各向后延迟2小时
+        scheduledTime = baseTime.add(videoIndex * 2, 'hour');
+        console.log(`第一个视频已跨天，保持各向后延迟2小时`);
+      } else {
+        // 计算剩余需要分配时间的视频数量
+        const remainingVideos = totalVideos - 1; // 除去第一个视频
+
+        if (remainingTime >= remainingVideos * 2) {
+          // 如果时间充足，按2小时间隔
+          scheduledTime = baseTime.add(videoIndex * 2, 'hour');
+          console.log(
+            `时间充足，按2小时间隔: ${scheduledTime.format('HH:mm')}`
+          );
+        } else {
+          // 如果时间不足，平均分配剩余时间
+          const interval = remainingTime / remainingVideos;
+          scheduledTime = baseTime.add(videoIndex * interval, 'hour');
+          console.log(
+            `时间不足，平均分配剩余时间，间隔${interval.toFixed(
+              1
+            )}小时: ${scheduledTime.format('HH:mm')}`
+          );
+        }
+      }
+
+      console.log(`计算发布时间: ${scheduledTime.format('YYYY-MM-DD HH:mm')}`);
+
+      // 点击日期选择器
+      await frame.locator('.next-date-picker-input').click();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 获取所有时间输入框
+      const timeInputs = await frame
+        .locator('.next-date-picker-panel-input')
+        .locator('input[placeholder="HH:mm"]')
+        .all();
+
+      if (timeInputs.length >= 2) {
+        // 使用第二个时间输入框
+        const timeInput = timeInputs[1];
+
+        // 全选并删除现有内容
+        await timeInput.click();
+        await timeInput.press('Control+A');
+        await timeInput.press('Delete');
+
+        // 输入新的时间
+        const timeStr = scheduledTime.format('HH:mm');
+        await this.simulateHumanInput(timeInput, timeStr);
+        console.log(`已输入时间: ${timeStr}`);
+      }
+
+      // 点击确认按钮
+      const confirmButtons = await frame
+        .locator('.next-date-picker-panel-footer')
+        .locator('.next-btn-primary')
+        .all();
+
+      if (confirmButtons.length >= 2) {
+        // 点击第二个确认按钮
+        await confirmButtons[1].click();
+        console.log('已点击确认按钮');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log(`第${videoIndex + 1}个视频定时发布时间设置完成`);
+    } catch (error: any) {
+      console.error(`设置定时发布时间失败: ${error.message}`);
+      // 不抛出错误，继续执行后续步骤
     }
   }
 
@@ -564,22 +646,26 @@ class GuangheTaobao extends EventEmitter {
     let page: any = null;
     let browser: any = null;
     const UserData = {
-      guangId: '4673507971',
+      guangId: '4687647364',
       filePathArray: [
-        'C:\\Users\\ASUS\\Downloads\\ces\\S6---46---盐津铺子大魔王麻酱素毛肚辣爽魔芋小吃零食休闲食品---848376677317---5bw3OcgO---3.mp4',
-        'C:\\Users\\ASUS\\Downloads\\ces\\S6---46---盐津铺子大魔王麻酱素毛肚辣爽魔芋小吃零食休闲食品---848376677317---5bw3OcgO---2.mp4',
-        'C:\\Users\\ASUS\\Downloads\\ces\\S6---46---盐津铺子大魔王麻酱素毛肚辣爽魔芋小吃零食休闲食品---848376677317---5bw3OcgO---1.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---1.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---2.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S6---13---【泉城好礼】佳宝泉城系列把子肉风味酸奶济南特产礼盒赠冰箱贴---824574247714---X-wkc21S---3.mp4',
+        // 'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---4.mp4',
       ],
       videoData: {
+        guangCatalogue: 'A0---美瞳变色龙---美妆---4701623256---20251106---0',
         videoDescription: '',
         productId: '',
-        videoTags: '好物分享,好物推荐',
+        videoTags: '好物分享,美食推荐',
         topic: '做个美食家',
       },
     };
     UserData.videoData.videoDescription =
       UserData.filePathArray[0].split('---')[2];
     UserData.videoData.productId = UserData.filePathArray[0].split('---')[3];
+    console.log(UserData.videoData.videoDescription);
+    console.log(UserData.videoData.productId);
 
     // 设置实例属性
     this.filePathArray = UserData.filePathArray;
@@ -844,7 +930,7 @@ class GuangheTaobao extends EventEmitter {
             // 点击批量发布按钮
             console.log('点击批量发布按钮...');
 
-            await publishBtn.click();
+            // await publishBtn.click();
           }
         }
       } catch (describeError: any) {
@@ -867,8 +953,8 @@ class GuangheTaobao extends EventEmitter {
         type: 'error',
       });
       // 清理资源
-      // if (page) await page.close().catch(() => {});
-      // if (browser) await browser.close().catch(() => {});
+      if (page) await page.close().catch(() => {});
+      if (browser) await browser.close().catch(() => {});
       return {
         success: false,
         message: `操作失败: ${error.message}`,
