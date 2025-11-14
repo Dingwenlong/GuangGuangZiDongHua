@@ -3,13 +3,17 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { EventEmitter } from 'events';
-import { execFile } from 'child_process';
+// import * as child_process from 'child_process';
 import http from 'http';
 import dayjs from 'dayjs';
 
-class PlaywrightScript extends EventEmitter {
+class GuangheTaobao extends EventEmitter {
   // 静态属性
   private static chromePath: string = '';
+
+  // 实例属性
+  private filePathArray?: string[];
+  private currentVideoIndex?: number;
 
   /**
    * 视频去水印处理
@@ -25,23 +29,32 @@ class PlaywrightScript extends EventEmitter {
         const remoteDebuggingUrl = `http://127.0.0.1:${debugPort}`;
 
         // 设置Chrome路径
-        PlaywrightScript.chromePath =
+        GuangheTaobao.chromePath =
           'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
-        // 使用Chrome的默认用户数据目录，保留登录状态
+        // 使用C盘根目录下的自定义用户数据目录
         const username = os.userInfo().username;
         const browserUserDataDir = path.join(
-          'C:\\Users\\',
-          username,
-          'AppData\\Local\\Google\\Chrome\\User Data\\Default'
+          'C:\\',
+          `guanghe_${username}_data`
         );
+
+        // 如果目录不存在，则创建
+        try {
+          if (!fs.existsSync(browserUserDataDir)) {
+            fs.mkdirSync(browserUserDataDir, { recursive: true });
+            console.log(`已创建用户数据目录: ${browserUserDataDir}`);
+          }
+        } catch (error: any) {
+          console.error('创建用户数据目录失败:', error.message);
+        }
 
         console.log(`使用Chrome默认用户数据目录: ${browserUserDataDir}`);
         console.log('准备启动新的Chrome浏览器实例');
 
         // 启动Chrome浏览器，使用动态生成的端口
         console.log('启动Chrome浏览器...');
-        const browser = await PlaywrightScript.startChromeWithDebugPort(
+        const browser = await GuangheTaobao.startChromeWithDebugPort(
           debugPort,
           browserUserDataDir
         );
@@ -52,7 +65,7 @@ class PlaywrightScript extends EventEmitter {
         console.log('Chrome浏览器启动完成，准备连接...');
 
         // 连接浏览器，增加重试次数
-        const connectedBrowser = await PlaywrightScript.connectToBrowserAsync(
+        const connectedBrowser = await GuangheTaobao.connectToBrowserAsync(
           remoteDebuggingUrl,
           5,
           3000
@@ -152,10 +165,12 @@ class PlaywrightScript extends EventEmitter {
 
     try {
       console.log(
-        `启动Chrome命令: ${PlaywrightScript.chromePath} ${args.join(' ')}`
+        `启动Chrome命令: ${GuangheTaobao.chromePath} ${args.join(' ')}`
       );
-      // 使用execFile启动Chrome
-      execFile(PlaywrightScript.chromePath, args, {
+      // 使用require方式导入child_process以避免TypeScript类型错误
+      const { execFile } = require('child_process');
+      // 显式调用execFile，传入正确的参数
+      execFile(GuangheTaobao.chromePath, args, {
         windowsHide: false,
         detached: true, // 让Chrome在独立进程中运行
       });
@@ -169,7 +184,7 @@ class PlaywrightScript extends EventEmitter {
       try {
         const { exec } = require('child_process');
         // 使用start命令启动，注意路径中包含空格的处理
-        const command = `start "" "${PlaywrightScript.chromePath}" ${args
+        const command = `start "" "${GuangheTaobao.chromePath}" ${args
           .map(arg => `"${arg}"`)
           .join(' ')}`;
         console.log(`尝试使用start命令启动: ${command}`);
@@ -200,7 +215,7 @@ class PlaywrightScript extends EventEmitter {
         console.log(`连接URL: ${remoteDebuggingUrl}`);
 
         // 先检查端口是否真的可以连接
-        const isPortOpen = await PlaywrightScript.isPortAvailableAsync(port);
+        const isPortOpen = await GuangheTaobao.isPortAvailableAsync(port);
         console.log(`端口检查结果: ${isPortOpen ? '可用' : '不可用'}`);
 
         if (!isPortOpen && i < maxRetries - 1) {
@@ -237,7 +252,6 @@ class PlaywrightScript extends EventEmitter {
     return null;
   }
 
-  // 不再需要静态的closeBrowser方法，因为每次调用都会创建独立的浏览器实例
   /**
    * 模拟人类输入文本
    * @param inputElement 输入框元素
@@ -246,7 +260,7 @@ class PlaywrightScript extends EventEmitter {
   private async simulateHumanInput(inputElement: any, text: string) {
     // 根据输入类型设置固定的延迟范围
     let minDelay = 100;
-    let maxDelay = 500;
+    let maxDelay = 300;
 
     // 模拟人类逐个字符输入，每个字符有随机延迟
     for (let i = 0; i < text.length; i++) {
@@ -383,6 +397,53 @@ class PlaywrightScript extends EventEmitter {
         await frame.locator('.next-box > .next-btn-primary').click();
       }
 
+      // 打开关联商品
+      await frame
+        .locator('.publish-content__item-v2--items-trigger-hover--iJJrjD2')
+        .click();
+      const itemList = await frame
+        .locator('.publish-content__item-v2--tabName--3Lp7Xq6')
+        .all();
+
+      // 查找并点击内容为"选品车"的span
+      for (const item of itemList) {
+        const text = await item.textContent();
+        if (text && text.includes('选品车')) {
+          await item.click();
+          break;
+        }
+      }
+
+      // 等待选品车内容加载
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 选择选品车中的第一个商品
+      try {
+        const Input = await frame.locator(
+          '.next-select-auto-complete > span > input'
+        );
+        await this.simulateHumanInput(Input, UserData.productId);
+        await Input.press('Enter');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const productSelect = await frame
+          .locator('.publish-content__item-v2--item--1zog_Vq')
+          .all();
+        if (productSelect.length > 0) {
+          await productSelect[0].click();
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // 点击确认按钮
+        await frame
+          .locator('.publish-content__item-v2--dialog-footer-right--10eXc-h')
+          .locator('button')
+          .first()
+          .click();
+        await new Promise(resolve => setTimeout(resolve, 1200));
+      } catch (productError: any) {
+        console.error('选择商品过程中出错:', productError.message);
+      }
+
       // 选中定时发布
       const timeOptionBox = await frame
         .locator('.fixed-btn-container > div')
@@ -397,8 +458,6 @@ class PlaywrightScript extends EventEmitter {
         await scheduleCheckbox.click();
       }
 
-      // 为每个视频设置不同的发布时间，间隔1小时
-
       // 注入时间
       // 打开日期时间选择器弹窗
       await timeOptionBox.locator('div').nth(1).click();
@@ -411,62 +470,130 @@ class PlaywrightScript extends EventEmitter {
         '.next-date-picker-panel-input input[placeholder="HH:mm"]'
       );
       console.log('开始输入定时发布时间');
-      const dateTimeObj = dayjs(UserData.publishTime); // 解析原始时间字符串
-      const date = dateTimeObj.format('YYYY/MM/DD'); // 提取日期
-      const time = dateTimeObj.format('HH:mm'); // 提取时间
 
-      console.log(`定时发布时间: ${date} and ${time}`);
+      // 获取当前时间和文件数组长度
+      const now = dayjs();
+      const totalVideos = this.filePathArray ? this.filePathArray.length : 0;
+      const currentIndex =
+        this.currentVideoIndex !== undefined ? this.currentVideoIndex : 0;
 
-      // 输入日期
-      await dateInput.click();
-      await dateInput.press('Control+A'); // 全选内容
-      await dateInput.press('Delete'); // 删除选中内容
-      await this.simulateHumanInput(dateInput, date);
-      await dateInput.press('Enter');
-      await dateInput.press('Tab');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // 输入时间
+      // 计算发布时间 - 新逻辑：第一个视频2小时，第二个4小时，第三个6小时...
+      // 但需要考虑不过第二天的规则
+      let publishTime;
+      const delayHours = (currentIndex + 1) * 2; // 第一个视频2小时，第二个4小时，以此类推
+      publishTime = now.add(delayHours, 'hour');
 
-      await timeInput.press('Delete'); // 删除选中内容
-      await this.simulateHumanInput(timeInput, time);
-      await timeInput.press('Enter');
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      // 点击确认按钮
-      await frame
-        .locator('.next-date-picker-panel-footer')
-        .locator('button')
-        .nth(1)
-        .click();
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      // 检查是否会跨天
+      const todayEnd = dayjs().endOf('day');
+      if (publishTime.isAfter(todayEnd)) {
+        // 如果会跨天，需要调整
+        const remainingHours = todayEnd.diff(now, 'hour', true);
+        if (currentIndex === 0) {
+          // 第一个视频跨天也按2小时处理，不做特殊调整
+          console.log('第一个视频按2小时间隔会跨天，保持2小时间隔');
+        } else {
+          // 后续视频需要在当天内合理分配
+          console.log(
+            `视频${currentIndex + 1}按${delayHours}小时间隔会跨天，需要调整`
+          );
+          // 计算当天剩余可用时间
+          const availableSlots = Math.floor(remainingHours / 2);
+          if (availableSlots > 0) {
+            // 按可用槽位比例分配
+            if (currentIndex <= availableSlots) {
+              // 仍然可以按2小时间隔
+              publishTime = now.add((currentIndex + 1) * 2, 'hour');
+            } else {
+              // 超出可用槽位，平均分配剩余时间
+              const avgDelay = remainingHours / (totalVideos || 1);
+              publishTime = now.add((currentIndex + 1) * avgDelay, 'hour');
+            }
+          }
+        }
+      }
+
+      // 格式化日期和时间
+      const publishDate = publishTime.format('YYYY/MM/DD');
+      const publishTimeStr = publishTime.format('HH:mm');
+
+      console.log(`定时发布时间: ${publishDate} ${publishTimeStr}`);
+
+      // 如果是第一个视频，直接点击确认，使用默认时间
+      if (currentIndex === 0) {
+        console.log('第一个视频使用默认2小时发布时间');
+        // 点击确认按钮
+        await frame
+          .locator('.next-date-picker-panel-footer')
+          .locator('button')
+          .nth(1)
+          .click();
+        await new Promise(resolve => setTimeout(resolve, 1200));
+      } else {
+        // 非第一个视频需要输入计算的时间
+        // 等待两秒
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // 直接触发键盘的tab键
+        await frame.press('body', 'Tab');
+        // 输入时间
+        await timeInput.click({ timeout: 2000 });
+        await timeInput.press('Control+A'); // 全选内容
+        await timeInput.press('Delete'); // 删除选中内容
+        await this.simulateHumanInput(timeInput, publishTimeStr);
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        // 点击确认按钮
+        await frame
+          .locator('.next-date-picker-panel-footer')
+          .locator('button')
+          .nth(1)
+          .click();
+        await new Promise(resolve => setTimeout(resolve, 1200));
+      }
       // 点击自主拍摄
-      await frame
-        .locator('.publish-content__publish-button--claim--1-9WKPP') // 唯一父容器
-        .locator('.next-radio-group') // 单选框组
-        .locator('.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))') // 包含“自主拍摄”文本的选项
-        .click();
+      // await frame
+      //   .locator('.publish-content__publish-button--claim--1-9WKPP') // 唯一父容器
+      //   .locator('.next-radio-group') // 单选框组
+      //   .locator('.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))') // 包含“自主拍摄”文本的选项
+      //   .click();
     } catch (error: any) {
       throw error;
     }
   }
 
+  // 整体调用
   public async GuangheTaobaoIssue() {
     let page: any = null;
     let browser: any = null;
-    const USerData = {
-      guangId: '4701623256',
-
+    const UserData = {
+      guangId: '4673507971',
       filePathArray: [
-        'C:\\Users\\ASUS\\Downloads\\ces\\S1---33019725083-1-192.mp4',
-        'C:\\Users\\ASUS\\Downloads\\ces\\S3---33019725083-1-192.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S6---46---盐津铺子大魔王麻酱素毛肚辣爽魔芋小吃零食休闲食品---848376677317---5bw3OcgO---3.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S6---46---盐津铺子大魔王麻酱素毛肚辣爽魔芋小吃零食休闲食品---848376677317---5bw3OcgO---2.mp4',
+        'C:\\Users\\ASUS\\Downloads\\ces\\S6---46---盐津铺子大魔王麻酱素毛肚辣爽魔芋小吃零食休闲食品---848376677317---5bw3OcgO---1.mp4',
       ],
+      videoData: {
+        videoDescription: '',
+        productId: '',
+        videoTags: '好物分享,好物推荐',
+        topic: '做个美食家',
+      },
     };
+    UserData.videoData.videoDescription =
+      UserData.filePathArray[0].split('---')[2];
+    UserData.videoData.productId = UserData.filePathArray[0].split('---')[3];
+
+    // 设置实例属性
+    this.filePathArray = UserData.filePathArray;
+    this.currentVideoIndex = 0;
     this.emit('log', {
       message: `开始发布到淘宝`,
       type: 'info',
     });
+
+    // 计时器，监控验证弹窗
+    let iframeDetection = null;
     try {
       // 初始化浏览器实例 - 使用默认用户配置
-      browser = await PlaywrightScript.initBrowser();
+      browser = await GuangheTaobao.initBrowser();
 
       if (!browser) {
         const errorMsg = '无法初始化浏览器实例';
@@ -510,6 +637,7 @@ class PlaywrightScript extends EventEmitter {
       }
 
       try {
+        await new Promise(resolve => setTimeout(resolve, 2000));
         const closeBtn = await page.locator('.next-icon-close').first();
 
         if (await closeBtn.isVisible()) {
@@ -525,7 +653,7 @@ class PlaywrightScript extends EventEmitter {
 
       // 点击达人管理
       await page.locator('.next-menu-sub-menu > li').nth(1).click();
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
       const userNameInput = await page
         .locator('.search-view > .next-input')
@@ -534,7 +662,7 @@ class PlaywrightScript extends EventEmitter {
       // 使用通用输入方法
       if (await userNameInput.isVisible()) {
         console.log('发现用户名输入框');
-        await this.simulateHumanInput(userNameInput, USerData.guangId);
+        await this.simulateHumanInput(userNameInput, UserData.guangId);
       }
 
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -556,10 +684,10 @@ class PlaywrightScript extends EventEmitter {
       if (await userCheckbox.isVisible()) {
         await userCheckbox.click();
       }
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       // 点击发视频
       await page.locator('.menu--Awalkj18 > li').first().click();
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       // 点击批量发布
       await page.locator('.next-menu-spacing-lr > ul > li').last().click();
 
@@ -567,46 +695,105 @@ class PlaywrightScript extends EventEmitter {
       try {
         // 等待上传区域可见
         console.log('等待上传区域加载...');
-        await page.waitForSelector('.next-upload-dragable', { timeout: 10000 });
+        await page.waitForSelector('.next-upload-dragable', { timeout: 8000 });
         console.log('上传区域已加载');
 
-        // 触发文件上传对话框
-        const uploadPromise = page.waitForEvent('filechooser', {
-          timeout: 10000,
-        });
-
-        console.log('点击上传区域...');
-        await page.click('.next-upload-dragable', { delay: 200 });
-
-        // 获取文件选择器
-        console.log('等待文件选择器弹出...');
-        const fileChooser = await uploadPromise;
-
         // 检查文件路径数组是否有效
-        if (USerData.filePathArray && USerData.filePathArray.length > 0) {
-          console.log(`准备上传 ${USerData.filePathArray.length} 个文件`);
+        if (UserData.filePathArray && UserData.filePathArray.length > 0) {
+          console.log(`准备上传 ${UserData.filePathArray.length} 个文件`);
 
           // 验证所有文件是否存在
           const validFiles = [];
-          for (const filePath of USerData.filePathArray) {
+          for (const filePath of UserData.filePathArray) {
             if (fs.existsSync(filePath)) {
               validFiles.push(filePath);
             }
           }
 
           if (validFiles.length > 0) {
-            // 选择文件
-            await fileChooser.setFiles(validFiles);
-            console.log(`已选择 ${validFiles.length} 个有效文件进行上传`);
+            // 第一步：上传第一个视频
+            console.log('上传第一个视频...');
+            const firstVideoFile = validFiles[0];
+            console.log(`第一个视频文件: ${firstVideoFile}`);
 
-            // 等待上传完成（根据实际情况调整等待时间或添加上传进度检测）
-            console.log('等待文件上传完成...');
-            await new Promise(resolve => setTimeout(resolve, 10 * 1000)); // 等待20秒
-            console.log('文件上传等待完成');
+            // 触发文件上传对话框
+            const uploadPromise = page.waitForEvent('filechooser', {
+              timeout: 8000,
+            });
+            await page.click('.next-upload-dragable', {
+              delay: 200,
+              noWaitAfter: true,
+            });
+            const fileChooser = await uploadPromise;
+            await fileChooser.setFiles([firstVideoFile]);
+            console.log('第一个视频已选择进行上传');
+
+            // 等待第一个视频上传完成
+            console.log('等待第一个视频上传完成...');
+            await new Promise(resolve => setTimeout(resolve, 20000));
+            console.log('第一个视频上传等待完成');
+
+            // 等待iframe加载完成
+            console.log('等待iframe加载完成...');
+            await page.waitForSelector('iframe.publish-content--Cl3CtTGD', {
+              timeout: 15000,
+            });
+            console.log('iframe已加载');
+
+            // 获取iframe内容
+            const iframeElement = await page.$(
+              'iframe.publish-content--Cl3CtTGD'
+            );
+            let frame = null;
+            if (iframeElement) {
+              frame = await iframeElement.contentFrame();
+              console.log('成功获取iframe内容');
+            }
+
+            // 逐个上传剩余的视频
+            for (let i = 1; i < validFiles.length; i++) {
+              console.log(`开始上传第${i + 1}个视频...`);
+
+              if (frame) {
+                // 在iframe中查找并点击"添加视频"按钮
+                console.log('在iframe中查找"添加视频"按钮...');
+                const addVideoButton = await frame.waitForSelector(
+                  'span.next-btn-helper:has-text("添加视频")',
+                  { timeout: 10000 }
+                );
+
+                if (addVideoButton) {
+                  console.log('找到"添加视频"按钮，准备点击...');
+
+                  // 触发文件上传对话框
+                  const nextUploadPromise = page.waitForEvent('filechooser', {
+                    timeout: 8000,
+                  });
+
+                  await addVideoButton.click({ delay: 200, noWaitAfter: true });
+                  console.log('已点击"添加视频"按钮');
+
+                  // 选择下一个视频文件
+                  const nextFileChooser = await nextUploadPromise;
+                  await nextFileChooser.setFiles([validFiles[i]]);
+                  console.log(`已选择第${i + 1}个视频文件进行上传`);
+
+                  // 等待当前视频上传完成
+                  console.log(`等待第${i + 1}个视频上传完成...`);
+                  await new Promise(resolve => setTimeout(resolve, 20000));
+                  console.log(`第${i + 1}个视频上传等待完成`);
+                } else {
+                  console.error('未找到"添加视频"按钮');
+                }
+              } else {
+                console.error('无法获取iframe内容');
+              }
+            }
           }
         }
       } catch (uploadError: any) {
         console.error('视频上传过程中出错:', uploadError.message);
+        // 不抛出错误，继续执行后续步骤
       }
 
       console.log('开始查找视频描述输入框...');
@@ -624,140 +811,48 @@ class PlaywrightScript extends EventEmitter {
           // 获取iframe的contentFrame
           frame = await iframeElement.contentFrame();
         }
-
+        iframeDetection = setInterval(async () => {
+          if (frame) {
+            // 确保frame已获取
+            try {
+              // 检测是否存在类名为baxia-dialog-close的元素
+              const closeBtn = await frame.$('.baxia-dialog-close');
+              if (closeBtn) {
+                // 存在则点击
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await closeBtn.click();
+              }
+            } catch (err) {}
+          }
+        }, 1000); // 每1000毫秒（1秒）检测一次
         if (frame) {
-          // console.log('成功获取到iframe内容');
-
-          // // 在iframe内查找视频描述输入框
-          // const describeInputWrapper = await frame
-          //   .locator('.publish-content__title-input--inputWrap--3rmMJEo')
-          //   .locator('span')
-          //   .locator('input');
-
-          // console.log('开始输入视频描述...');
-          // await this.simulateHumanInput(
-          //   describeInputWrapper,
-          //   '暂时测试用视频描述'
-          // );
-
-          // // 开始输入标签
-          // const cesArr = ['ces', '123', 'sdjao'];
-          // const labelInput = await frame.locator('div[data-cangjie-editable]');
-          // if (await labelInput.isVisible()) {
-          //   console.log('开始输入标签');
-          //   await labelInput.click();
-          //   await labelInput.press('Control+A'); // 全选内容
-          //   await labelInput.press('Delete'); // 删除选中内容
-
-          //   for (const item of cesArr) {
-          //     await this.simulateHumanInput(labelInput, `#${item}#`);
-          //   }
-          // }
-          // await new Promise(resolve => setTimeout(resolve, 1500));
-          // // 点击话题活动
-          // await frame
-          //   .locator('.publish-content__topic-v2--select--1E8f4Wd ')
-          //   .click();
-          // console.log('打开话题活动');
-
-          // const dialogInput = await frame
-          //   .locator(
-          //     '.next-dialog-body > .topic-v2-picker > .top-form > .next-input'
-          //   )
-          //   .locator('input');
-          // if (await dialogInput.isVisible()) {
-          //   await this.simulateHumanInput(dialogInput, '测试');
-          //   await dialogInput.press('Enter');
-
-          //   await new Promise(resolve => setTimeout(resolve, 1 * 1000)); // 等待3秒
-          //   await frame.locator('.right-list > div').nth(0).click();
-
-          //   await new Promise(resolve => setTimeout(resolve, 1 * 1000)); // 等待1秒
-          //   await frame.locator('.next-box > .next-btn-primary').click();
-          // }
-
-          // // 选中定时发布
-          // const timeOptionBox = await frame
-          //   .locator('.fixed-btn-container > div')
-          //   .nth(1)
-          //   .locator('div > div')
-          //   .nth(1);
-          // const scheduleCheckbox = await timeOptionBox
-          //   .locator('div')
-          //   .first()
-          //   .locator('.next-radio-wrapper');
-          // if (await scheduleCheckbox.isVisible()) {
-          //   await scheduleCheckbox.click();
-          // }
-
-          // const datetime = '2025-11-20 12:11:10';
-
-          // // 注入时间
-          // // 打开日期时间选择器弹窗
-          // await timeOptionBox.locator('div').nth(1).click();
-
-          // // 获取输入框
-          // const dateInput = frame.locator(
-          //   '.next-date-picker-panel-input input[placeholder="YYYY/MM/DD"]'
-          // );
-          // const timeInput = frame.locator(
-          //   '.next-date-picker-panel-input input[placeholder="HH:mm"]'
-          // );
-          // console.log('开始输入定时发布时间');
-          // const dateTimeObj = dayjs(datetime); // 解析原始时间字符串
-          // const date = dateTimeObj.format('YYYY/MM/DD'); // 提取日期
-          // const time = dateTimeObj.format('HH:mm'); // 提取时间
-
-          // console.log(`定时发布时间: ${date} and ${time}`);
-
-          // // 输入日期
-          // await dateInput.click();
-          // await dateInput.press('Control+A'); // 全选内容
-          // await dateInput.press('Delete'); // 删除选中内容
-          // await this.simulateHumanInput(dateInput, date);
-          // await dateInput.press('Enter');
-          // await dateInput.press('Tab');
-          // await new Promise(resolve => setTimeout(resolve, 1000));
-          // // 输入时间
-
-          // await timeInput.press('Delete'); // 删除选中内容
-          // await this.simulateHumanInput(timeInput, time);
-          // await timeInput.press('Enter');
-          // await new Promise(resolve => setTimeout(resolve, 1200));
-          // // 点击确认按钮
-          // await frame
-          //   .locator('.next-date-picker-panel-footer')
-          //   .locator('button')
-          //   .nth(1)
-          //   .click();
-          // await new Promise(resolve => setTimeout(resolve, 1200));
-          // // 点击自主拍摄
-          // await frame
-          //   .locator('.publish-content__publish-button--claim--1-9WKPP') // 唯一父容器
-          //   .locator('.next-radio-group') // 单选框组
-          //   .locator(
-          //     '.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))'
-          //   ) // 包含“自主拍摄”文本的选项
-          //   .click();
-          const userData = {
-            videoDescription: '暂时测试用视频描述',
-            videoTags: '测试,视频,自动发布',
-            topic: '测试',
-            publishTime: '2025-11-20 12:11:10',
-          };
-
           // 获取所有视频的队列
           const videoQueue = await frame.locator('.batchItemWrap').all();
-          for (const video of videoQueue) {
+          for (let i = 0; i < videoQueue.length; i++) {
+            // 更新当前视频索引
+            this.currentVideoIndex = i;
+            const video = videoQueue[i];
             await video.click();
             await new Promise(resolve => setTimeout(resolve, 1000));
-            await this.fillVideoInfo(frame, userData);
+            await this.fillVideoInfo(frame, UserData.videoData);
+          }
+
+          const publishBtn = await frame
+            .locator('.batch-button-area > div')
+            .locator('button');
+          if (await publishBtn.isVisible()) {
+            // 点击批量发布按钮
+            console.log('点击批量发布按钮...');
+
+            await publishBtn.click();
           }
         }
       } catch (describeError: any) {
         console.error('视频描述输入框处理出错:', describeError.message);
       }
+      if (iframeDetection) clearInterval(iframeDetection);
 
+      await new Promise(resolve => setTimeout(resolve, 2000));
       return {
         success: true,
         message: `已完成批量发布操作`,
@@ -765,13 +860,15 @@ class PlaywrightScript extends EventEmitter {
     } catch (error: any) {
       const errorMsg = `发布到淘宝出错: ${error.message}`;
       console.error(errorMsg);
+      // 清理资源
+      if (iframeDetection) clearInterval(iframeDetection);
       this.emit('log', {
         message: errorMsg,
         type: 'error',
       });
       // 清理资源
-      if (page) await page.close().catch(() => {});
-      if (browser) await browser.close().catch(() => {});
+      // if (page) await page.close().catch(() => {});
+      // if (browser) await browser.close().catch(() => {});
       return {
         success: false,
         message: `操作失败: ${error.message}`,
@@ -780,4 +877,4 @@ class PlaywrightScript extends EventEmitter {
   }
 }
 
-export default PlaywrightScript;
+export default GuangheTaobao;
