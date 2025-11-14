@@ -15,9 +15,6 @@ class GuangheTaobao extends EventEmitter {
   private filePathArray?: string[];
   private currentVideoIndex?: number;
 
-  /**
-   * 视频去水印处理
-   */
   // 初始化浏览器实例 - 采用CDP方式
   private static async initBrowser() {
     // 使用Chrome默认配置文件，保留登录状态
@@ -54,7 +51,7 @@ class GuangheTaobao extends EventEmitter {
 
         // 启动Chrome浏览器，使用动态生成的端口
         console.log('启动Chrome浏览器...');
-        const browser = await GuangheTaobao.startChromeWithDebugPort(
+        const chromeProcess = await GuangheTaobao.startChromeWithDebugPort(
           debugPort,
           browserUserDataDir
         );
@@ -74,6 +71,12 @@ class GuangheTaobao extends EventEmitter {
         if (!connectedBrowser) {
           console.error('浏览器连接失败');
           return;
+        }
+
+        // 将Chrome进程引用附加到浏览器实例上
+        if (chromeProcess) {
+          (connectedBrowser as any).chromeProcess = chromeProcess;
+          console.log('Chrome进程引用已附加到浏览器实例');
         }
 
         console.log('浏览器初始化成功，已准备就绪');
@@ -135,7 +138,7 @@ class GuangheTaobao extends EventEmitter {
   private static async startChromeWithDebugPort(
     debugPort: number,
     userDataDir: string
-  ): Promise<boolean> {
+  ): Promise<any> {
     // 使用默认用户数据目录时不需要创建，只需要验证是否存在
     if (!fs.existsSync(userDataDir)) {
       console.warn(`警告: 默认用户数据目录不存在: ${userDataDir}`);
@@ -161,6 +164,7 @@ class GuangheTaobao extends EventEmitter {
       '--disable-default-apps',
       '--disable-extensions',
       '--disable-gpu',
+      '--no-startup-window', // 不自动打开新窗口
     ];
 
     try {
@@ -168,16 +172,20 @@ class GuangheTaobao extends EventEmitter {
         `启动Chrome命令: ${GuangheTaobao.chromePath} ${args.join(' ')}`
       );
       // 使用require方式导入child_process以避免TypeScript类型错误
-      const { execFile } = require('child_process');
-      // 显式调用execFile，传入正确的参数
-      execFile(GuangheTaobao.chromePath, args, {
+      const { spawn } = require('child_process');
+      // 使用spawn而不是execFile，这样可以获取进程引用
+      const chromeProcess = spawn(GuangheTaobao.chromePath, args, {
         windowsHide: false,
-        detached: true, // 让Chrome在独立进程中运行
+        detached: false, // 不分离进程，便于后续管理
+        stdio: 'ignore', // 忽略标准输入输出
       });
+
       console.log(
         `Chrome浏览器已启动，调试端口: ${debugPort}，使用默认用户数据目录`
       );
-      return true;
+
+      // 返回进程引用，便于后续清理
+      return chromeProcess;
     } catch (error: any) {
       console.error(`无法启动Chrome浏览器: ${error.message}`);
       // 尝试使用另一种方式启动Chrome
@@ -185,14 +193,14 @@ class GuangheTaobao extends EventEmitter {
         const { exec } = require('child_process');
         // 使用start命令启动，注意路径中包含空格的处理
         const command = `start "" "${GuangheTaobao.chromePath}" ${args
-          .map(arg => `"${arg}"`)
+          .map((arg: string) => `"${arg}"`)
           .join(' ')}`;
         console.log(`尝试使用start命令启动: ${command}`);
         exec(command);
-        return true;
+        return null; // exec方式无法获取进程引用
       } catch (innerError: any) {
         console.error(`使用start命令启动Chrome也失败: ${innerError.message}`);
-        return false;
+        return null;
       }
     }
   }
@@ -259,8 +267,8 @@ class GuangheTaobao extends EventEmitter {
    */
   private async simulateHumanInput(inputElement: any, text: string) {
     // 根据输入类型设置固定的延迟范围
-    let minDelay = 100;
-    let maxDelay = 300;
+    let minDelay = 50;
+    let maxDelay = 200;
 
     // 模拟人类逐个字符输入，每个字符有随机延迟
     for (let i = 0; i < text.length; i++) {
@@ -601,25 +609,25 @@ class GuangheTaobao extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // 获取所有时间输入框
-      const timeInputs = await frame
+      const datePickerInputs = await frame
         .locator('.next-date-picker-panel-input')
-        .locator('input[placeholder="HH:mm"]')
         .all();
 
-      if (timeInputs.length >= 2) {
-        // 使用第二个时间输入框
-        const timeInput = timeInputs[1];
+      // 获取第二个日期选择器下的时间输入框
+      // 直接用组合选择器选中时间输入框
+      const timeInput = await frame.locator(
+        '.next-date-picker-panel-input input[placeholder="HH:mm"]'
+      );
 
-        // 全选并删除现有内容
-        await timeInput.click();
-        await timeInput.press('Control+A');
-        await timeInput.press('Delete');
+      // 全选并删除现有内容
+      await timeInput.click();
+      await timeInput.press('Control+A');
+      await timeInput.press('Delete');
 
-        // 输入新的时间
-        const timeStr = scheduledTime.format('HH:mm');
-        await this.simulateHumanInput(timeInput, timeStr);
-        console.log(`已输入时间: ${timeStr}`);
-      }
+      // 输入新的时间
+      const timeStr = scheduledTime.format('HH:mm');
+      await this.simulateHumanInput(timeInput, timeStr);
+      console.log(`已输入时间: ${timeStr}`);
 
       // 点击确认按钮
       const confirmButtons = await frame
@@ -645,11 +653,73 @@ class GuangheTaobao extends EventEmitter {
   public async GuangheTaobaoIssue() {
     let page: any = null;
     let browser: any = null;
+    let iframeDetection: any = null;
+
+    // 定义清理函数，确保资源正确释放
+    const cleanup = async () => {
+      try {
+        if (iframeDetection) {
+          clearInterval(iframeDetection);
+          iframeDetection = null;
+        }
+        if (page) {
+          await page.close().catch(() => {});
+          page = null;
+        }
+        if (browser) {
+          // 获取所有上下文并关闭它们
+          const contexts = browser.contexts();
+          for (const context of contexts) {
+            const pages = context.pages();
+            for (const p of pages) {
+              await p.close().catch(() => {});
+            }
+            await context.close().catch(() => {});
+          }
+
+          // 注意：通过CDP连接的浏览器实例没有disconnect方法
+          // 直接跳过disconnect步骤
+
+          // 获取Chrome进程引用并终止
+          const chromeProcess = (browser as any).chromeProcess;
+          if (chromeProcess) {
+            try {
+              chromeProcess.kill('SIGTERM');
+              console.log('Chrome进程已终止');
+            } catch (killError) {
+              console.error('终止Chrome进程失败:', killError);
+            }
+          }
+
+          browser = null;
+        }
+
+        // 使用taskkill强制结束所有Chrome进程
+        try {
+          const { exec } = require('child_process');
+          exec(
+            'taskkill /F /IM chrome.exe /T',
+            (error: any, stdout: any, stderr: any) => {
+              if (!error) {
+                console.log('所有Chrome进程已强制终止');
+              }
+            }
+          );
+        } catch (killError) {
+          console.error('强制终止Chrome进程失败:', killError);
+        }
+
+        console.log('浏览器资源已完全清理');
+      } catch (error) {
+        console.error('清理浏览器资源时出错:', error);
+      }
+    };
+
     const UserData = {
       guangId: '4687647364',
       filePathArray: [
-        'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---1.mp4',
-        'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---2.mp4',
+        // 'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---1.mp4',
+        // 'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---2.mp4',
         'C:\\Users\\ASUS\\Downloads\\ces\\S6---13---【泉城好礼】佳宝泉城系列把子肉风味酸奶济南特产礼盒赠冰箱贴---824574247714---X-wkc21S---3.mp4',
         // 'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---4.mp4',
       ],
@@ -675,8 +745,6 @@ class GuangheTaobao extends EventEmitter {
       type: 'info',
     });
 
-    // 计时器，监控验证弹窗
-    let iframeDetection = null;
     try {
       // 初始化浏览器实例 - 使用默认用户配置
       browser = await GuangheTaobao.initBrowser();
@@ -931,34 +999,37 @@ class GuangheTaobao extends EventEmitter {
             console.log('点击批量发布按钮...');
 
             // await publishBtn.click();
+
+            this.emit('log', {
+              message: `已完成视频发布信息填写`,
+              type: 'info',
+            });
           }
         }
       } catch (describeError: any) {
-        console.error('视频描述输入框处理出错:', describeError.message);
+        console.error('发布视频信息填写出错:', describeError.message);
+        throw describeError; // 重新抛出异常，让外层处理
       }
-      if (iframeDetection) clearInterval(iframeDetection);
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      return {
-        success: true,
-        message: `已完成批量发布操作`,
-      };
+      // 任务完成，记录成功日志
+      this.emit('log', {
+        message: `淘宝光合平台视频发布任务处理完成`,
+        type: 'success',
+      });
     } catch (error: any) {
       const errorMsg = `发布到淘宝出错: ${error.message}`;
       console.error(errorMsg);
-      // 清理资源
-      if (iframeDetection) clearInterval(iframeDetection);
       this.emit('log', {
         message: errorMsg,
         type: 'error',
       });
-      // 清理资源
-      if (page) await page.close().catch(() => {});
-      if (browser) await browser.close().catch(() => {});
       return {
         success: false,
         message: `操作失败: ${error.message}`,
       };
+    } finally {
+      // 无论成功还是失败，都要清理资源
+      await cleanup();
     }
   }
 }

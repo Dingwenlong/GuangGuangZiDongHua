@@ -144,6 +144,10 @@ export interface WorkbenchStoreSchema {
    * 第六步任务队列
    */
   s6TasksQueue: string[];
+  /**
+   * 第八步任务队列
+   */
+  s8TasksQueue: string[];
 }
 
 type WorkbenchConfigStoreSchema = Omit<
@@ -153,6 +157,7 @@ type WorkbenchConfigStoreSchema = Omit<
   | 's4TasksQueue'
   | 's5TasksQueue'
   | 's6TasksQueue'
+  | 's8TasksQueue'
 >;
 
 type WorkbenchQueuesStoreSchema = Pick<
@@ -162,6 +167,7 @@ type WorkbenchQueuesStoreSchema = Pick<
   | 's4TasksQueue'
   | 's5TasksQueue'
   | 's6TasksQueue'
+  | 's8TasksQueue'
 >;
 
 // 默认数据
@@ -561,6 +567,7 @@ class WorkbenchManager {
       | 's4TasksQueue'
       | 's5TasksQueue'
       | 's6TasksQueue'
+      | 's8TasksQueue'
     >
   ): Promise<
     | [S2VideosChunk, number]
@@ -587,6 +594,9 @@ class WorkbenchManager {
           break;
         case 's6TasksQueue':
           tableName = 's6_tasks_queue';
+          break;
+        case 's8TasksQueue':
+          tableName = 's8_tasks_queue';
           break;
       }
 
@@ -744,6 +754,7 @@ class WorkbenchManager {
       | 's4TasksQueue'
       | 's5TasksQueue'
       | 's6TasksQueue'
+      | 's8TasksQueue'
     >
   ): Promise<any[]> {
     try {
@@ -764,6 +775,9 @@ class WorkbenchManager {
           break;
         case 's6TasksQueue':
           tableName = 's6_tasks_queue';
+          break;
+        case 's8TasksQueue':
+          tableName = 's8_tasks_queue';
           break;
       }
 
@@ -816,6 +830,7 @@ class WorkbenchManager {
       | 's4TasksQueue'
       | 's5TasksQueue'
       | 's6TasksQueue'
+      | 's8TasksQueue'
     >,
     taskId: number,
     status: WorkbenchTaskStatus
@@ -838,6 +853,9 @@ class WorkbenchManager {
           break;
         case 's6TasksQueue':
           tableName = 's6_tasks_queue';
+          break;
+        case 's8TasksQueue':
+          tableName = 's8_tasks_queue';
           break;
       }
 

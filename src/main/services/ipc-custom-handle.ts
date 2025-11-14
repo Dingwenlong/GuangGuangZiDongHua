@@ -268,6 +268,32 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     }
   );
   // s8
+  // 每5秒执行一次，并发数为1
+  scheduler.addTask(
+    {
+      name: 's8Task',
+      interval: 10000,
+      concurrency: 1,
+      enabled: true,
+    },
+    async () => {
+      const task = await workbenchManager.dequeueTask('s8TasksQueue');
+      if (!task) return;
+
+      const [videoFilePath, id] = task as [string, number];
+      try {
+        // 处理任务 - 调用GuangheTaobaoIssue方法
+        await guangheTaobao.GuangheTaobaoIssue();
+      } catch (error) {
+        console.error('处理S8任务出错，ID:', id, '错误:', error);
+        return;
+      }
+    }
+  );
+  workbenchManager.watch('s8', (newValue: WorkbenchStoreSchema['s8']) => {
+    if (!newValue.running) scheduler.disableTask('s8Task');
+    else scheduler.enableTask('s8Task');
+  });
   workbenchManager.getByKey('s8').then(newValue => {
     if (newValue.taskDirectory)
       guangProcessor.setAccountDirectory(newValue.taskDirectory);
@@ -411,9 +437,10 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     });
   });
 
+  // 淘宝光合日志监听
   guangProcessor.on('log', ({ message, type }) => {
     webContentSend.LogUpdate(mainWindow.webContents, {
-      message: '[guangProcessor]' + message,
+      message: '[guangheProcessor]' + message,
       type,
     });
   });
