@@ -237,6 +237,8 @@ class VideoProcessor extends EventEmitter {
         /.*---\d+\.mp4$/, // 忽略已处理的视频文件
         /视频去字幕任务/, // 忽略输出目录
         /temp/, // 忽略临时目录
+        /音频输出/, // 忽略输出目录
+        /视频分镜任务/, // 忽略输出目录
         /node_modules/,
       ],
       depth: 3, // 监控深度增加到3层
