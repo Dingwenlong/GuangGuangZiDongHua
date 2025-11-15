@@ -15,6 +15,11 @@ class GuangheTaobao extends EventEmitter {
   private filePathArray?: string[];
   private currentVideoIndex?: number;
 
+  // 新增属性：用于存储获取到的目录数组和定时器
+  private guangGuangAccountDirectories: string[] = [];
+  private directoryCheckTimer?: NodeJS.Timeout;
+  private isProcessingQueue: boolean = false;
+
   // 初始化浏览器实例 - 采用CDP方式
   private static async initBrowser() {
     // 使用Chrome默认配置文件，保留登录状态
@@ -28,6 +33,8 @@ class GuangheTaobao extends EventEmitter {
         // 设置Chrome路径
         GuangheTaobao.chromePath =
           'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+        // GuangheTaobao.chromePath =
+        //   'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
 
         // 使用C盘根目录下的自定义用户数据目录
         const username = os.userInfo().username;
@@ -364,13 +371,13 @@ class GuangheTaobao extends EventEmitter {
         .locator('input');
 
       console.log('开始输入视频描述...');
-      await this.simulateHumanInput(
-        describeInputWrapper,
-        UserData.videoDescription
-      );
+      // 使用当前视频索引对应的描述
+      const currentDescription =
+        UserData.videoDescription[this.currentVideoIndex as number] ||
+        UserData.videoDescription;
+      await this.simulateHumanInput(describeInputWrapper, currentDescription);
 
       // 开始输入标签
-      const labelArr = UserData.videoTags.split(',');
       const labelInput = await frame.locator('div[data-cangjie-editable]');
       if (await labelInput.isVisible()) {
         console.log('开始输入标签');
@@ -378,7 +385,7 @@ class GuangheTaobao extends EventEmitter {
         await labelInput.press('Control+A'); // 全选内容
         await labelInput.press('Delete'); // 删除选中内容
 
-        for (const item of labelArr) {
+        for (const item of UserData.videoTags) {
           await this.simulateHumanInput(labelInput, `#${item}#`);
         }
       }
@@ -395,7 +402,10 @@ class GuangheTaobao extends EventEmitter {
         )
         .locator('input');
       if (await dialogInput.isVisible()) {
-        await this.simulateHumanInput(dialogInput, UserData.topic);
+        // 随机选择一个话题
+        const randomTopic =
+          UserData.topic[Math.floor(Math.random() * UserData.topic.length)];
+        await this.simulateHumanInput(dialogInput, randomTopic);
         await dialogInput.press('Enter');
 
         await new Promise(resolve => setTimeout(resolve, 1 * 1000));
@@ -530,12 +540,12 @@ class GuangheTaobao extends EventEmitter {
       await Input.press('Enter');
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const productSelect = await frame
-        .locator('.publish-content__item-v2--item--1zog_Vq')
-        .all();
-      if (productSelect.length > 0) {
-        await productSelect[0].click();
-      }
+      // 找到所有商品容器，通过商品ID匹配并点击对应的容器
+      const productItems = await frame.locator(
+        `div.publish-content__item-v2--item--1zog_Vq:has(a[href*="id=${productId}"])`
+      );
+      await productItems.click();
+
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // 点击确认按钮
@@ -608,11 +618,6 @@ class GuangheTaobao extends EventEmitter {
       await frame.locator('.next-date-picker-input').click();
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // 获取所有时间输入框
-      const datePickerInputs = await frame
-        .locator('.next-date-picker-panel-input')
-        .all();
-
       // 获取第二个日期选择器下的时间输入框
       // 直接用组合选择器选中时间输入框
       const timeInput = await frame.locator(
@@ -650,7 +655,7 @@ class GuangheTaobao extends EventEmitter {
   }
 
   // 整体调用
-  public async GuangheTaobaoIssue() {
+  public async GuangheTaobaoIssue(UserData: any) {
     let page: any = null;
     let browser: any = null;
     let iframeDetection: any = null;
@@ -714,28 +719,6 @@ class GuangheTaobao extends EventEmitter {
         console.error('清理浏览器资源时出错:', error);
       }
     };
-
-    const UserData = {
-      guangId: '4687647364',
-      filePathArray: [
-        // 'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---1.mp4',
-        // 'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---2.mp4',
-        'C:\\Users\\ASUS\\Downloads\\ces\\S6---13---【泉城好礼】佳宝泉城系列把子肉风味酸奶济南特产礼盒赠冰箱贴---824574247714---X-wkc21S---3.mp4',
-        // 'C:\\Users\\ASUS\\Downloads\\ces\\S6---47---西域美农欧若姆草原烤酸奶118g儿童奶制品零食烤酸奶脆片内蒙特产---902014630853---kb_5VQIG---4.mp4',
-      ],
-      videoData: {
-        guangCatalogue: 'A0---美瞳变色龙---美妆---4701623256---20251106---0',
-        videoDescription: '',
-        productId: '',
-        videoTags: '好物分享,美食推荐',
-        topic: '做个美食家',
-      },
-    };
-    UserData.videoData.videoDescription =
-      UserData.filePathArray[0].split('---')[2];
-    UserData.videoData.productId = UserData.filePathArray[0].split('---')[3];
-    console.log(UserData.videoData.videoDescription);
-    console.log(UserData.videoData.productId);
 
     // 设置实例属性
     this.filePathArray = UserData.filePathArray;
@@ -851,7 +834,6 @@ class GuangheTaobao extends EventEmitter {
         console.log('等待上传区域加载...');
         await page.waitForSelector('.next-upload-dragable', { timeout: 8000 });
         console.log('上传区域已加载');
-
         // 检查文件路径数组是否有效
         if (UserData.filePathArray && UserData.filePathArray.length > 0) {
           console.log(`准备上传 ${UserData.filePathArray.length} 个文件`);
@@ -988,7 +970,7 @@ class GuangheTaobao extends EventEmitter {
             const video = videoQueue[i];
             await video.click();
             await new Promise(resolve => setTimeout(resolve, 1000));
-            await this.fillVideoInfo(frame, UserData.videoData);
+            await this.fillVideoInfo(frame, UserData);
           }
 
           const publishBtn = await frame
@@ -1029,7 +1011,342 @@ class GuangheTaobao extends EventEmitter {
       };
     } finally {
       // 无论成功还是失败，都要清理资源
-      await cleanup();
+      // await cleanup();
+    }
+  }
+
+  /**
+   * 获取逛逛账号目录列表 - 筛选符合条件的目录
+   * 目录格式：A0---美瞳变色龙---美妆---4701623256---20251106---0
+   * 筛选条件：日期小于等于今天，且最后一个数字大于等于3
+   */
+  private getGuangGuangAccountDirectories(): string[] {
+    try {
+      const monitorDirectory =
+        '\\\\192.168.31.99\\影视存储\\逛逛客户端\\逛逛账号';
+
+      // 检查目录是否存在
+      if (!fs.existsSync(monitorDirectory)) {
+        console.log(`目录不存在: ${monitorDirectory}`);
+        return [];
+      }
+
+      const items = fs.readdirSync(monitorDirectory);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // 设置为今天的开始时间
+
+      const validDirectories = items
+        .filter(item => {
+          const fullPath = path.join(monitorDirectory, item);
+
+          // 检查是否是目录
+          if (!fs.statSync(fullPath).isDirectory()) {
+            return false;
+          }
+
+          // 解析目录名格式：A0---美瞳变色龙---美妆---4701623256---20251106---0
+          const parts = item.split('---');
+          if (parts.length !== 6) {
+            return false;
+          }
+          console.log(parts);
+
+          // 获取日期部分（第5个元素，索引4）和最后一个数字（第6个元素，索引5）
+          const dateStr = parts[4];
+          const lastNumber = parseInt(parts[5], 10);
+
+          // 检查日期格式是否为YYYYMMDD
+          if (!/^\d{8}$/.test(dateStr)) {
+            return false;
+          }
+          // 解析日期
+          const year = parseInt(dateStr.substring(0, 4), 10);
+          const month = parseInt(dateStr.substring(4, 6), 10) - 1; // 月份从0开始
+          const day = parseInt(dateStr.substring(6, 8), 10);
+
+          const dirDate = new Date(year, month, day);
+          // 检查条件：日期小于等于今天，且最后一个数字大于等于3
+          const isDateValid = dirDate <= today;
+          const isNumberValid = !isNaN(lastNumber) && lastNumber >= 3;
+          console.log(isDateValid, isNumberValid);
+          return isDateValid && isNumberValid;
+        })
+        .map(item => path.join(monitorDirectory, item));
+
+      console.log(`找到 ${validDirectories.length} 个符合条件的目录`);
+      return validDirectories;
+    } catch (error) {
+      console.error('读取逛逛账号目录失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 清空逛逛账号目录数组（置空等待处理）
+   */
+  private clearGuangGuangAccountDirectories(): void {
+    // 这个方法可以根据实际需求来实现清空逻辑
+    // 例如可以移动目录、重命名、或者只是返回空数组
+    console.log('清空逛逛账号目录数组，置空等待处理');
+  }
+
+  /**
+   * 检测并更新目录数组
+   */
+  public async checkAndUpdateDirectories(): Promise<void> {
+    try {
+      console.log('开始检测逛逛账号目录...');
+      const newDirectories = this.getGuangGuangAccountDirectories();
+
+      // 检查是否有新目录
+      const hasNewDirectories =
+        newDirectories.length > this.guangGuangAccountDirectories.length;
+
+      if (hasNewDirectories) {
+        console.log(`发现新目录，更新目录数组: ${newDirectories.length} 个`);
+        this.guangGuangAccountDirectories = newDirectories;
+      }
+
+      if (this.guangGuangAccountDirectories.length > 0) {
+        await this.processDirectoryQueue();
+      }
+    } catch (error) {
+      console.error('检测目录时出错:', error);
+    }
+  }
+
+  /**
+   * 处理队列中的目录
+   */
+  public async processDirectoryQueue(): Promise<void> {
+    // 防止并发处理
+    if (this.isProcessingQueue) {
+      console.log('队列正在处理中，跳过本次处理');
+      return;
+    }
+
+    if (this.guangGuangAccountDirectories.length === 0) {
+      console.log('队列为空，无需处理');
+      return;
+    }
+
+    this.isProcessingQueue = true;
+    console.log(
+      `开始处理队列，当前队列长度: ${this.guangGuangAccountDirectories.length}`
+    );
+
+    try {
+      // 只处理第一个目录
+      const directory = this.guangGuangAccountDirectories[0];
+      console.log(`处理目录: ${directory}`);
+
+      try {
+        // 获取目录名
+        const dirName = path.basename(directory);
+        console.log(`目录名: ${dirName}`);
+        const dirParts = dirName.split('---');
+
+        // 获取guangId（目录名按---分割的下标3）
+        const guangId = dirParts[3] || '';
+        console.log(`guangId: ${guangId}`);
+
+        // 获取该目录下的所有视频文件
+        const videoFiles = fs
+          .readdirSync(directory)
+          .filter(file => {
+            const ext = path.extname(file).toLowerCase();
+            return ['.mp4', '.avi', '.mov', '.mkv', '.flv'].includes(ext);
+          })
+          .map(file => path.join(directory, file));
+
+        console.log(`找到视频文件数量: ${videoFiles.length}`);
+        console.log(
+          `视频文件列表: ${videoFiles.map(f => path.basename(f)).join(', ')}`
+        );
+
+        // 检查视频数量，小于3个不处理
+        if (videoFiles.length < 3) {
+          console.log(
+            `目录 ${directory} 中视频数量(${videoFiles.length})小于3个，跳过处理`
+          );
+
+          // 修改目录名，将最后一个数字改为视频数量
+          if (dirParts.length >= 6) {
+            const newDirName =
+              dirParts.slice(0, 5).join('---') + '---' + videoFiles.length;
+            const newDirPath = path.join(path.dirname(directory), newDirName);
+
+            try {
+              fs.renameSync(directory, newDirPath);
+              console.log(`目录重命名成功: ${dirName} -> ${newDirName}`);
+            } catch (renameError) {
+              console.error(`目录重命名失败: ${renameError}`);
+            }
+          }
+
+          // 从队列中移除该目录
+          this.guangGuangAccountDirectories.shift();
+          return;
+        }
+
+        if (videoFiles.length === 0) {
+          console.log(`目录 ${directory} 中没有找到视频文件`);
+          this.emit('log', {
+            type: 'info',
+            message: `目录 ${directory} 中没有找到视频文件`,
+          });
+          // 从队列中移除该目录
+          this.guangGuangAccountDirectories.shift();
+          return;
+        }
+
+        // 从第一个视频文件名获取productId
+        const firstVideoFile = path.basename(videoFiles[0]);
+        const videoFileParts = firstVideoFile.split('---');
+        const productId = videoFileParts[4] || '';
+        console.log(`productId: ${productId}`);
+
+        // 读取视频描述文件
+        const descriptionFilePath = `\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频标题\\${productId}_gg.json`;
+        let videoDescriptions: string[] = [];
+        let videoTags: string[] = ['标签'];
+        let topics: string[] = ['话题'];
+
+        try {
+          if (fs.existsSync(descriptionFilePath)) {
+            const descriptionData = JSON.parse(
+              fs.readFileSync(descriptionFilePath, 'utf-8')
+            );
+
+            if (Array.isArray(descriptionData) && descriptionData.length > 0) {
+              // 获取视频描述（与视频数量相等）
+              const descriptionsToUse = Math.min(
+                videoFiles.length,
+                descriptionData.length
+              );
+
+              for (let i = 0; i < descriptionsToUse; i++) {
+                const description = descriptionData[i];
+
+                // 解析描述格式：20250904_#锋味派_新品_#锋味派港式奶茶_真的太好喝了入口顺滑伴着淡淡的的红茶回甘喝一口就爱上#奶茶_#仙女都
+                // 从数字开始，到井号结束这一段就是描述
+                const descMatch = description.match(/^(\d+)([^#]+)/);
+                if (descMatch) {
+                  videoDescriptions.push(descMatch[2].trim());
+
+                  // 提取标签（两个井号后面的信息）
+                  const tagMatches = description.match(/#([^#]+)#/g);
+                  if (tagMatches && tagMatches.length >= 2 && i === 0) {
+                    // 只从第一个描述提取标签
+                    videoTags = tagMatches
+                      .slice(0, 2)
+                      .map((tag: string) => tag.replace(/#/g, ''));
+                  }
+                } else {
+                  // 如果没有井号，截取28位字符
+                  const startMatch = description.match(/^(\d+)(.+)/);
+                  if (startMatch) {
+                    videoDescriptions.push(
+                      startMatch[2].substring(0, 28).trim()
+                    );
+                  }
+                }
+              }
+
+              // 如果描述数量不足，用商品名称补充
+              while (videoDescriptions.length < videoFiles.length) {
+                videoDescriptions.push(videoFileParts[2]);
+              }
+
+              // 保存更新后的描述文件（移除已使用的描述）
+              const remainingDescriptions =
+                descriptionData.slice(descriptionsToUse);
+              fs.writeFileSync(
+                descriptionFilePath,
+                JSON.stringify(remainingDescriptions, null, 2)
+              );
+            }
+          }
+        } catch (descError) {
+          console.error('读取视频描述文件失败:', descError);
+        }
+
+        // 如果没有获取到描述，用商品名称填充
+        if (videoDescriptions.length === 0) {
+          videoDescriptions = new Array(videoFiles.length).fill(productId);
+        }
+
+        // 如果没有有效的标签，尝试从config.json获取
+        if (videoTags.length === 0 || videoTags[0] === '标签') {
+          const configPath = path.join(directory, 'config.json');
+          try {
+            if (fs.existsSync(configPath)) {
+              const configData = JSON.parse(
+                fs.readFileSync(configPath, 'utf-8')
+              );
+
+              if (
+                configData.tags &&
+                Array.isArray(configData.tags) &&
+                configData.tags.length > 0
+              ) {
+                videoTags = configData.tags.slice(0, 2); // 取前两个标签
+              }
+
+              if (
+                configData.topics &&
+                Array.isArray(configData.topics) &&
+                configData.topics.length > 0
+              ) {
+                topics = configData.topics;
+              }
+            }
+          } catch (configError) {
+            console.error('读取config.json失败:', configError);
+          }
+        }
+
+        console.log(`videoTags: ${videoTags}`);
+        console.log(`topics数量: ${topics.length}`);
+        console.log(`videoDescriptions数量: ${videoDescriptions.length}`);
+
+        // 设置guangCatalogue（目录名）
+        const guangCatalogue = dirParts.join('---');
+        console.log(`guangCatalogue: ${guangCatalogue}`);
+
+        const UserData = {
+          filePathArray: videoFiles,
+          guangId: guangId,
+          productId: productId,
+          videoTags: videoTags,
+          topic: topics, // 改为数组
+          videoDescription: videoDescriptions, // 改为数组
+          guangCatalogue: guangCatalogue,
+        };
+
+        console.log('UserData参数:', JSON.stringify(UserData, null, 2));
+        this.emit('log', {
+          message: `UserData参数: ${JSON.stringify(UserData, null, 2)}`,
+          type: 'info',
+        });
+        // 调用 GuangheTaobaoIssue 处理目录
+        await this.GuangheTaobaoIssue(UserData);
+
+        // 处理完成后从数组中移除第一个目录
+        this.guangGuangAccountDirectories.shift();
+        console.log(
+          `目录处理完成，剩余目录数量: ${this.guangGuangAccountDirectories.length}`
+        );
+      } catch (error) {
+        console.error(`处理目录失败: ${directory}，错误信息:`, error);
+        // 处理失败也从队列中移除，避免死循环
+        this.guangGuangAccountDirectories.shift();
+      }
+    } catch (error) {
+      console.error('处理队列时出错:', error);
+    } finally {
+      this.isProcessingQueue = false;
+      console.log('队列处理结束');
     }
   }
 }

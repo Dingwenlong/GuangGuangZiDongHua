@@ -272,28 +272,14 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   scheduler.addTask(
     {
       name: 's8Task',
-      interval: 10000,
+      interval: 10 * 1000,
       concurrency: 1,
       enabled: true,
     },
     async () => {
-      const task = await workbenchManager.dequeueTask('s8TasksQueue');
-      if (!task) return;
-
-      const [videoFilePath, id] = task as [string, number];
-      try {
-        // 处理任务 - 调用GuangheTaobaoIssue方法
-        await guangheTaobao.GuangheTaobaoIssue();
-      } catch (error) {
-        console.error('处理S8任务出错，ID:', id, '错误:', error);
-        return;
-      }
+      await guangheTaobao.checkAndUpdateDirectories();
     }
   );
-  workbenchManager.watch('s8', (newValue: WorkbenchStoreSchema['s8']) => {
-    if (!newValue.running) scheduler.disableTask('s8Task');
-    else scheduler.enableTask('s8Task');
-  });
   workbenchManager.getByKey('s8').then(newValue => {
     if (newValue.taskDirectory)
       guangProcessor.setAccountDirectory(newValue.taskDirectory);
@@ -563,7 +549,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       channel: 'guangheTaobao',
       handler: async (event, arg: { videoPath: string }) => {
-        return await guangheTaobao.GuangheTaobaoIssue();
+        return await guangheTaobao.GuangheTaobaoIssue('123');
       },
     },
   ];
