@@ -1,5 +1,5 @@
 import FileWatcher from '@main/lib/file-watcher';
-import { sqInsert, sqQuery } from '@main/lib/sqllite3';
+import { sqInsert, sqQuery, sqUpdate } from '@main/lib/sqllite3';
 import { cutFileToOtherDirectory } from '@main/utils/file';
 import { writeLog, type LogEvent } from '@main/utils/log';
 import dayjs from 'dayjs';
@@ -326,6 +326,40 @@ export class GuangProcessor extends EventEmitter {
         updated_at: now,
       },
     });
+  }
+
+  /**
+   * 获取光合发布记录
+   */
+  public async getPublishGuangHeRecord(
+    guangId: string,
+    filePath: string,
+    status: GuangHePublishStatus
+  ): Promise<any> {
+    const rows = await sqQuery({
+      sql: `SELECT * FROM s7_publish_record WHERE status = ? and filePath = ? and guangId = ? ORDER BY created_at ASC LIMIT 1`,
+      params: [status, filePath, guangId],
+    });
+    return rows[0];
+  }
+
+  /**
+   * 更新光合发布记录状态
+   */
+  public async updatePublishGuangHeRecord(
+    id: number,
+    status: GuangHePublishStatus
+  ): Promise<any> {
+    // 更新任务状态为处理中
+    await sqUpdate({
+      table: 's7_publish_record',
+      data: {
+        status: status,
+        updated_at: Date.now(),
+      },
+      condition: `id = ${id}`,
+    });
+    return true;
   }
 
   private async initializeSchema(): Promise<void> {
