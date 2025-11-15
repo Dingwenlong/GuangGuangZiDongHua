@@ -501,6 +501,11 @@ class GuangheTaobao extends EventEmitter {
           this.filePathArray?.length || 1
         );
       }
+
+      this.emit('log', {
+        message: `已完成第${this.currentVideoIndex}个视频的选品车处理`,
+        type: 'info',
+      });
       // 点击自主拍摄
       // await frame
       //   .locator('.publish-content__publish-button--claim--1-9WKPP') // 唯一父容器
@@ -770,6 +775,10 @@ class GuangheTaobao extends EventEmitter {
 
       if (needsLogin) {
         // 执行登录操作
+        this.emit('log', {
+          message: `执行登录操作`,
+          type: 'info',
+        });
         await this.loginToTaobao(page);
       }
 
@@ -802,13 +811,13 @@ class GuangheTaobao extends EventEmitter {
         await this.simulateHumanInput(userNameInput, UserData.guangId);
       }
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // 点击搜索按钮
       await page.locator('.search-view > button').nth(0).click();
 
       // 等待搜索结果加载
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // 点击达人的发布
       const userCheckbox = await page
@@ -821,10 +830,10 @@ class GuangheTaobao extends EventEmitter {
       if (await userCheckbox.isVisible()) {
         await userCheckbox.click();
       }
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       // 点击发视频
       await page.locator('.menu--Awalkj18 > li').first().click();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
       // 点击批量发布
       await page.locator('.next-menu-spacing-lr > ul > li').last().click();
 
@@ -832,7 +841,7 @@ class GuangheTaobao extends EventEmitter {
       try {
         // 等待上传区域可见
         console.log('等待上传区域加载...');
-        await page.waitForSelector('.next-upload-dragable', { timeout: 8000 });
+        await page.waitForSelector('.next-upload-dragable', { timeout: 3000 });
         console.log('上传区域已加载');
         // 检查文件路径数组是否有效
         if (UserData.filePathArray && UserData.filePathArray.length > 0) {
@@ -854,7 +863,7 @@ class GuangheTaobao extends EventEmitter {
 
             // 触发文件上传对话框
             const uploadPromise = page.waitForEvent('filechooser', {
-              timeout: 8000,
+              timeout: 5000,
             });
             await page.click('.next-upload-dragable', {
               delay: 200,
@@ -866,13 +875,13 @@ class GuangheTaobao extends EventEmitter {
 
             // 等待第一个视频上传完成
             console.log('等待第一个视频上传完成...');
-            await new Promise(resolve => setTimeout(resolve, 20000));
+            await new Promise(resolve => setTimeout(resolve, 10000));
             console.log('第一个视频上传等待完成');
 
             // 等待iframe加载完成
             console.log('等待iframe加载完成...');
             await page.waitForSelector('iframe.publish-content--Cl3CtTGD', {
-              timeout: 15000,
+              timeout: 5000,
             });
             console.log('iframe已加载');
 
@@ -895,7 +904,7 @@ class GuangheTaobao extends EventEmitter {
                 console.log('在iframe中查找"添加视频"按钮...');
                 const addVideoButton = await frame.waitForSelector(
                   'span.next-btn-helper:has-text("添加视频")',
-                  { timeout: 10000 }
+                  { timeout: 5000 }
                 );
 
                 if (addVideoButton) {
@@ -903,7 +912,7 @@ class GuangheTaobao extends EventEmitter {
 
                   // 触发文件上传对话框
                   const nextUploadPromise = page.waitForEvent('filechooser', {
-                    timeout: 8000,
+                    timeout: 5000,
                   });
 
                   await addVideoButton.click({ delay: 200, noWaitAfter: true });
@@ -916,7 +925,7 @@ class GuangheTaobao extends EventEmitter {
 
                   // 等待当前视频上传完成
                   console.log(`等待第${i + 1}个视频上传完成...`);
-                  await new Promise(resolve => setTimeout(resolve, 20000));
+                  await new Promise(resolve => setTimeout(resolve, 10000));
                   console.log(`第${i + 1}个视频上传等待完成`);
                 } else {
                   console.error('未找到"添加视频"按钮');
@@ -938,7 +947,7 @@ class GuangheTaobao extends EventEmitter {
         console.log('获取iframe内容...');
         const iframeSelector = 'iframe.publish-content--Cl3CtTGD';
         // 等待iframe元素出现
-        await page.waitForSelector(iframeSelector, { timeout: 10000 });
+        await page.waitForSelector(iframeSelector, { timeout: 5000 });
         // 获取iframe元素
         const iframeElement = await page.$(iframeSelector);
         let frame = null;
@@ -980,7 +989,7 @@ class GuangheTaobao extends EventEmitter {
             // 点击批量发布按钮
             console.log('点击批量发布按钮...');
 
-            // await publishBtn.click();
+            await publishBtn.click();
 
             this.emit('log', {
               message: `已完成视频发布信息填写`,
@@ -998,6 +1007,82 @@ class GuangheTaobao extends EventEmitter {
         message: `淘宝光合平台视频发布任务处理完成`,
         type: 'success',
       });
+
+      // 任务完成后清理目录 - 修改日期为明天，数字改为0，删除视频文件
+      try {
+        const currentDirectory = this.guangGuangAccountDirectories[0];
+        if (currentDirectory) {
+          console.log(`开始清理目录: ${currentDirectory}`);
+
+          const dirName = path.basename(currentDirectory);
+          const dirParts = dirName.split('---');
+
+          if (dirParts.length >= 6) {
+            // 1. 修改日期为当前日期的第二天
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowStr =
+              tomorrow.getFullYear().toString() +
+              String(tomorrow.getMonth() + 1).padStart(2, '0') +
+              String(tomorrow.getDate()).padStart(2, '0');
+
+            dirParts[4] = tomorrowStr; // 更新日期部分
+            dirParts[5] = '0'; // 2. 将末尾数字改为0
+
+            const newDirName = dirParts.join('---');
+            const parentDir = path.dirname(currentDirectory);
+            const newDirPath = path.join(parentDir, newDirName);
+
+            // 重命名目录（修改日期和数字）
+            try {
+              fs.renameSync(currentDirectory, newDirPath);
+              console.log(`目录重命名成功: ${dirName} -> ${newDirName}`);
+
+              // 3. 删除目录下的视频文件（只在成功时执行）
+              try {
+                const files = fs.readdirSync(newDirPath);
+                let deletedCount = 0;
+
+                for (const file of files) {
+                  const filePath = path.join(newDirPath, file);
+                  const ext = path.extname(file).toLowerCase();
+
+                  if (['.mp4', '.avi', '.mov', '.mkv', '.flv'].includes(ext)) {
+                    fs.unlinkSync(filePath);
+                    deletedCount++;
+                    console.log(`删除视频文件: ${file}`);
+                  }
+                }
+
+                console.log(`共删除 ${deletedCount} 个视频文件`);
+
+                this.emit('log', {
+                  message: `目录清理完成: ${newDirName}，删除${deletedCount}个视频`,
+                  type: 'info',
+                });
+              } catch (deleteError) {
+                console.error('删除视频文件失败:', deleteError);
+                this.emit('log', {
+                  message: `删除视频文件失败: ${deleteError}`,
+                  type: 'warning',
+                });
+              }
+            } catch (renameError) {
+              console.error('目录重命名失败:', renameError);
+              this.emit('log', {
+                message: `目录重命名失败: ${renameError}`,
+                type: 'warning',
+              });
+            }
+          }
+        }
+      } catch (cleanupError) {
+        console.error('目录清理操作失败:', cleanupError);
+        this.emit('log', {
+          message: `目录清理失败: ${cleanupError}`,
+          type: 'warning',
+        });
+      }
     } catch (error: any) {
       const errorMsg = `发布到淘宝出错: ${error.message}`;
       console.error(errorMsg);
@@ -1005,13 +1090,55 @@ class GuangheTaobao extends EventEmitter {
         message: errorMsg,
         type: 'error',
       });
+
+      // 发布失败时，将目录末尾数字改为error
+      try {
+        if (this.filePathArray && this.filePathArray.length > 0) {
+          // 获取第一个视频文件的目录路径
+          const firstVideoPath = this.filePathArray[0];
+          const currentDir = path.dirname(firstVideoPath);
+          const currentDirName = path.basename(currentDir);
+
+          // 解析目录名格式：A0---美瞳变色龙---美妆---4701623256---20251106---3
+          const dirParts = currentDirName.split('---');
+          if (dirParts.length === 6) {
+            // 统一改为error
+            dirParts[5] = 'e';
+
+            const newDirName = dirParts.join('---');
+            const parentDir = path.dirname(currentDir);
+            const newDirPath = path.join(parentDir, newDirName);
+
+            try {
+              fs.renameSync(currentDir, newDirPath);
+              this.emit('log', {
+                message: `发布失败，目录重命名: ${currentDirName} -> ${newDirName}`,
+                type: 'warning',
+              });
+            } catch (renameError) {
+              console.error(`目录重命名失败: ${renameError}`);
+              this.emit('log', {
+                message: `目录重命名失败: ${renameError}`,
+                type: 'warning',
+              });
+            }
+          }
+        }
+      } catch (dirError) {
+        console.error(`处理失败目录时出错: ${dirError}`);
+        this.emit('log', {
+          message: `处理失败目录时出错: ${dirError}`,
+          type: 'warning',
+        });
+      }
+
       return {
         success: false,
         message: `操作失败: ${error.message}`,
       };
     } finally {
       // 无论成功还是失败，都要清理资源
-      // await cleanup();
+      await cleanup();
     }
   }
 
@@ -1035,43 +1162,106 @@ class GuangheTaobao extends EventEmitter {
       const today = new Date();
       today.setHours(0, 0, 0, 0); // 设置为今天的开始时间
 
-      const validDirectories = items
-        .filter(item => {
-          const fullPath = path.join(monitorDirectory, item);
+      const validDirectories: string[] = [];
 
-          // 检查是否是目录
-          if (!fs.statSync(fullPath).isDirectory()) {
-            return false;
+      for (const item of items) {
+        const fullPath = path.join(monitorDirectory, item);
+
+        // 检查是否是目录
+        if (!fs.statSync(fullPath).isDirectory()) {
+          continue;
+        }
+
+        // 解析目录名格式：A0---美瞳变色龙---美妆---4701623256---20251106---0
+        const parts = item.split('---');
+        if (parts.length !== 6) {
+          continue;
+        }
+
+        // 获取日期部分（第5个元素，索引4）和最后一个数字（第6个元素，索引5）
+        const dateStr = parts[4];
+        const lastPart = parts[5];
+
+        // 检查日期格式是否为YYYYMMDD
+        if (!/^\d{8}$/.test(dateStr)) {
+          continue;
+        }
+
+        // 解析日期
+        const year = parseInt(dateStr.substring(0, 4), 10);
+        const month = parseInt(dateStr.substring(4, 6), 10) - 1; // 月份从0开始
+        const day = parseInt(dateStr.substring(6, 8), 10);
+
+        const dirDate = new Date(year, month, day);
+
+        // 检查条件：日期小于等于今天，且最后一个部分是数字且大于等于3，或者是字母e（表示失败）
+        const isDateValid = dirDate <= today;
+        let isValid = false;
+        let lastNumber = 0;
+
+        if (lastPart === 'e') {
+          // 字母e或error表示发布失败，允许通过
+          isValid = true;
+          lastNumber = -1; // 用-1表示特殊状态
+        } else {
+          // 检查是否为数字且大于等于3
+          lastNumber = parseInt(lastPart, 10);
+          isValid = !isNaN(lastNumber) && lastNumber >= 3;
+        }
+
+        if (!isDateValid || !isValid) {
+          continue;
+        }
+
+        // 检查目录下的视频数量
+        try {
+          const files = fs.readdirSync(fullPath);
+          const videoFiles = files.filter(file => {
+            const ext = path.extname(file).toLowerCase();
+            return ['.mp4', '.avi', '.mov', '.mkv', '.flv'].includes(ext);
+          });
+
+          const actualVideoCount = videoFiles.length;
+          console.log(`目录 ${item} 下的视频数量: ${actualVideoCount}`);
+
+          // 如果视频数量小于3，跳过此目录
+          if (actualVideoCount < 3) {
+            console.log(`目录 ${item} 视频数量不足3个，跳过`);
+            continue;
           }
 
-          // 解析目录名格式：A0---美瞳变色龙---美妆---4701623256---20251106---0
-          const parts = item.split('---');
-          if (parts.length !== 6) {
-            return false;
+          let finalPath = fullPath;
+
+          // 如果实际视频数量与目录最后的数字不符，重命名目录（忽略末尾为e或error的失败目录）
+          if (
+            actualVideoCount !== lastNumber &&
+            lastPart !== 'e' &&
+            lastPart !== 'error'
+          ) {
+            const newParts = [...parts];
+            newParts[5] = actualVideoCount.toString();
+            const newDirName = newParts.join('---');
+            const newPath = path.join(monitorDirectory, newDirName);
+
+            try {
+              fs.renameSync(fullPath, newPath);
+              console.log(`重命名目录: ${item} -> ${newDirName}`);
+              finalPath = newPath;
+            } catch (renameError) {
+              console.error(`重命名目录失败: ${item}`, renameError);
+              // 如果重命名失败，继续使用原路径
+              finalPath = fullPath;
+            }
           }
-          console.log(parts);
 
-          // 获取日期部分（第5个元素，索引4）和最后一个数字（第6个元素，索引5）
-          const dateStr = parts[4];
-          const lastNumber = parseInt(parts[5], 10);
-
-          // 检查日期格式是否为YYYYMMDD
-          if (!/^\d{8}$/.test(dateStr)) {
-            return false;
-          }
-          // 解析日期
-          const year = parseInt(dateStr.substring(0, 4), 10);
-          const month = parseInt(dateStr.substring(4, 6), 10) - 1; // 月份从0开始
-          const day = parseInt(dateStr.substring(6, 8), 10);
-
-          const dirDate = new Date(year, month, day);
-          // 检查条件：日期小于等于今天，且最后一个数字大于等于3
-          const isDateValid = dirDate <= today;
-          const isNumberValid = !isNaN(lastNumber) && lastNumber >= 3;
-          console.log(isDateValid, isNumberValid);
-          return isDateValid && isNumberValid;
-        })
-        .map(item => path.join(monitorDirectory, item));
+          // 将处理后的目录加入结果列表
+          validDirectories.push(finalPath);
+          console.log(`添加目录到队列: ${finalPath}`);
+        } catch (videoCheckError) {
+          console.error(`检查目录视频数量失败: ${item}`, videoCheckError);
+          continue;
+        }
+      }
 
       console.log(`找到 ${validDirectories.length} 个符合条件的目录`);
       return validDirectories;
