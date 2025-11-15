@@ -82,7 +82,7 @@ onMounted(() => {
       stepNo: 's7',
       sData: { ...newValue },
     });
-    if (!newValue.running || newValue.taskDirectory === '')
+    if (!newValue.running || newValue.taskDirectory !== currMonitoringDirectory)
       await ipcRendererChannel.StopMonitoringDirectory.invoke(
         currMonitoringDirectory
       );

@@ -274,7 +274,7 @@ export class GuangProcessor extends EventEmitter {
       })
       .filter(item => {
         // 目标账号目录 {逛逛昵称}---{类目}---{ID}---{日期}---{计数};
-        const [nickname, currCategory, guangId, date, count] =
+        const [mark, nickname, currCategory, guangId, date, count] =
           item.split('---');
         return (
           !!currCategory &&

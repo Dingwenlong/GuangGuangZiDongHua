@@ -10,7 +10,15 @@
           v-model:value="s8.taskDirectory"
           placeholder="点击选择任务监听目录文件夹"
           @click="selectDirectoryHandler" />
-
+        <div
+          class="w-6/12! h-32 text-[12px] text-gray-400 content-center text-right">
+          自动持续检测{{ s8.running ? '开启' : '关闭' }}
+          <Switch
+            v-model:checked="s8.running"
+            :disabled="!s8.taskDirectory"
+            class="mt-[-3px]"
+            size="small" />
+        </div>
         <Button type="primary" :disabled="!s8.taskDirectory" @click="showModal"
           >批量创建逛逛号文件夹</Button
         >
@@ -106,7 +114,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted, reactive, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import {
   Input,
   Table,
@@ -121,10 +129,15 @@ import dayjs from 'dayjs';
 
 const { shell, ipcRendererChannel } = window;
 
-const s8 = reactive({
+interface S8 {
+  taskDirectory: string;
+  running: boolean;
+}
+const s8 = ref<S8>({
   taskDirectory: '',
-  running: true,
+  running: false,
 });
+
 const tableData = ref<any>([]);
 
 // 弹窗相关状态
@@ -177,39 +190,39 @@ const modalColumns: TableColumnType[] = [
   },
 ];
 
+let currMonitoringDirectory = '';
 onMounted(() => {
-  watch(s8, async (newValue, oldValue) => {
+  ipcRendererChannel.GetWorkbenchData.invoke('s8').then(workbench => {
+    s8.value.taskDirectory = workbench.taskDirectory ?? '';
+    s8.value.running = workbench.running;
+  });
+
+  watch(s8.value, async newValue => {
     ipcRendererChannel.UpdateWorkbenchData.invoke({
       stepNo: 's8',
       sData: { ...newValue },
     });
-    if (
-      newValue.taskDirectory != oldValue.taskDirectory &&
-      oldValue.taskDirectory
-    )
+    if (!newValue.running || newValue.taskDirectory !== currMonitoringDirectory)
       await ipcRendererChannel.StopMonitoringDirectory.invoke(
-        oldValue.taskDirectory
+        currMonitoringDirectory
       );
-    if (newValue.taskDirectory)
+    if (newValue.taskDirectory && newValue.running)
       await ipcRendererChannel.StartMonitoringDirectory.invoke(
         newValue.taskDirectory
       );
-  });
-
-  ipcRendererChannel.GetWorkbenchData.invoke('s8').then(workbench => {
-    s8.taskDirectory = workbench.taskDirectory ?? '';
+    currMonitoringDirectory = newValue.taskDirectory;
   });
 
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
-      if (arg.root === s8.taskDirectory) {
+      if (arg.root === s8.value.taskDirectory) {
         tableData.value = arg.structure
           .filter(dir => dir.type === 'directory')
           .map(dir => {
             // 添加过滤机制
             const children = dir.children as any[];
             return {
-              first: dir.path.replace(s8.taskDirectory + '\\', ''),
+              first: dir.path.replace(s8.value.taskDirectory + '\\', ''),
               second: children.map((file: any) => file.name),
             };
           });
@@ -255,7 +268,7 @@ function openFolderHandler(dir: any) {
  * 选择文件夹
  */
 async function selectDirectoryHandler() {
-  s8.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
+  s8.value.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
 }
 
 /**
@@ -369,7 +382,7 @@ async function batchCreationFolderHandler() {
     await Promise.all(
       directories.map(dir =>
         ipcRendererChannel.CreateDirectory.invoke({
-          dirPath: s8.taskDirectory,
+          dirPath: s8.value.taskDirectory,
           dirName: dir.dirName,
           files: [
             {
