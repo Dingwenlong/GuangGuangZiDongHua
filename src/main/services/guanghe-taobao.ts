@@ -32,10 +32,10 @@ class GuangheTaobao extends EventEmitter {
         const remoteDebuggingUrl = `http://127.0.0.1:${debugPort}`;
 
         // 设置Chrome路径
-        // GuangheTaobao.chromePath =
-        //   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
         GuangheTaobao.chromePath =
-          'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
+          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+        // GuangheTaobao.chromePath =
+        //   'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
 
         // 使用C盘根目录下的自定义用户数据目录
         const username = os.userInfo().username;
@@ -396,10 +396,30 @@ class GuangheTaobao extends EventEmitter {
         await dialogInput.press('Enter');
 
         await new Promise(resolve => setTimeout(resolve, 1 * 1000));
-        await frame.locator('.right-list > div').nth(0).click();
 
-        await new Promise(resolve => setTimeout(resolve, 1 * 1000));
-        await frame.locator('.next-box > .next-btn-primary').click();
+        // 检查第0个话题是否存在，存在则点击，不存在则关闭对话框
+        const firstTopic = await frame.locator('.right-list > div').nth(0);
+        if (await firstTopic.isVisible()) {
+          console.log('找到第0个话题，点击选择');
+          await firstTopic.click();
+
+          await new Promise(resolve => setTimeout(resolve, 1 * 1000));
+          // 确认提交
+          await frame.locator('.next-box > .next-btn-primary').click();
+        } else {
+          console.log('未找到第0个话题，关闭对话框');
+          // 点击关闭按钮
+          const closeBtn = await frame.locator('.next-dialog-close');
+          if (await closeBtn.isVisible()) {
+            await closeBtn.click();
+          } else {
+            // 如果找不到关闭按钮，尝试其他关闭方式
+            const closeIcon = await frame.locator('.next-dialog-close-icon');
+            if (await closeIcon.isVisible()) {
+              await closeIcon.click();
+            }
+          }
+        }
       }
 
       // 打开关联商品
@@ -1044,9 +1064,67 @@ class GuangheTaobao extends EventEmitter {
           if (await publishBtn.isVisible()) {
             // 点击批量发布按钮
             console.log('点击批量发布按钮...');
+            await page.pause();
 
             await publishBtn.click();
 
+            if (iframeDetection) {
+              clearInterval(iframeDetection);
+              iframeDetection = null;
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const confirmBtn = await frame.locator('.baxia-dialog-content');
+
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            if (await confirmBtn.isVisible()) {
+              console.log('检测到滑块验证弹窗，等待人工操作...');
+              this.emit('log', {
+                message: '检测到滑块验证弹窗，等待人工操作...',
+                type: 'warning',
+              });
+
+              // 等待滑块弹窗消失（最多等待5分钟）
+              let maxWaitTime = 300000; // 5分钟
+              const checkInterval = 10000; // 每2秒检查一次
+
+              while (maxWaitTime > 0) {
+                console.log(`等待滑块验证弹窗消失...${maxWaitTime / 1000}秒`);
+                console.log(`等待滑块验证弹窗消失...${checkInterval / 1000}秒`);
+
+                await new Promise(resolve =>
+                  setTimeout(resolve, checkInterval)
+                );
+                maxWaitTime -= checkInterval;
+
+                const isStillVisible = await confirmBtn.isVisible();
+                if (isStillVisible) {
+                  console.log('滑块验证弹窗已关闭，继续执行...');
+                  this.emit('log', {
+                    message: '滑块验证弹窗已关闭，继续执行...',
+                    type: 'info',
+                  });
+                  break;
+                }
+
+                console.log(
+                  `继续等待滑块验证完成，剩余时间: ${Math.ceil(
+                    maxWaitTime / 1000
+                  )}秒`
+                );
+              }
+            }
+            if (
+              (await frame
+                .locator('.batchItemStatus > div')
+                .first()
+                .textContent()) === '发布失败'
+            ) {
+              console.log('检测到发布失败视频，等待人工处理...');
+              this.emit('log', {
+                message: '检测到发布失败视频，等待人工处理...',
+                type: 'warning',
+              });
+            }
             this.emit('log', {
               message: `已完成视频发布信息填写`,
               type: 'info',
