@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 // import * as child_process from 'child_process';
 import http from 'http';
 import dayjs from 'dayjs';
+import { GuangProcessor, GuangHePublishStatus } from './guang-processor';
 
 class GuangheTaobao extends EventEmitter {
   // 静态属性
@@ -734,6 +735,50 @@ class GuangheTaobao extends EventEmitter {
     });
 
     try {
+      // 更新发布记录状态为处理中
+      try {
+        if (this.filePathArray && this.filePathArray.length > 0) {
+          // 获取第一个视频文件的路径信息
+          const firstVideoPath = this.filePathArray[0];
+          const currentDir = path.dirname(firstVideoPath);
+          const currentDirName = path.basename(currentDir);
+
+          // 解析目录名获取guangId
+          const dirParts = currentDirName.split('---');
+          if (dirParts.length >= 4) {
+            const guangId = dirParts[3]; // 获取逛逛ID
+
+            // 创建GuangProcessor实例来更新状态
+            const guangProcessor = new GuangProcessor();
+
+            // 查询待处理的记录并更新为处理中
+            const pendingRecord = await guangProcessor.getPublishGuangHeRecord(
+              guangId,
+              firstVideoPath,
+              GuangHePublishStatus.PENDING
+            );
+
+            if (pendingRecord) {
+              await guangProcessor.updatePublishGuangHeRecord(
+                pendingRecord.id,
+                GuangHePublishStatus.PROCESSING
+              );
+
+              this.emit('log', {
+                message: `更新发布记录状态为处理中 - guangId: ${guangId}`,
+                type: 'info',
+              });
+            }
+          }
+        }
+      } catch (statusError) {
+        console.error('更新发布记录状态为处理中失败:', statusError);
+        this.emit('log', {
+          message: `更新发布记录状态为处理中失败: ${statusError}`,
+          type: 'warning',
+        });
+      }
+
       // 初始化浏览器实例 - 使用默认用户配置
       browser = await GuangheTaobao.initBrowser();
 
@@ -1008,6 +1053,71 @@ class GuangheTaobao extends EventEmitter {
         type: 'success',
       });
 
+      // 更新发布记录状态为已完成
+      try {
+        if (this.filePathArray && this.filePathArray.length > 0) {
+          // 获取第一个视频文件的路径信息
+          const firstVideoPath = this.filePathArray[0];
+          const currentDir = path.dirname(firstVideoPath);
+          const currentDirName = path.basename(currentDir);
+
+          // 解析目录名获取guangId
+          const dirParts = currentDirName.split('---');
+          if (dirParts.length >= 4) {
+            const guangId = dirParts[3]; // 获取逛逛ID
+
+            // 创建GuangProcessor实例来更新状态
+            const guangProcessor = new GuangProcessor();
+
+            // 先查询对应的发布记录
+            const record = await guangProcessor.getPublishGuangHeRecord(
+              guangId,
+              firstVideoPath,
+              GuangHePublishStatus.PROCESSING
+            );
+
+            if (record) {
+              // 更新状态为已完成
+              await guangProcessor.updatePublishGuangHeRecord(
+                record.id,
+                GuangHePublishStatus.COMPLETED
+              );
+
+              this.emit('log', {
+                message: `更新发布记录状态为已完成 - guangId: ${guangId}`,
+                type: 'info',
+              });
+            } else {
+              // 如果没找到处理中的记录，尝试查找待处理的记录
+              const pendingRecord =
+                await guangProcessor.getPublishGuangHeRecord(
+                  guangId,
+                  firstVideoPath,
+                  GuangHePublishStatus.PENDING
+                );
+
+              if (pendingRecord) {
+                await guangProcessor.updatePublishGuangHeRecord(
+                  pendingRecord.id,
+                  GuangHePublishStatus.COMPLETED
+                );
+
+                this.emit('log', {
+                  message: `更新发布记录状态为已完成（从待处理） - guangId: ${guangId}`,
+                  type: 'info',
+                });
+              }
+            }
+          }
+        }
+      } catch (statusError) {
+        console.error('更新发布记录状态失败:', statusError);
+        this.emit('log', {
+          message: `更新发布记录状态失败: ${statusError}`,
+          type: 'warning',
+        });
+      }
+
       // 任务完成后清理目录 - 修改日期为明天，数字改为0，删除视频文件
       try {
         const currentDirectory = this.guangGuangAccountDirectories[0];
@@ -1083,6 +1193,12 @@ class GuangheTaobao extends EventEmitter {
           type: 'warning',
         });
       }
+
+      // 方法成功完成，返回成功状态
+      return {
+        success: true,
+        message: '淘宝光合平台视频发布任务处理完成',
+      };
     } catch (error: any) {
       const errorMsg = `发布到淘宝出错: ${error.message}`;
       console.error(errorMsg);
@@ -1090,6 +1206,71 @@ class GuangheTaobao extends EventEmitter {
         message: errorMsg,
         type: 'error',
       });
+
+      // 更新发布记录状态为失败
+      try {
+        if (this.filePathArray && this.filePathArray.length > 0) {
+          // 获取第一个视频文件的路径信息
+          const firstVideoPath = this.filePathArray[0];
+          const currentDir = path.dirname(firstVideoPath);
+          const currentDirName = path.basename(currentDir);
+
+          // 解析目录名获取guangId
+          const dirParts = currentDirName.split('---');
+          if (dirParts.length >= 4) {
+            const guangId = dirParts[3]; // 获取逛逛ID
+
+            // 创建GuangProcessor实例来更新状态
+            const guangProcessor = new GuangProcessor();
+
+            // 先查询对应的发布记录
+            const record = await guangProcessor.getPublishGuangHeRecord(
+              guangId,
+              firstVideoPath,
+              GuangHePublishStatus.PROCESSING
+            );
+
+            if (record) {
+              // 更新状态为失败
+              await guangProcessor.updatePublishGuangHeRecord(
+                record.id,
+                GuangHePublishStatus.FAILED
+              );
+
+              this.emit('log', {
+                message: `更新发布记录状态为失败 - guangId: ${guangId}`,
+                type: 'warning',
+              });
+            } else {
+              // 如果没找到处理中的记录，尝试查找待处理的记录
+              const pendingRecord =
+                await guangProcessor.getPublishGuangHeRecord(
+                  guangId,
+                  firstVideoPath,
+                  GuangHePublishStatus.PENDING
+                );
+
+              if (pendingRecord) {
+                await guangProcessor.updatePublishGuangHeRecord(
+                  pendingRecord.id,
+                  GuangHePublishStatus.FAILED
+                );
+
+                this.emit('log', {
+                  message: `更新发布记录状态为失败（从待处理） - guangId: ${guangId}`,
+                  type: 'warning',
+                });
+              }
+            }
+          }
+        }
+      } catch (statusError) {
+        console.error('更新发布记录状态失败:', statusError);
+        this.emit('log', {
+          message: `更新发布记录状态失败: ${statusError}`,
+          type: 'warning',
+        });
+      }
 
       // 发布失败时，将目录末尾数字改为error
       try {

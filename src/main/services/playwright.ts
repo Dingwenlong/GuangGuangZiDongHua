@@ -683,6 +683,8 @@ class PlaywrightScript extends EventEmitter {
   }
   /**
    * 视频质量修复处理
+   * 处理完成后将S6文件复制到逛逛和京东分发目录各一份
+   * 当下载目录清空后自动删除目录
    */
   public async RunVideoQualityFix(filePath: string, targetDir?: string) {
     let page: any = null;
@@ -976,86 +978,56 @@ class PlaywrightScript extends EventEmitter {
         }
       }
 
-      // 检测目录中是否有四个S6开头的文件，如果有则将父级S5文件夹重命名为S6
+      // 将S6文件复制到指定目录
       try {
-        // 获取下载目录中的所有文件
-        const dirFiles = fs.readdirSync(downloadDir);
+        // 定义目标目录
+        const targetDirs = [
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\逛逛',
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\京东',
+        ];
 
-        // 筛选出以S6开头的文件
-        const s6Files = dirFiles.filter(file => file.startsWith('S6'));
-
-        this.emit('log', {
-          message: `检测到S6开头的文件数量: ${s6Files.length}`,
-          type: 'info',
-        });
-
-        // 如果有四个S6开头的文件，尝试重命名父级文件夹并清理S5文件
-        if (s6Files.length === 4) {
-          // 清理下载目录中所有的S5文件
-          try {
-            const s5Files = dirFiles.filter(file => file.startsWith('S5'));
-            for (const s5File of s5Files) {
-              const s5FilePath = path.join(downloadDir, s5File);
-              if (fs.existsSync(s5FilePath)) {
-                fs.unlinkSync(s5FilePath);
-                this.emit('log', {
-                  message: `在检测到4个S6文件时清理S5文件：${s5FilePath}`,
-                  type: 'info',
-                });
-              }
+        // 确保目标目录存在
+        for (const targetDir of targetDirs) {
+          if (!fs.existsSync(targetDir)) {
+            try {
+              fs.mkdirSync(targetDir, { recursive: true });
+              this.emit('log', {
+                message: `创建目标目录: ${targetDir}`,
+                type: 'info',
+              });
+            } catch (mkdirError) {
+              this.emit('log', {
+                message: `创建目标目录失败: ${targetDir}, ${
+                  (mkdirError as Error).message
+                }`,
+                type: 'error',
+              });
+              continue;
             }
-          } catch (cleanupError) {
+          }
+
+          // 复制文件到目标目录
+          const fileName = path.basename(targetPath);
+          const destPath = path.join(targetDir, fileName);
+
+          try {
+            fs.copyFileSync(targetPath, destPath);
             this.emit('log', {
-              message: `清理S5文件时出错: ${(cleanupError as Error).message}`,
-              type: 'warning',
+              message: `复制文件到 ${targetDir}: ${fileName}`,
+              type: 'success',
+            });
+          } catch (copyError) {
+            this.emit('log', {
+              message: `复制文件失败: ${fileName} 到 ${targetDir}, ${
+                (copyError as Error).message
+              }`,
+              type: 'error',
             });
           }
-
-          // 解析文件路径以查找可能的S5父文件夹
-          const pathParts = targetPath.split(path.sep);
-          let s5FolderIndex = -1;
-
-          // 查找S5开头的文件夹
-          for (let i = 0; i < pathParts.length; i++) {
-            if (pathParts[i].startsWith('S5')) {
-              s5FolderIndex = i;
-              break;
-            }
-          }
-
-          // 如果找到S5文件夹，进行重命名
-          if (s5FolderIndex !== -1) {
-            const s5FolderName = pathParts[s5FolderIndex];
-            const s6FolderName = s5FolderName.replace('S5', 'S6');
-
-            const s5FolderPath = pathParts
-              .slice(0, s5FolderIndex + 1)
-              .join(path.sep);
-            const s6FolderPath =
-              pathParts.slice(0, s5FolderIndex).join(path.sep) +
-              path.sep +
-              s6FolderName;
-
-            // 检查目标文件夹是否存在，不存在则重命名
-            if (!fs.existsSync(s6FolderPath)) {
-              fs.renameSync(s5FolderPath, s6FolderPath);
-              this.emit('log', {
-                message: `成功将文件夹 ${s5FolderName} 重命名为 ${s6FolderName}`,
-                type: 'success',
-              });
-            } else {
-              this.emit('log', {
-                message: `目标文件夹 ${s6FolderName} 已存在，跳过重命名`,
-                type: 'warning',
-              });
-            }
-          }
         }
-      } catch (checkError) {
+      } catch (copyError) {
         this.emit('log', {
-          message: `检测S6文件并更新文件夹名称时出错: ${
-            (checkError as Error).message
-          }`,
+          message: `处理S6文件复制时出错: ${(copyError as Error).message}`,
           type: 'error',
         });
         // 不影响主流程，继续返回成功结果
@@ -1076,14 +1048,44 @@ class PlaywrightScript extends EventEmitter {
         }
       }
 
+      // 检查下载目录是否为空，如果为空则删除目录
+      try {
+        const remainingFiles = fs.readdirSync(downloadDir);
+        const nonSystemFiles = remainingFiles.filter(
+          file => !file.startsWith('.') && file !== 'desktop.ini'
+        );
+
+        if (nonSystemFiles.length === 0) {
+          // 目录为空，删除目录
+          fs.rmdirSync(downloadDir);
+          this.emit('log', {
+            message: `下载目录已清空，删除目录：${downloadDir}`,
+            type: 'info',
+          });
+        } else {
+          this.emit('log', {
+            message: `下载目录中还有 ${nonSystemFiles.length} 个文件，保留目录：${downloadDir}`,
+            type: 'info',
+          });
+        }
+      } catch (dirError) {
+        this.emit('log', {
+          message: `检查下载目录状态时出错：${(dirError as Error).message}`,
+          type: 'warning',
+        });
+      }
+
       // 关闭标签页
       await page.close();
 
-      this.writeLog(`高清处理完成，文件保存至：${targetPath}`, 'success');
+      this.writeLog(
+        `高清处理完成，文件已复制到分发目录：${targetPath}`,
+        'success'
+      );
 
       return {
         success: true,
-        message: `处理完成，文件保存至：${targetPath}`,
+        message: `处理完成，文件已复制到分发目录：${targetPath}`,
         filePath: targetPath,
       };
     } catch (error: any) {

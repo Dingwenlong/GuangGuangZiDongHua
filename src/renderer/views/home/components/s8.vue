@@ -134,16 +134,22 @@ const modalTableData = ref<any[]>([]);
 // 弹窗表格列定义
 const modalColumns: TableColumnType[] = [
   {
+    title: '标记',
+    dataIndex: 'mark',
+    key: 'mark',
+    width: '10%',
+  },
+  {
     title: '逛逛昵称',
     dataIndex: 'name',
     key: 'name',
-    width: '20%',
+    width: '15%',
   },
   {
     title: '分类',
     dataIndex: 'category',
     key: 'category',
-    width: '15%',
+    width: '10%',
   },
   {
     title: '逛逛ID',
@@ -348,7 +354,7 @@ function handleModalCancel() {
  * 批量创建文件夹
  */
 async function batchCreationFolderHandler() {
-  const timeStr = dayjs().format('YYYY-MM-DD');
+  const timeStr = dayjs().format('YYYYMMDD');
   const directories = modalTableData.value.map(item => {
     return {
       dirName: sanitizeFolderName(
