@@ -63,25 +63,37 @@ const { ipcRendererChannel } = window;
 const logData = ref<any[]>([]);
 
 onMounted(() => {
-  ipcRendererChannel.LogUpdate.on((_, arg) => {
-    const now = new Date();
-    const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-      2,
-      '0'
-    )}-${String(now.getDate()).padStart(2, '0')} ${String(
-      now.getHours()
-    ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(
-      now.getSeconds()
-    ).padStart(2, '0')}`;
-    logData.value.push({
-      time: timeStr,
-      message: arg.message,
-      type: arg.type,
+  try {
+    // 添加错误处理，防止IPC事件监听失败导致整个页面无响应
+    ipcRendererChannel.LogUpdate.on((_, arg) => {
+      try {
+        const now = new Date();
+        const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+          2,
+          '0'
+        )}-${String(now.getDate()).padStart(2, '0')} ${String(
+          now.getHours()
+        ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(
+          now.getSeconds()
+        ).padStart(2, '0')}`;
+        logData.value.push({
+          time: timeStr,
+          message: arg.message,
+          type: arg.type,
+        });
+        if (logData.value.length > 1000) {
+          logData.value.shift();
+        }
+      } catch (error) {
+        console.error('处理日志更新失败:', error);
+      }
     });
-    if (logData.value.length > 1000) {
-      logData.value.shift();
-    }
-  });
+    
+    // 添加页面加载完成的日志
+    console.log('主窗口组件初始化完成');
+  } catch (error) {
+    console.error('主窗口组件初始化失败:', error);
+  }
 });
 
 onUnmounted(() => {

@@ -93,72 +93,104 @@ const s1 = reactive({
 const tableData = ref<any>([]);
 let startFolderIndex = 0;
 
-onMounted(() => {
-  ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbench => {
-    s1.taskDirectory = workbench.taskDirectory ?? '';
-    s1.running = false;
-    if (workbench.running) {
-      ipcRendererChannel.UpdateWorkbenchData.invoke({
-        stepNo: 's1',
-        sData: Object.assign({ ...s1 }, { running: false }),
-      });
-    }
-  });
-
-  watch(s1, async (newValue, oldValue) => {
-    ipcRendererChannel.UpdateWorkbenchData.invoke({
-      stepNo: 's1',
-      sData: { ...newValue },
-    });
-    if (newValue.taskDirectory !== oldValue.taskDirectory || !newValue.running)
-      await ipcRendererChannel.StopMonitoringDirectory.invoke(
-        oldValue.taskDirectory
-      );
-    if (newValue.taskDirectory && newValue.running)
-      await ipcRendererChannel.StartMonitoringDirectory.invoke(
-        newValue.taskDirectory
-      );
-  });
-
-  ipcRendererChannel.MonitoringDirectoryCallback.on(
-    (_, arg: { root: string; structure: any[] }) => {
-      if (arg.root === s1.taskDirectory) {
-        startFolderIndex = Math.max(
-          ...arg.structure.map(dir => {
-            const [step, no, ..._] = dir.name.split('---');
-            return step === 'S1' ? ~~no : 0;
-          })
-        );
-        tableData.value = arg.structure
-          .filter(dir => {
-            const [first, ..._] = dir.name;
-            return dir.type === 'directory' && first === 'S';
-          })
-          .sort((a, b) => {
-            const stepPartsA = a.name.split('---');
-            const stepPartsB = b.name.split('---');
-            return stepPartsA[0] === stepPartsB[0]
-              ? Number(stepPartsA[1]) - Number(stepPartsB[1])
-              : stepPartsA[0].localeCompare(stepPartsB[0]);
-          })
-          .map(dir => {
-            const children = dir.children as any[];
-            return {
-              taskDirectory: s1.taskDirectory,
-              productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
-              videoMaterial: children
-                .filter((file: any) => file.isVideo && file.type === 'file')
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((file: any) => file.name),
-            };
+onMounted(async () => {
+  try {
+    // 添加超时保护，防止获取工作台数据时卡住
+    await Promise.race([
+      (async () => {
+        const workbench = await ipcRendererChannel.GetWorkbenchData.invoke('s1');
+        s1.taskDirectory = workbench.taskDirectory ?? '';
+        s1.running = false;
+        if (workbench.running) {
+          await ipcRendererChannel.UpdateWorkbenchData.invoke({
+            stepNo: 's1',
+            sData: Object.assign({ ...s1 }, { running: false }),
           });
-      }
-    }
-  );
+        }
+      })(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('获取S1工作台数据超时')), 5000);
+      })
+    ]).catch(error => {
+      console.error('获取S1工作台数据失败:', error);
+    });
 
-  ipcRendererChannel.CheckKaipaiLoginStatus.invoke().then(isLogin => {
-    console.log('登录检测结果:', isLogin);
-  });
+    watch(s1, async (newValue, oldValue) => {
+      try {
+        await ipcRendererChannel.UpdateWorkbenchData.invoke({
+          stepNo: 's1',
+          sData: { ...newValue },
+        });
+        if (newValue.taskDirectory !== oldValue.taskDirectory || !newValue.running)
+          await ipcRendererChannel.StopMonitoringDirectory.invoke(
+            oldValue.taskDirectory
+          );
+        if (newValue.taskDirectory && newValue.running)
+          await ipcRendererChannel.StartMonitoringDirectory.invoke(
+            newValue.taskDirectory
+          );
+      } catch (error) {
+        console.error('更新S1工作台数据失败:', error);
+      }
+    });
+
+    // 添加错误处理，防止目录监听回调失败
+    ipcRendererChannel.MonitoringDirectoryCallback.on(
+      (_, arg: { root: string; structure: any[] }) => {
+        try {
+          if (arg.root === s1.taskDirectory) {
+            startFolderIndex = Math.max(
+              ...arg.structure.map(dir => {
+                const [step, no, ..._] = dir.name.split('---');
+                return step === 'S1' ? ~~no : 0;
+              })
+            );
+            tableData.value = arg.structure
+              .filter(dir => {
+                const [first, ..._] = dir.name;
+                return dir.type === 'directory' && first === 'S';
+              })
+              .sort((a, b) => {
+                const stepPartsA = a.name.split('---');
+                const stepPartsB = b.name.split('---');
+                return stepPartsA[0] === stepPartsB[0]
+                  ? Number(stepPartsA[1]) - Number(stepPartsB[1])
+                  : stepPartsA[0].localeCompare(stepPartsB[0]);
+              })
+              .map(dir => {
+                const children = dir.children as any[];
+                return {
+                  taskDirectory: s1.taskDirectory,
+                  productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
+                  videoMaterial: children
+                    .filter((file: any) => file.isVideo && file.type === 'file')
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((file: any) => file.name),
+                };
+              });
+          }
+        } catch (error) {
+          console.error('处理目录监听回调失败:', error);
+        }
+      }
+    );
+
+    // 添加超时保护，防止登录检测卡住
+    Promise.race([
+      ipcRendererChannel.CheckKaipaiLoginStatus.invoke(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('登录检测超时')), 3000);
+      })
+    ]).then(isLogin => {
+      console.log('登录检测结果:', isLogin);
+    }).catch(error => {
+      console.error('登录检测失败:', error);
+    });
+    
+    console.log('S1组件初始化完成');
+  } catch (error) {
+    console.error('S1组件初始化失败:', error);
+  }
 });
 
 onUnmounted(() => {

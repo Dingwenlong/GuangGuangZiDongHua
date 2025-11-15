@@ -1,13 +1,14 @@
 <template>
   <div
     class="w-full h-full grid overflow-y-auto overflow-x-hidden"
-    style="grid-template-rows: minmax(min-content, 50px) minmax(200px, 1fr)">
+    style="grid-template-rows: minmax(min-content, 120px) minmax(200px, 1fr)">
     <div class="flex flex-row items-baseline flex-wrap gap-10">
       <div class="w-full flex justify-between flex-row items-center gap-10">
         <Input
           class="w-6/12!"
           readonly
           v-model:value="s8.taskDirectory"
+          :disabled="s8.running"
           placeholder="点击选择任务监听目录文件夹"
           @click="selectDirectoryHandler" />
         <div
@@ -19,6 +20,8 @@
             class="mt-[-3px]"
             size="small" />
         </div>
+      </div>
+      <div class="w-full flex flex-row justify-end gap-10">
         <Button type="primary" :disabled="!s8.taskDirectory" @click="showModal"
           >批量创建逛逛号文件夹</Button
         >
@@ -119,6 +122,7 @@ import {
   Input,
   Table,
   Button,
+  Switch,
   Modal,
   type TableColumnType,
   message,
@@ -202,10 +206,15 @@ onMounted(() => {
       stepNo: 's8',
       sData: { ...newValue },
     });
-    if (!newValue.running || newValue.taskDirectory !== currMonitoringDirectory)
+    if (
+      !newValue.running ||
+      newValue.taskDirectory !== currMonitoringDirectory
+    ) {
       await ipcRendererChannel.StopMonitoringDirectory.invoke(
         currMonitoringDirectory
       );
+      tableData.value = [];
+    }
     if (newValue.taskDirectory && newValue.running)
       await ipcRendererChannel.StartMonitoringDirectory.invoke(
         newValue.taskDirectory

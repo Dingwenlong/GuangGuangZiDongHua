@@ -743,21 +743,6 @@ class GuangheTaobao extends EventEmitter {
           browser = null;
         }
 
-        // 使用taskkill强制结束所有Chrome进程
-        try {
-          const { exec } = require('child_process');
-          exec(
-            'taskkill /F /IM chrome.exe /T',
-            (error: any, stdout: any, stderr: any) => {
-              if (!error) {
-                console.log('所有Chrome进程已强制终止');
-              }
-            }
-          );
-        } catch (killError) {
-          console.error('强制终止Chrome进程失败:', killError);
-        }
-
         console.log('浏览器资源已完全清理');
       } catch (error) {
         console.error('清理浏览器资源时出错:', error);
