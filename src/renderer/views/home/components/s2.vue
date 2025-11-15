@@ -189,42 +189,52 @@ watch(s2.value, async (val, _) => {
 });
 
 onMounted(async () => {
-  // 获取历史缓存
-  ipcRendererChannel.GetWorkbenchData.invoke('s1').then(workbenchS1 => {
-    s1.taskDirectory = workbenchS1.taskDirectory ?? '';
-  });
-  ipcRendererChannel.GetWorkbenchData.invoke('s2').then(workbenchS2 => {
-    s2.value = { ...workbenchS2 };
-  });
+  try {
+    // 添加超时保护，防止获取工作台数据时卡住
+    await Promise.race([
+      (async () => {
+        // 获取历史缓存
+        const workbenchS1 = await ipcRendererChannel.GetWorkbenchData.invoke('s1');
+        s1.taskDirectory = workbenchS1.taskDirectory ?? '';
+        
+        const workbenchS2 = await ipcRendererChannel.GetWorkbenchData.invoke('s2');
+        s2.value = { ...workbenchS2 };
+      })(),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('获取工作台数据超时')), 5000);
+      })
+    ]).catch(error => {
+      console.error('获取工作台数据失败:', error);
+    });
 
-  // 获取历史缓存数据
-  // await ipcRendererChannel.GetWorkbenchData.invoke('s2').then(
-  //   (workbench: any) => {
-  //     s2.value = workbench ?? {
-  //       autoHandOnWorkflow: false,
-  //     };
-  //   }
-  // );
-
-  // 绑定文件夹变化监听事件
-  ipcRendererChannel.MonitoringDirectoryCallback.on(
-    (event, arg: { root: string; structure: any[] }) => {
-      console.log(arg);
-      data.value = arg.structure
-        .filter(dir => {
-          return dir.type === 'directory' && dir.name === '视频去字幕任务';
-        })
-        .map(dir => {
-          return {
-            taskDirectory: s1.taskDirectory,
-            productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
-            videoMaterial: dir.children
-              .filter((file: any) => file.isVideo && file.type === 'file')
-              .map((file: any) => file.name),
-          };
-        });
-    }
-  );
+    // 添加错误处理，防止目录监听回调失败
+    ipcRendererChannel.MonitoringDirectoryCallback.on(
+      (event, arg: { root: string; structure: any[] }) => {
+        try {
+          console.log(arg);
+          data.value = arg.structure
+            .filter(dir => {
+              return dir.type === 'directory' && dir.name === '视频去字幕任务';
+            })
+            .map(dir => {
+              return {
+                taskDirectory: s1.taskDirectory,
+                productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
+                videoMaterial: dir.children
+                  .filter((file: any) => file.isVideo && file.type === 'file')
+                  .map((file: any) => file.name),
+              };
+            });
+        } catch (error) {
+          console.error('处理目录监听回调失败:', error);
+        }
+      }
+    );
+    
+    console.log('组件初始化完成');
+  } catch (error) {
+    console.error('组件初始化失败:', error);
+  }
 });
 
 onUnmounted(() => {

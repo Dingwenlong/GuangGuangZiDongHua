@@ -18,8 +18,6 @@ export enum GuangHePublishStatus {
 export class GuangProcessor extends EventEmitter {
   private accountDirectory: string = '';
   private watcher: FileWatcher | null;
-  //0:停止 1:运行中 2:启动中 3:停止中
-  private runningStatus: number = 0;
   private fileEventQueue: Array<() => Promise<void>> = [];
   private isProcessingQueue: boolean = false;
 
@@ -28,31 +26,24 @@ export class GuangProcessor extends EventEmitter {
     this.watcher = null;
   }
 
-  public startMonitor(monitorDirectory: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      try {
-        if (this.runningStatus !== 0)
-          return reject('视频分发文件监控未停止，无法启动');
+  public startMonitor(monitorDirectory: string): void {
+    try {
+      if (!fs.existsSync(monitorDirectory))
+        this.writeLog('监控目录不存在', 'warning');
 
-        if (!fs.existsSync(monitorDirectory)) {
-          this.writeLog('监控目录不存在', 'error');
-          return reject('监控目录不存在');
-        }
+      this.initializeSchema();
+      this.startFileWatching(monitorDirectory);
 
-        this.initializeSchema();
-        this.startFileWatching(monitorDirectory);
-        setTimeout(() => {
-          this.runningStatus = 1;
-          this.writeLog(
-            `已启动光合发布文件监控，监控目录: ${monitorDirectory}`,
-            'success'
-          );
-          resolve();
-        }, 1500);
-      } catch (error) {
-        reject(error);
-      }
-    });
+      this.writeLog(
+        `已启动光合发布文件监控，监控目录: ${monitorDirectory}`,
+        'success'
+      );
+    } catch (error) {
+      this.writeLog(
+        `启动光合发布文件监控，监控目录: ${monitorDirectory}异常：${error}`,
+        'error'
+      );
+    }
   }
 
   private startFileWatching(monitorDirectory: string): void {
@@ -95,30 +86,15 @@ export class GuangProcessor extends EventEmitter {
     this.watcher.start();
   }
 
-  public stopMonitor(): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      try {
-        if (this.runningStatus !== 1) return reject('视频分发文件监控未在运行');
+  public stopMonitor(): void {
+    this.fileEventQueue = [];
+    this.isProcessingQueue = false;
 
-        this.runningStatus = 3;
-
-        // 清空队列
-        this.fileEventQueue = [];
-        this.isProcessingQueue = false;
-
-        if (this.watcher) {
-          this.watcher.stop();
-          this.watcher = null;
-          this.writeLog('已停止光合发布文件监控', 'success');
-        }
-        setTimeout(() => {
-          this.runningStatus = 0;
-          resolve();
-        }, 1500);
-      } catch (error) {
-        reject(error);
-      }
-    });
+    if (this.watcher) {
+      this.watcher.stop();
+      this.watcher = null;
+      this.writeLog('已停止光合发布文件监控', 'success');
+    }
   }
 
   // 扫描现有文件
@@ -174,7 +150,7 @@ export class GuangProcessor extends EventEmitter {
       ) {
         const fileName = path.basename(filePath);
         // 解析S6视频文件名提取{类目}信息
-        const [step, no, productTitle, category, productId, ...rest] =
+        const [step, no, productTitle, category, productId] =
           fileName.split('---');
         if (step !== 'S6' || !category || !productId) {
           this.writeLog(
@@ -200,15 +176,15 @@ export class GuangProcessor extends EventEmitter {
         this.writeLog(`${fileName}剪切视频到${accountDirPath}目录`);
         await cutFileToOtherDirectory(filePath, accountDirPath, fileName);
 
-        // 重命名 目标账号目录 {逛逛昵称}---{类目}---{ID}---{日期}---{计数};
+        // 重命名 目标账号目录 {标记}---{逛逛昵称}---{类目}---{ID}---{日期}---{计数};
         const dirParts = dirName.split('---');
-        const [nickname, _, guangId, date, count] = dirParts;
+        const [mark, nickname, _, guangId, date, count] = dirParts;
         this.writeLog(`重命名${dirName}目录`);
         await fs.promises.rename(
           accountDirPath,
           path.join(
             dirPath,
-            [...dirParts.slice(0, 3), date, ~~count + 1].join('---')
+            [...dirParts.slice(0, 4), date, ~~count + 1].join('---')
           )
         );
         // 插入发布记录表
@@ -273,14 +249,15 @@ export class GuangProcessor extends EventEmitter {
         return fs.statSync(fullPath).isDirectory();
       })
       .filter(item => {
-        // 目标账号目录 {逛逛昵称}---{类目}---{ID}---{日期}---{计数};
+        // 目标账号目录 {标记}---{逛逛昵称}---{类目}---{ID}---{日期}---{计数};
+        // A1---辣条ASMR---零食美食---4687025729---20251114---0
         const [mark, nickname, currCategory, guangId, date, count] =
           item.split('---');
         return (
           !!currCategory &&
           !!date &&
           currCategory === category &&
-          dayjs(date) <= dayjs() &&
+          dayjs(date, 'YYYYMMDD') <= dayjs() &&
           (count === '0' || count === '1' || count === '2')
         );
       })

@@ -8,6 +8,7 @@
           class="w-6/12!"
           readonly
           v-model:value="s7.taskDirectory"
+          :disabled="s7.running"
           placeholder="点击选择任务监听目录文件夹"
           @click="selectDirectoryHandler" />
         <div
@@ -82,10 +83,15 @@ onMounted(() => {
       stepNo: 's7',
       sData: { ...newValue },
     });
-    if (!newValue.running || newValue.taskDirectory !== currMonitoringDirectory)
+    if (
+      !newValue.running ||
+      newValue.taskDirectory !== currMonitoringDirectory
+    ) {
       await ipcRendererChannel.StopMonitoringDirectory.invoke(
         currMonitoringDirectory
       );
+      tableData.value = [];
+    }
     if (newValue.taskDirectory && newValue.running)
       await ipcRendererChannel.StartMonitoringDirectory.invoke(
         newValue.taskDirectory

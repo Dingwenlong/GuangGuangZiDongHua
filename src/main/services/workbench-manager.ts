@@ -233,46 +233,65 @@ class WorkbenchManager {
    * 初始化数据库
    */
   private async init(): Promise<void> {
-    // 初始化lowdb
-    await this.db.read();
+    try {
+      // 初始化lowdb
+      await this.db.read();
+      const originData = { ...this.db.data };
 
-    // 如果数据为空，则设置默认值
-    if (!this.db.data) {
-      this.db.data = defaultData;
-      await this.db.write();
+      // 如果数据为空，则设置默认值
+      if (!this.db.data) {
+        this.db.data = defaultData;
+      }
+
+      if (this.db.data.s7.taskDirectory === '') {
+        this.db.data.s7.taskDirectory =
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\逛逛';
+      }
+      if (this.db.data.s7.running) {
+        this.db.data.s7.running = false;
+      }
+
+      if (this.db.data.s8.taskDirectory === '') {
+        this.db.data.s8.taskDirectory =
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\逛逛账号';
+      }
+      if (this.db.data.s8.running) {
+        this.db.data.s8.running = false;
+      }
+      if (originData !== this.db.data) await this.db.write();
+      // 初始化数据快照
+      this.previousData = JSON.parse(JSON.stringify(this.db.data));
+
+      // 初始化SQLite3，添加超时处理
+      await Promise.race([
+        this.initializeSchema(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('SQLite schema initialization timeout')), 20000);
+        })
+      ]);
+    } catch (error) {
+      console.error('WorkbenchManager initialization error:', error);
+      // 即使数据库初始化失败，也不要阻止应用启动，记录错误并继续
+      // 这样应用可以启动，只是数据库相关功能可能不可用
     }
-
-    if (this.db.data && !this.db.data.s7) {
-      this.db.data.s7 = {
-        taskDirectory:
-          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\逛逛',
-        running: false,
-      };
-      await this.db.write();
-    } else if (this.db.data.s7.running) {
-      this.db.data.s7.running = false;
-      await this.db.write();
-    }
-
-    if (this.db.data && !this.db.data.s8) {
-      this.db.data.s8 = {
-        taskDirectory: '\\\\192.168.31.99\\影视存储\\逛逛客户端\\逛逛账号',
-        running: false,
-      };
-      await this.db.write();
-    } else if (this.db.data.s8.running) {
-      this.db.data.s8.running = false;
-      await this.db.write();
-    }
-    // 初始化数据快照
-    this.previousData = JSON.parse(JSON.stringify(this.db.data));
-
-    // 初始化SQLite3
-    await this.initializeSchema();
   }
 
+  /**
+   * 等待初始化完成，添加超时保护
+   */
   public async waitForInit(): Promise<void> {
-    return this.initPromise;
+    try {
+      // 添加超时保护，确保即使初始化过程卡住也能返回
+      await Promise.race([
+        this.initPromise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Initialization timeout')), 30000);
+        })
+      ]);
+    } catch (error) {
+      console.error('Wait for initialization failed:', error);
+      // 不抛出错误，允许应用继续运行
+    }
   }
 
   /**
@@ -280,79 +299,85 @@ class WorkbenchManager {
    */
   private async initializeSchema(): Promise<void> {
     try {
-      // 创建s2任务队列表
-      await sqQuery({
-        sql: `
-          CREATE TABLE IF NOT EXISTS s2_tasks_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_data TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        `,
-      });
+      // 定义所有表的创建SQL语句
+      const createTableStatements = [
+        {
+          name: 's2_tasks_queue',
+          sql: `
+            CREATE TABLE IF NOT EXISTS s2_tasks_queue (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              task_data TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'pending',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+          `
+        },
+        {
+          name: 's3_tasks_queue',
+          sql: `
+            CREATE TABLE IF NOT EXISTS s3_tasks_queue (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              video_file_path TEXT NOT NULL,
+              subtitle_remove_over INTEGER NOT NULL DEFAULT 0,
+              path_of_chains TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'pending',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+          `
+        },
+        {
+          name: 's4_tasks_queue',
+          sql: `
+            CREATE TABLE IF NOT EXISTS s4_tasks_queue (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              folder_name TEXT NOT NULL,
+              videos TEXT NOT NULL,
+              child_folders TEXT,
+              status TEXT NOT NULL DEFAULT 'pending',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+          `
+        },
+        {
+          name: 's5_tasks_queue',
+          sql: `
+            CREATE TABLE IF NOT EXISTS s5_tasks_queue (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              task_data TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'pending',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+          `
+        },
+        {
+          name: 's6_tasks_queue',
+          sql: `
+            CREATE TABLE IF NOT EXISTS s6_tasks_queue (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              task_data TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'pending',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+          `
+        }
+      ];
 
-      // 创建s3任务队列表
-      await sqQuery({
-        sql: `
-          CREATE TABLE IF NOT EXISTS s3_tasks_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            video_file_path TEXT NOT NULL,
-            subtitle_remove_over INTEGER NOT NULL DEFAULT 0,
-            path_of_chains TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        `,
-      });
+      // 逐个创建表，而不是并行创建，避免潜在的数据库锁定问题
+      for (const table of createTableStatements) {
+        console.log(`Creating table: ${table.name}`);
+        await sqQuery({ sql: table.sql });
+      }
 
-      // 创建s4任务队列表
-      await sqQuery({
-        sql: `
-          CREATE TABLE IF NOT EXISTS s4_tasks_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            folder_name TEXT NOT NULL,
-            videos TEXT NOT NULL,
-            child_folders TEXT,
-            status TEXT NOT NULL DEFAULT 'pending',
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        `,
-      });
-
-      // 创建s5任务队列表
-      await sqQuery({
-        sql: `
-          CREATE TABLE IF NOT EXISTS s5_tasks_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_data TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        `,
-      });
-
-      // 创建s6任务队列表
-      await sqQuery({
-        sql: `
-          CREATE TABLE IF NOT EXISTS s6_tasks_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            task_data TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-          )
-        `,
-      });
-
-      console.log('Queue database schema initialized.');
+      console.log('Queue database schema initialized successfully.');
     } catch (err) {
       console.error('Error initializing queue database schema:', err);
-      throw err;
+      // 即使表创建失败，也只记录错误而不抛出，避免阻塞应用启动
+      // 这样应用至少可以启动，后续数据库操作可能会失败但不会完全阻塞
     }
   }
 
@@ -463,9 +488,31 @@ class WorkbenchManager {
   public async getByKey<K extends keyof WorkbenchConfigStoreSchema>(
     key: K
   ): Promise<WorkbenchConfigStoreSchema[K]> {
-    await this.db.read();
-    console.log(`获取: ${key} ${JSON.stringify(this.db.data[key])}`);
-    return this.db.data[key];
+    try {
+      // 确保初始化完成，添加超时保护
+      await Promise.race([
+        this.waitForInit(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('WorkbenchManager初始化超时')), 5000);
+        })
+      ]);
+      
+      // 读取数据库，添加超时保护
+      await Promise.race([
+        this.db.read(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('数据库读取超时')), 3000);
+        })
+      ]);
+      
+      const result = this.db.data[key];
+      console.log(`获取: ${key} ${JSON.stringify(result)}`);
+      return result;
+    } catch (error) {
+      console.error(`获取 ${key} 失败:`, error);
+      // 返回默认值作为回退方案
+      return defaultData[key] as WorkbenchConfigStoreSchema[K];
+    }
   }
 
   /**

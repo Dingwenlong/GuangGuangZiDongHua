@@ -58,13 +58,42 @@ export const ipcCustomLoginHandlers = (mainInit: MainInit): IpcHandler[] => {
         _,
         arg: { userData: any; token: any; refreshToken: any }
       ) => {
-        const { userData, token, refreshToken } = arg;
-        await authManager.setLoginState(userData, token, refreshToken);
+        try {
+          const { userData, token, refreshToken } = arg;
 
-        BrowserWindow.getAllWindows().forEach(win => {
-          win.close();
-        });
-        await mainInit.createMainWindow();
+          // 保存登录状态，添加超时保护
+          await Promise.race([
+            authManager.setLoginState(userData, token, refreshToken),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('保存登录状态超时')), 5000);
+            }),
+          ]);
+
+          // 获取所有窗口并关闭，但要确保主窗口创建成功后再关闭
+          const allWindows = BrowserWindow.getAllWindows();
+          console.log(`准备关闭 ${allWindows.length} 个窗口`);
+
+          // 创建主窗口，添加超时保护
+          await Promise.race([
+            mainInit.createMainWindow(),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('创建主窗口超时')), 10000);
+            }),
+          ]);
+
+          // 确保主窗口创建成功后再关闭其他窗口
+          allWindows.forEach(win => {
+            if (win && !win.isDestroyed()) {
+              win.close();
+            }
+          });
+
+          console.log('登录成功，主窗口创建完成');
+        } catch (error) {
+          console.error('登录成功处理失败:', error);
+          // 尝试重新创建登录窗口作为回退方案
+          mainInit.createLoginWindow();
+        }
       },
     },
   ];
@@ -277,7 +306,8 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       enabled: true,
     },
     async () => {
-      await guangheTaobao.checkAndUpdateDirectories();
+      const s8 = await workbenchManager.getByKey('s8');
+      if (s8.running) await guangheTaobao.checkAndUpdateDirectories();
     }
   );
   workbenchManager.getByKey('s8').then(newValue => {
