@@ -244,7 +244,8 @@ class WorkbenchManager {
 
     if (this.db.data && !this.db.data.s7) {
       this.db.data.s7 = {
-        taskDirectory: '',
+        taskDirectory:
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\逛逛',
         running: false,
       };
       await this.db.write();
@@ -255,8 +256,8 @@ class WorkbenchManager {
 
     if (this.db.data && !this.db.data.s8) {
       this.db.data.s8 = {
-        taskDirectory: '',
-        running: true,
+        taskDirectory: '\\\\192.168.31.99\\影视存储\\逛逛客户端\\逛逛账号',
+        running: false,
       };
       await this.db.write();
     } else if (this.db.data.s8.running) {
