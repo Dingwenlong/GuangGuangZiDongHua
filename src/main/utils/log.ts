@@ -1,5 +1,6 @@
 import type EventEmitter from 'events';
 import log from 'electron-log/main';
+import dayjs from 'dayjs';
 
 log.transports.file.level = 'info';
 log.transports.file.maxSize = 50 * 1024 * 1024;
@@ -45,6 +46,8 @@ export function writeLog(
 
   // 记录日志
   try {
+    this.emit('log', { message, type } as LogEvent);
+    message = `[${dayjs().format('YYYY-MM-DD HH:mm:ss')}] ${message}`;
     switch (type) {
       case 'info':
         log.info(message);
@@ -62,8 +65,6 @@ export function writeLog(
         log.debug(message);
         break;
     }
-
-    this.emit('log', { message, type } as LogEvent);
   } catch (error) {
     console.error('Error in writeLog:', error);
   }

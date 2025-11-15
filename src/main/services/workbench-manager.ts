@@ -254,6 +254,9 @@ class WorkbenchManager {
         running: false,
       };
       await this.db.write();
+    } else if (this.db.data.s7.running) {
+      this.db.data.s7.running = false;
+      await this.db.write();
     }
 
     if (this.db.data && !this.db.data.s8) {
@@ -261,6 +264,9 @@ class WorkbenchManager {
         taskDirectory: '',
         running: true,
       };
+      await this.db.write();
+    } else if (this.db.data.s8.running) {
+      this.db.data.s8.running = false;
       await this.db.write();
     }
     // 初始化数据快照

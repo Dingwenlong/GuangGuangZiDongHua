@@ -48,7 +48,7 @@ export class GuangProcessor extends EventEmitter {
             'success'
           );
           resolve();
-        }, 3000);
+        }, 1500);
       } catch (error) {
         reject(error);
       }
@@ -114,7 +114,7 @@ export class GuangProcessor extends EventEmitter {
         setTimeout(() => {
           this.runningStatus = 0;
           resolve();
-        }, 3000);
+        }, 1500);
       } catch (error) {
         reject(error);
       }

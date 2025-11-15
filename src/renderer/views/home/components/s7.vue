@@ -13,7 +13,11 @@
         <div
           class="w-6/12! h-32 text-[12px] text-gray-400 content-center text-right">
           自动持续检测{{ s7.running ? '开启' : '关闭' }}
-          <Switch v-model:checked="s7.running" class="mt-[-3px]" size="small" />
+          <Switch
+            v-model:checked="s7.running"
+            :disabled="!s7.taskDirectory"
+            class="mt-[-3px]"
+            size="small" />
         </div>
       </div>
       <div class="w-full flex flex-row justify-end gap-10"></div>
@@ -44,7 +48,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted, reactive, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import {
   Input,
   Table,
@@ -53,38 +57,45 @@ import {
   type TableColumnType,
 } from 'ant-design-vue';
 
+interface S7 {
+  taskDirectory: string;
+  running: boolean;
+}
+
 const { shell, ipcRendererChannel } = window;
 
-const s7 = reactive({
+const s7 = ref<S7>({
   taskDirectory: '',
   running: false,
 });
 const tableData = ref<any>([]);
+let currMonitoringDirectory = '';
+
+watch(s7.value, async newValue => {
+  ipcRendererChannel.UpdateWorkbenchData.invoke({
+    stepNo: 's7',
+    sData: { ...newValue },
+  });
+  if (!newValue.running || newValue.taskDirectory === '')
+    await ipcRendererChannel.StopMonitoringDirectory.invoke(
+      currMonitoringDirectory
+    );
+  if (newValue.taskDirectory && newValue.running)
+    await ipcRendererChannel.StartMonitoringDirectory.invoke(
+      newValue.taskDirectory
+    );
+  currMonitoringDirectory = newValue.taskDirectory;
+});
 
 onMounted(() => {
-  watch(s7, async (newValue, oldValue) => {
-    ipcRendererChannel.UpdateWorkbenchData.invoke({
-      stepNo: 's7',
-      sData: { ...newValue },
-    });
-    if (!newValue.running || newValue.taskDirectory === '')
-      await ipcRendererChannel.StopMonitoringDirectory.invoke(
-        oldValue.taskDirectory
-      );
-    if (newValue.taskDirectory && newValue.running)
-      await ipcRendererChannel.StartMonitoringDirectory.invoke(
-        newValue.taskDirectory
-      );
-  });
-
   ipcRendererChannel.GetWorkbenchData.invoke('s7').then(workbench => {
-    s7.taskDirectory = workbench.taskDirectory ?? '';
+    s7.value.taskDirectory = workbench.taskDirectory;
+    s7.value.running = workbench.running;
   });
-  if (s7.running) s7.running = false;
 
   ipcRendererChannel.MonitoringDirectoryCallback.on(
     (_, arg: { root: string; structure: any[] }) => {
-      if (arg.root === s7.taskDirectory) {
+      if (arg.root === s7.value.taskDirectory) {
         tableData.value = arg.structure
           .filter(file => file.isVideo)
           .map(file => {
@@ -128,6 +139,6 @@ function showFolderHandler(fullPath: any) {
  * 选择文件夹
  */
 async function selectDirectoryHandler() {
-  s7.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
+  s7.value.taskDirectory = await ipcRendererChannel.SelectDirectory.invoke();
 }
 </script>
