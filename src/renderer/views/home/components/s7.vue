@@ -71,26 +71,26 @@ const s7 = ref<S7>({
 const tableData = ref<any>([]);
 let currMonitoringDirectory = '';
 
-watch(s7.value, async newValue => {
-  ipcRendererChannel.UpdateWorkbenchData.invoke({
-    stepNo: 's7',
-    sData: { ...newValue },
-  });
-  if (!newValue.running || newValue.taskDirectory === '')
-    await ipcRendererChannel.StopMonitoringDirectory.invoke(
-      currMonitoringDirectory
-    );
-  if (newValue.taskDirectory && newValue.running)
-    await ipcRendererChannel.StartMonitoringDirectory.invoke(
-      newValue.taskDirectory
-    );
-  currMonitoringDirectory = newValue.taskDirectory;
-});
-
 onMounted(() => {
   ipcRendererChannel.GetWorkbenchData.invoke('s7').then(workbench => {
     s7.value.taskDirectory = workbench.taskDirectory;
     s7.value.running = workbench.running;
+  });
+
+  watch(s7.value, async newValue => {
+    ipcRendererChannel.UpdateWorkbenchData.invoke({
+      stepNo: 's7',
+      sData: { ...newValue },
+    });
+    if (!newValue.running || newValue.taskDirectory === '')
+      await ipcRendererChannel.StopMonitoringDirectory.invoke(
+        currMonitoringDirectory
+      );
+    if (newValue.taskDirectory && newValue.running)
+      await ipcRendererChannel.StartMonitoringDirectory.invoke(
+        newValue.taskDirectory
+      );
+    currMonitoringDirectory = newValue.taskDirectory;
   });
 
   ipcRendererChannel.MonitoringDirectoryCallback.on(
