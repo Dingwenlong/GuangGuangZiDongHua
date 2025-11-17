@@ -50,7 +50,6 @@ export class GuangProcessor extends EventEmitter {
     this.watcher = new FileWatcher(monitorDirectory, {
       ignored: [
         /(^|[\/\\])\../, // 忽略隐藏文件
-        /.*---\d+\.mp4$/, // 忽略已处理的视频文件
         /temp/, // 忽略临时目录
       ],
       depth: 2, // 监控深度增加到3层
@@ -125,6 +124,7 @@ export class GuangProcessor extends EventEmitter {
     filePath: string,
     eventType: string
   ): Promise<void> {
+    console.log('handleFileEvent', filePath, eventType);
     // 将任务添加到队列中，而不是直接执行
     this.fileEventQueue.push(async () => {
       return this.processFileEvent(filePath, eventType);
@@ -175,6 +175,9 @@ export class GuangProcessor extends EventEmitter {
         // 剪切视频到目标账号目录
         this.writeLog(`${fileName}剪切视频到${accountDirPath}目录`);
         await cutFileToOtherDirectory(filePath, accountDirPath, fileName);
+        this.writeLog(
+          `已将视频${filePath}剪切视频到${path.join(accountDirPath, fileName)}`
+        );
 
         // 重命名 目标账号目录 {标记}---{逛逛昵称}---{类目}---{ID}---{日期}---{计数};
         const dirParts = dirName.split('---');

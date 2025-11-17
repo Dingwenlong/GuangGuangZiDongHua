@@ -266,8 +266,11 @@ class WorkbenchManager {
       await Promise.race([
         this.initializeSchema(),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('SQLite schema initialization timeout')), 20000);
-        })
+          setTimeout(
+            () => reject(new Error('SQLite schema initialization timeout')),
+            20000
+          );
+        }),
       ]);
     } catch (error) {
       console.error('WorkbenchManager initialization error:', error);
@@ -286,7 +289,7 @@ class WorkbenchManager {
         this.initPromise,
         new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Initialization timeout')), 30000);
-        })
+        }),
       ]);
     } catch (error) {
       console.error('Wait for initialization failed:', error);
@@ -311,7 +314,7 @@ class WorkbenchManager {
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL
             )
-          `
+          `,
         },
         {
           name: 's3_tasks_queue',
@@ -325,7 +328,7 @@ class WorkbenchManager {
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL
             )
-          `
+          `,
         },
         {
           name: 's4_tasks_queue',
@@ -339,7 +342,7 @@ class WorkbenchManager {
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL
             )
-          `
+          `,
         },
         {
           name: 's5_tasks_queue',
@@ -351,7 +354,7 @@ class WorkbenchManager {
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL
             )
-          `
+          `,
         },
         {
           name: 's6_tasks_queue',
@@ -363,8 +366,8 @@ class WorkbenchManager {
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL
             )
-          `
-        }
+          `,
+        },
       ];
 
       // 逐个创建表，而不是并行创建，避免潜在的数据库锁定问题
@@ -493,20 +496,23 @@ class WorkbenchManager {
       await Promise.race([
         this.waitForInit(),
         new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('WorkbenchManager初始化超时')), 5000);
-        })
+          setTimeout(
+            () => reject(new Error('WorkbenchManager初始化超时')),
+            5000
+          );
+        }),
       ]);
-      
+
       // 读取数据库，添加超时保护
       await Promise.race([
         this.db.read(),
         new Promise((_, reject) => {
           setTimeout(() => reject(new Error('数据库读取超时')), 3000);
-        })
+        }),
       ]);
-      
+
       const result = this.db.data[key];
-      console.log(`获取: ${key} ${JSON.stringify(result)}`);
+      // console.log(`获取: ${key} ${JSON.stringify(result)}`);
       return result;
     } catch (error) {
       console.error(`获取 ${key} 失败:`, error);

@@ -287,7 +287,7 @@ export async function cutFileToOtherDirectory(
 
       const targetFilePath = path.join(targetDirectory, targetFileName);
       console.log('rename', sourceFilePath, targetFilePath);
-      fs.promises.rename(sourceFilePath, targetFilePath);
+      await fs.promises.rename(sourceFilePath, targetFilePath);
       resolve();
     } catch (error) {
       reject(error);
