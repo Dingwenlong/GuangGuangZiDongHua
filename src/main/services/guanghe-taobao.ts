@@ -18,7 +18,6 @@ class GuangheTaobao extends EventEmitter {
 
   // 新增属性：用于存储获取到的目录数组和定时器
   private guangGuangAccountDirectories: string[] = [];
-  private directoryCheckTimer?: NodeJS.Timeout;
   private isProcessingQueue: boolean = false;
 
   // 初始化浏览器实例 - 采用CDP方式
@@ -32,10 +31,10 @@ class GuangheTaobao extends EventEmitter {
         const remoteDebuggingUrl = `http://127.0.0.1:${debugPort}`;
 
         // 设置Chrome路径
-        GuangheTaobao.chromePath =
-          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
         // GuangheTaobao.chromePath =
-        //   'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
+        //   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+        GuangheTaobao.chromePath =
+          'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
 
         // 使用C盘根目录下的自定义用户数据目录
         const username = os.userInfo().username;
@@ -1043,20 +1042,26 @@ class GuangheTaobao extends EventEmitter {
             await this.fillVideoInfo(frame, UserData);
           }
 
+          // 先清理定时器
+          if (iframeDetection) {
+            // 确保定时器存在
+            console.log('iframeDetection 存在,关闭定时器');
+
+            clearInterval(iframeDetection);
+            iframeDetection = null;
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
           const publishBtn = await frame
             .locator('.batch-button-area > div')
             .locator('button');
           if (await publishBtn.isVisible()) {
             // 点击批量发布按钮
             console.log('点击批量发布按钮...');
-            await page.pause();
+            // await page.pause();
 
             await publishBtn.click();
-
-            if (iframeDetection) {
-              clearInterval(iframeDetection);
-              iframeDetection = null;
-            }
             await new Promise(resolve => setTimeout(resolve, 2000));
             const confirmBtn = await frame.locator('.baxia-dialog-content');
 
@@ -1082,7 +1087,7 @@ class GuangheTaobao extends EventEmitter {
                 maxWaitTime -= checkInterval;
 
                 const isStillVisible = await confirmBtn.isVisible();
-                if (isStillVisible) {
+                if (!isStillVisible) {
                   console.log('滑块验证弹窗已关闭，继续执行...');
                   this.emit('log', {
                     message: '滑块验证弹窗已关闭，继续执行...',
