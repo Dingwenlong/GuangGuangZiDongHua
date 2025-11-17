@@ -231,6 +231,7 @@ export class GuangProcessor extends EventEmitter {
         const task = this.fileEventQueue.shift();
         if (task) {
           await task();
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
     } catch (error) {
