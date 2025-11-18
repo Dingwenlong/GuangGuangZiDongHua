@@ -31,10 +31,10 @@ class GuangheTaobao extends EventEmitter {
         const remoteDebuggingUrl = `http://127.0.0.1:${debugPort}`;
 
         // 设置Chrome路径
-        // GuangheTaobao.chromePath =
-        //   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
         GuangheTaobao.chromePath =
-          'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
+          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+        // GuangheTaobao.chromePath =
+        //   'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
 
         // 使用C盘根目录下的自定义用户数据目录
         const username = os.userInfo().username;
