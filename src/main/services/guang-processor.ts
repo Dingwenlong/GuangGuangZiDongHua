@@ -51,8 +51,9 @@ export class GuangProcessor extends EventEmitter {
       ignored: [
         /(^|[\/\\])\../, // 忽略隐藏文件
         /temp/, // 忽略临时目录
+        /logs/, // 忽略日志目录
       ],
-      depth: 2, // 监控深度增加到3层
+      depth: 1, // 监控深度增加到3层
       ignoreInitial: false, // 不忽略初始文件
       awaitWriteFinish: {
         stabilityThreshold: 3000, // 文件稳定3秒后才触发
@@ -182,20 +183,20 @@ export class GuangProcessor extends EventEmitter {
         // 重命名 目标账号目录 {标记}---{逛逛昵称}---{类目}---{ID}---{日期}---{计数};
         const dirParts = dirName.split('---');
         const [mark, nickname, _, guangId, date, count] = dirParts;
-        this.writeLog(`重命名${dirName}目录`);
+        const newDirName = [...dirParts.slice(0, 4), date, ~~count + 1].join(
+          '---'
+        );
+        this.writeLog(`重命名${dirName}目录为${newDirName}`);
         await fs.promises.rename(
           accountDirPath,
-          path.join(
-            dirPath,
-            [...dirParts.slice(0, 4), date, ~~count + 1].join('---')
-          )
+          path.join(dirPath, newDirName)
         );
         // 插入发布记录表
         await this.insertPublishGuangHeRecord(
           nickname,
           category,
           guangId,
-          path.join(accountDirPath, fileName),
+          path.join(path.join(dirPath, newDirName), fileName),
           GuangHePublishStatus.PENDING
         );
         this.writeLog(
@@ -231,6 +232,7 @@ export class GuangProcessor extends EventEmitter {
         const task = this.fileEventQueue.shift();
         if (task) {
           await task();
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
     } catch (error) {
