@@ -382,8 +382,8 @@ async function batchCreationFolderHandler() {
       dirName: sanitizeFolderName(
         `${item.mark}---${item.name}---${item.category}---${item.guangId}---${timeStr}---0`
       ),
-      tags: item.tags ? item.tags.split('|') : [],
-      topics: item.topics ? item.topics.split('|') : [],
+      tags: item.tags ? (item.tags as string).split('|').map(tag => tag.trim().replace('\\n', '').replace('\\r', '')) : [],
+      topics: item.topics ? (item.topics as string).split('|').map(topic => topic.trim().replace('\\n', '').replace('\\r', '')) : [],
     };
   });
 
