@@ -361,7 +361,8 @@ class GuangheTaobao extends EventEmitter {
       const currentDescription =
         UserData.videoDescription[this.currentVideoIndex as number] ||
         UserData.videoDescription;
-      await this.simulateHumanInput(describeInputWrapper, currentDescription);
+      // await this.simulateHumanInput(describeInputWrapper, currentDescription);
+      await describeInputWrapper.type(currentDescription);
 
       // 开始输入标签
       const labelInput = await frame.locator('div[data-cangjie-editable]');
@@ -391,33 +392,25 @@ class GuangheTaobao extends EventEmitter {
         // 随机选择一个话题
         const randomTopic =
           UserData.topic[Math.floor(Math.random() * UserData.topic.length)];
-        await this.simulateHumanInput(dialogInput, randomTopic);
+        // await this.simulateHumanInput(dialogInput, randomTopic);
+        await dialogInput.type(randomTopic);
         await dialogInput.press('Enter');
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        await new Promise(resolve => setTimeout(resolve, 1 * 1000));
+        const isEmpty =
+          (await frame.locator('.next-card-show-divider').count()) > 0;
 
-        // 检查第0个话题是否存在，存在则点击，不存在则关闭对话框
-        const firstTopic = await frame.locator('.right-list > div').nth(0);
-        if (await firstTopic.isVisible()) {
+        if (!isEmpty) {
+          // 不存在空状态标识，说明有可选项，点击第一个话题
           console.log('找到第0个话题，点击选择');
-          await firstTopic.click();
-
-          await new Promise(resolve => setTimeout(resolve, 1 * 1000));
+          await frame.locator('.right-list > div').first().click();
+          await new Promise(resolve => setTimeout(resolve, 1000));
           // 确认提交
           await frame.locator('.next-box > .next-btn-primary').click();
         } else {
-          console.log('未找到第0个话题，关闭对话框');
-          // 点击关闭按钮
-          const closeBtn = await frame.locator('.next-dialog-close');
-          if (await closeBtn.isVisible()) {
-            await closeBtn.click();
-          } else {
-            // 如果找不到关闭按钮，尝试其他关闭方式
-            const closeIcon = await frame.locator('.next-dialog-close-icon');
-            if (await closeIcon.isVisible()) {
-              await closeIcon.click();
-            }
-          }
+          // 存在空状态标识，说明无内容，关闭对话框
+          console.log('未找到话题（检测到空状态），关闭对话框');
+          await frame.locator('.next-dialog-close').click();
         }
       }
 
@@ -445,72 +438,113 @@ class GuangheTaobao extends EventEmitter {
       console.log(`当前guangCatalogue: ${UserData.guangCatalogue}`);
       console.log(`是否找到选品车: ${hasProductCart}`);
 
-      // 简化的选品车处理逻辑
-      const shouldUseProductCart =
-        UserData.guangCatalogue.startsWith('A0') ||
-        UserData.guangCatalogue.startsWith('A1');
+      // 选品车处理逻辑（优化版）
+      // 仅处理A0/A1类型，其他类型直接抛出错误
+      // if (
+      //   !UserData.guangCatalogue.startsWith('A0') &&
+      //   !UserData.guangCatalogue.startsWith('A1')
+      // ) {
+      //   throw new Error('目录类型必须为A0或A1');
+      // }
 
-      // 根据当前视频索引获取对应的商品ID
+      // // 获取当前视频对应的商品ID：不存在时直接置空（避免错乱）
+      // const currentVideoIndex = this.currentVideoIndex || 0;
+      // let currentProductId = '';
+      // if (UserData.productIds && Array.isArray(UserData.productIds)) {
+      //   // 严格匹配索引，不存在则置空（不 fallback 到第一个）
+      //   currentProductId = UserData.productIds[currentVideoIndex] || '';
+      // }
+
+      // this.emit('log', {
+      //   message: `当前视频索引: ${currentVideoIndex}, 对应商品ID: ${
+      //     currentProductId || '空'
+      //   }`,
+      //   type: 'info',
+      // });
+
+      // 统一处理A0/A1的选品车逻辑（简化判断）
+      // const isA0 = UserData.guangCatalogue.startsWith('A0');
+      // const isA1 = UserData.guangCatalogue.startsWith('A1');
+
+      // if (hasProductCart) {
+      //   // 存在选品车时：A0先转为A1，再执行选品（若有商品ID）
+      //   if (isA0) {
+      //     UserData.guangCatalogue = UserData.guangCatalogue.replace(
+      //       /^A0/,
+      //       'A1'
+      //     );
+      //     console.log('A0有选品车，已转为A1');
+      //   }
+
+      //   // 无论A0/A1，只有存在商品ID时才执行选品，否则跳过
+      //   if (currentProductId) {
+      //     try {
+      //       await this.selectProductFromCart(frame, currentProductId);
+      //       console.log(
+      //         `${isA0 ? 'A0转A1后' : 'A1'}选品成功，商品ID: ${currentProductId}`
+      //       );
+      //     } catch (error: any) {
+      //       // 选品失败（如未找到商品）：关闭弹窗，不中断流程
+      //       this.emit('log', {
+      //         message: `${isA1 ? 'A1' : 'A0转A1后'}选品失败，关闭弹窗: ${
+      //           error.message
+      //         }`,
+      //         type: 'error',
+      //       });
+      //       const closeButton = await frame.locator('.next-dialog-close-icon');
+      //       await closeButton.click();
+      //     }
+      //   } else {
+      //     // 无商品ID：直接关闭弹窗
+      //     this.emit('log', {
+      //       message: `${isA0 ? 'A0' : 'A1'}无商品ID，关闭选品车弹窗`,
+      //       type: 'info',
+      //     });
+      //     const closeButton = await frame.locator('.next-dialog-close-icon');
+      //     await closeButton.click();
+      //   }
+      // } else {
+      //   // 不存在选品车时：A0/A1均关闭弹窗（A1不再强制报错）
+      //   this.emit('log', {
+      //     message: `${isA0 ? 'A0' : 'A1'}无选品车，关闭弹窗`,
+      //     type: 'info',
+      //   });
+      //   const closeButton = await frame.locator('.next-dialog-close-icon');
+      //   await closeButton.click();
+      // }
+
+      // 获取当前视频对应的商品ID
       const currentVideoIndex = this.currentVideoIndex || 0;
-      const currentProductId =
-        UserData.productIds && UserData.productIds.length > currentVideoIndex
-          ? UserData.productIds[currentVideoIndex]
-          : UserData.productIds && UserData.productIds.length > 0
-          ? UserData.productIds[0]
-          : '';
+      let currentProductId = '';
+      if (UserData.productIds && Array.isArray(UserData.productIds)) {
+        currentProductId = UserData.productIds[currentVideoIndex] || '';
+      }
 
-      console.log(
-        `当前视频索引: ${currentVideoIndex}, 对应商品ID: ${currentProductId}`
-      );
+      this.emit('log', {
+        message: `当前视频索引: ${currentVideoIndex}, 对应商品ID: ${
+          currentProductId || '空'
+        }`,
+        type: 'info',
+      });
 
-      if (shouldUseProductCart) {
-        if (UserData.guangCatalogue.startsWith('A0')) {
-          if (hasProductCart) {
-            // A0有选品车，改为A1并继续发布
-            console.log('A0有选品车，改为A1并继续发布');
-            UserData.guangCatalogue = UserData.guangCatalogue.replace(
-              /^A0/,
-              'A1'
-            );
-            await this.selectProductFromCart(
-              frame,
-              currentProductId,
-              currentVideoIndex
-            );
-          } else {
-            // A0没有选品车，继续发布
-            console.log('A0没有选品车，继续发布');
-            const closeButton = await frame.locator('.next-dialog-close-icon');
-            await closeButton.click();
-          }
-        } else if (UserData.guangCatalogue.startsWith('A1')) {
-          if (hasProductCart) {
-            // A1有选品车，正常选择商品
-            console.log('A1有选品车，正常选择商品');
-            await this.selectProductFromCart(
-              frame,
-              currentProductId,
-              currentVideoIndex
-            );
-          } else {
-            // A1没有选品车，抛出错误让上层处理
-            console.error('A1没有选品车，抛出错误');
-            throw new Error('A1类型需要选品车，但未找到选品车选项');
-          }
+      // 核心逻辑：判断是否执行选品
+      if (hasProductCart && currentProductId) {
+        // 执行选品并处理结果
+        const selectSuccess = await this.selectProductFromCart(
+          frame,
+          currentProductId
+        );
+        if (!selectSuccess) {
+          await this.handleCartFailure(
+            frame,
+            UserData.guangId,
+            `选品失败，商品未找到（商品ID: ${currentProductId}）`
+          );
         }
       } else {
-        // 其他类型，按原有逻辑处理
-        console.log('其他类型，按原有逻辑处理选品车');
-        if (hasProductCart) {
-          await this.selectProductFromCart(
-            frame,
-            currentProductId,
-            currentVideoIndex
-          );
-        } else {
-          const closeButton = await frame.locator('.next-dialog-close-icon');
-          await closeButton.click();
-        }
+        // 不满足选品条件，直接处理失败
+        const reason = !hasProductCart ? '未找到选品车' : '商品ID为空或不存在';
+        await this.handleCartFailure(frame, UserData.guangId, reason);
       }
 
       console.log('开始选中定时');
@@ -549,57 +583,118 @@ class GuangheTaobao extends EventEmitter {
   }
 
   /**
-   * 从选品车选择商品
+   * 从选品车选择商品（优化版）
    * @param frame iframe上下文
    * @param productId 商品ID
-   * @param videoIndex 当前视频索引（可选，用于日志）
+   * @returns 选品成功返回true，失败返回false
    */
   private async selectProductFromCart(
     frame: any,
-    productId: string,
-    videoIndex?: number
-  ) {
-    // 点击选品车
-    const itemList = await frame
-      .locator('.publish-content__item-v2--tabName--3Lp7Xq6')
-      .all();
-    for (const item of itemList) {
-      const text = await item.textContent();
-      if (text && text.includes('选品车')) {
-        await item.click();
-        break;
-      }
+    productId: string
+  ): Promise<boolean> {
+    // 前置判断：商品ID为空直接返回失败
+    if (!productId) {
+      console.error('商品ID为空，终止选品');
+      return false;
     }
 
-    // 等待选品车内容加载
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // 选择选品车中的商品
     try {
-      const Input = await frame.locator(
+      // 1. 点击选品车标签（增加存在性判断）
+      const itemList = await frame
+        .locator('.publish-content__item-v2--tabName--3Lp7Xq6')
+        .all();
+      let cartTabFound = false;
+      for (const item of itemList) {
+        const text = await item.textContent();
+        if (text && text.includes('选品车')) {
+          await item.click();
+          cartTabFound = true;
+          break;
+        }
+      }
+      if (!cartTabFound) {
+        console.error('未找到选品车标签');
+        return false;
+      }
+
+      // 2. 等待选品车内容加载
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 3. 输入商品ID并确认
+      const input = await frame.locator(
         '.next-select-auto-complete > span > input'
       );
-      await this.simulateHumanInput(Input, productId);
-      await Input.press('Enter');
+      if ((await input.count()) === 0) {
+        console.error('未找到商品搜索输入框');
+        return false;
+      }
+      await input.type(productId);
+      await input.press('Enter');
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // 找到所有商品容器，通过商品ID匹配并点击对应的容器
-      const productItems = await frame.locator(
+      // 4. 匹配并点击目标商品
+      const productItems = frame.locator(
         `div.publish-content__item-v2--item--1zog_Vq:has(a[href*="id=${productId}"])`
       );
+      if ((await productItems.count()) === 0) {
+        console.error(`未找到商品ID为 ${productId} 的选项`);
+        return false;
+      }
       await productItems.click();
-
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // 点击确认按钮
-      await frame
+      // 5. 点击确认按钮
+      const confirmButton = frame
         .locator('.publish-content__item-v2--dialog-footer-right--10eXc-h')
         .locator('button')
-        .first()
-        .click();
+        .first();
+      if ((await confirmButton.count()) === 0) {
+        console.error('未找到确认按钮');
+        return false;
+      }
+      await confirmButton.click();
       await new Promise(resolve => setTimeout(resolve, 1200));
+
+      console.log(`商品 ${productId} 选品成功`);
+      return true;
     } catch (productError: any) {
-      console.error('选择商品过程中出错:', productError.message);
+      console.error('选品过程出错:', productError.message);
+      return false;
+    }
+  }
+
+  /**
+   * 封装挂车失败处理逻辑：记录错误日志并关闭弹窗
+   * @param frame iframe上下文
+   * @param guangId 账号ID
+   * @param reason 失败原因
+   */
+  private async handleCartFailure(frame: any, guangId: string, reason: string) {
+    const fs = require('fs');
+    const path = require('path');
+    const logPath =
+      '\\\\192.168.31.99\\影视存储\\逛逛客户端\\逛逛账号\\logs\\productError.txt';
+
+    // 1. 记录错误日志
+    const logContent = `[${new Date().toLocaleString()}] 账号 ${guangId} 挂车失败，原因：${reason}\n`;
+    try {
+      const dir = path.dirname(logPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(logPath, logContent, 'utf8');
+      console.log(`错误已记录: ${reason}`);
+    } catch (logError: any) {
+      console.error('日志写入失败:', logError.message);
+    }
+
+    // 2. 关闭弹窗（容错处理，避免元素不存在导致报错）
+    try {
+      const closeButton = frame.locator('.next-dialog-close-icon');
+      if ((await closeButton.count()) > 0) {
+        await closeButton.click();
+        console.log('已关闭选品弹窗');
+      }
+    } catch (closeError: any) {
+      console.error('关闭弹窗失败:', closeError.message);
     }
   }
 
@@ -674,7 +769,8 @@ class GuangheTaobao extends EventEmitter {
 
       // 输入新的时间
       const timeStr = scheduledTime.format('HH:mm');
-      await this.simulateHumanInput(timeInput, timeStr);
+      // await this.simulateHumanInput(timeInput, timeStr);
+      await timeInput.type(timeStr);
       console.log(`已输入时间: ${timeStr}`);
 
       // 点击确认按钮
@@ -753,7 +849,7 @@ class GuangheTaobao extends EventEmitter {
     this.currentVideoIndex = 0;
     this.emit('log', {
       message: `开始发布到淘宝`,
-      type: 'info',
+      type: 'success',
     });
 
     try {
@@ -868,7 +964,8 @@ class GuangheTaobao extends EventEmitter {
       // 使用通用输入方法
       if (await userNameInput.isVisible()) {
         console.log('发现用户名输入框');
-        await this.simulateHumanInput(userNameInput, UserData.guangId);
+        // await this.simulateHumanInput(userNameInput, UserData.guangId);
+        await userNameInput.type(UserData.guangId);
       }
 
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1018,18 +1115,44 @@ class GuangheTaobao extends EventEmitter {
         }
         iframeDetection = setInterval(async () => {
           if (frame) {
+            console.log('iframe已加载,开始检测关闭按钮和目标图片...');
+
             // 确保frame已获取
             try {
-              // 检测是否存在类名为baxia-dialog-close的元素
+              // 检测关闭按钮是否存在
               const closeBtn = await frame.$('.baxia-dialog-close');
+              // 检测目标图片是否存在（通过src精确匹配）
+
+              // 只有当关闭按钮和目标图片同时存在时才执行关闭
               if (closeBtn) {
-                // 存在则点击
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                await closeBtn.click();
+                const imgIframeSelector = await frame.waitForSelector(
+                  'iframe#baxia-dialog-content',
+                  { timeout: 5000 }
+                );
+                const imgIframe = await imgIframeSelector.contentFrame();
+                const targetImg = await imgIframe.$(
+                  `img[src="https://img.alicdn.com/imgextra/i2/O1CN010VLpQY1VWKHBQuBUQ_!!6000000002660-2-tps-222-222.png"]`
+                );
+                this.emit('log', {
+                  message: '检测到关闭按钮',
+                  type: 'info',
+                });
+                if (targetImg) {
+                  this.emit('log', {
+                    message: '检测到目标图片，执行关闭',
+                    type: 'info',
+                  });
+                  console.log('检测到目标图片和关闭按钮，准备执行关闭');
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                  await closeBtn.click();
+                  console.log('检测到目标图片和关闭按钮，已执行关闭');
+                }
               }
-            } catch (err) {}
+            } catch (err) {
+              console.log('检测过程出错:', err);
+            }
           }
-        }, 1000); // 每1000毫秒（1秒）检测一次
+        }, 1000); // 每1秒检测一次
         if (frame) {
           // 获取所有视频的队列
           const videoQueue = await frame.locator('.batchItemWrap').all();
@@ -1046,360 +1169,476 @@ class GuangheTaobao extends EventEmitter {
           if (iframeDetection) {
             // 确保定时器存在
             console.log('iframeDetection 存在,关闭定时器');
-
+            this.emit('log', {
+              message: 'iframeDetection 存在,关闭定时器',
+              type: 'info',
+            });
             clearInterval(iframeDetection);
             iframeDetection = null;
           }
 
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 4000));
 
           const publishBtn = await frame
             .locator('.batch-button-area > div')
             .locator('button');
+
           if (await publishBtn.isVisible()) {
-            // 点击批量发布按钮
             console.log('点击批量发布按钮...');
-            // await page.pause();
-
-            await publishBtn.click();
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            const confirmBtn = await frame.locator('.baxia-dialog-content');
-
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            if (await confirmBtn.isVisible()) {
-              console.log('检测到滑块验证弹窗，等待人工操作...');
-              this.emit('log', {
-                message: '检测到滑块验证弹窗，等待人工操作...',
-                type: 'warning',
-              });
-
-              // 等待滑块弹窗消失（最多等待5分钟）
-              let maxWaitTime = 300000; // 5分钟
-              const checkInterval = 10000; // 每2秒检查一次
-
-              while (maxWaitTime > 0) {
-                console.log(`等待滑块验证弹窗消失...${maxWaitTime / 1000}秒`);
-                console.log(`等待滑块验证弹窗消失...${checkInterval / 1000}秒`);
-
-                await new Promise(resolve =>
-                  setTimeout(resolve, checkInterval)
-                );
-                maxWaitTime -= checkInterval;
-
-                const isStillVisible = await confirmBtn.isVisible();
-                if (!isStillVisible) {
-                  console.log('滑块验证弹窗已关闭，继续执行...');
-                  this.emit('log', {
-                    message: '滑块验证弹窗已关闭，继续执行...',
-                    type: 'info',
-                  });
-                  break;
-                }
-
-                console.log(
-                  `继续等待滑块验证完成，剩余时间: ${Math.ceil(
-                    maxWaitTime / 1000
-                  )}秒`
-                );
-              }
-            }
-            if (
-              (await frame
-                .locator('.batchItemStatus > div')
-                .first()
-                .textContent()) === '发布失败'
-            ) {
-              console.log('检测到发布失败视频，等待人工处理...');
-              this.emit('log', {
-                message: '检测到发布失败视频，等待人工处理...',
-                type: 'warning',
-              });
-            }
             this.emit('log', {
-              message: `已完成视频发布信息填写`,
+              message: '点击批量发布按钮...',
               type: 'info',
             });
+            await publishBtn.click();
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            // 定位滑块弹窗（使用 locator 而非直接获取元素，保持引用有效性）
+            const confirmLocator = frame.locator('.baxia-dialog-content');
+            let checkTimer: any = null; // 用于存储定时器，便于中途清除
+
+            try {
+              if (await confirmLocator.isVisible()) {
+                console.log('检测到滑块验证弹窗，等待人工操作...');
+                this.emit('log', {
+                  message: '检测到滑块验证弹窗，等待人工操作...',
+                  type: 'warning',
+                });
+
+                const checkInterval = 10000; // 每10秒检查一次
+                let remainingTime = 300000;
+
+                // 用 setTimeout 实现可中断的循环（替代 while）
+                const checkPopup = async () => {
+                  // 1. 检查 frame 是否仍有效（是否在页面的有效 iframe 列表中）
+                  const allFrames = page.frames();
+                  const isFrameValid = allFrames.includes(frame);
+                  if (!isFrameValid) {
+                    this.emit('log', {
+                      message: '页面跳转，iframe 已失效，操作成功',
+                      type: 'info',
+                    });
+                    // 清除定时器
+                    clearTimeout(checkTimer);
+                    checkTimer = null;
+                    return;
+                  }
+
+                  // 2. 检查滑块弹窗是否仍可见（捕获可能的错误）
+                  let isStillVisible;
+                  try {
+                    isStillVisible = await confirmLocator.isVisible();
+                  } catch (err: any) {
+                    console.log(
+                      '滑块弹窗元素已不可访问，终止等待:',
+                      err.message
+                    );
+                    this.emit('log', {
+                      message: '滑块弹窗元素已不可访问，终止等待:',
+                      type: 'error',
+                    });
+                    return;
+                  }
+
+                  if (!isStillVisible) {
+                    console.log('滑块验证弹窗已关闭，视为成功');
+                    this.emit('log', {
+                      message: '滑块验证弹窗已关闭，继续执行...',
+                      type: 'info',
+                    });
+                    // 清除定时器
+                    clearTimeout(checkTimer);
+                    checkTimer = null;
+                    return;
+                  }
+
+                  // 超时处理
+                  remainingTime -= checkInterval;
+                  if (remainingTime <= 0) {
+                    console.log('滑块验证超时，操作失败');
+                    this.emit('log', {
+                      message: '滑块验证超时，操作失败',
+                      type: 'error',
+                    });
+                    // 清除定时器
+                    clearTimeout(checkTimer);
+                    checkTimer = null;
+                    // 执行任务失败处理
+                    await this.handleTaskFailure({ message: '滑块验证超时' });
+                    return;
+                  }
+
+                  console.log(
+                    `继续等待滑块验证完成，剩余时间: ${Math.ceil(
+                      remainingTime / 1000
+                    )}秒`
+                  );
+                  this.emit('log', {
+                    message: `继续等待滑块验证完成，剩余时间: ${Math.ceil(
+                      remainingTime / 1000
+                    )}秒`,
+                    type: 'info',
+                  });
+                  checkTimer = setTimeout(checkPopup, checkInterval);
+                };
+
+                checkTimer = setTimeout(checkPopup, checkInterval);
+                await new Promise<void>(resolve => {
+                  const waitInterval = setInterval(() => {
+                    if (!checkTimer) {
+                      clearInterval(waitInterval);
+                      resolve();
+                    }
+                  }, 1000);
+                });
+              }
+
+              this.emit('log', {
+                message: '滑块验证弹窗已关闭，视为成功',
+                type: 'info',
+              });
+              // 后续逻辑：检查发布状态（需先确认 frame 仍有效）
+              const allFrames = page.frames();
+              const isFrameValid = allFrames.includes(frame);
+              if (isFrameValid) {
+                const firstStatus = await frame
+                  .locator('.batchItemStatus > div')
+                  .first()
+                  .textContent();
+
+                if (firstStatus === '发布失败') {
+                  this.emit('log', {
+                    message: '检测到发布失败视频',
+                    type: 'warning',
+                  });
+                  return await this.handleTaskFailure({
+                    message: '检测到发布失败视频',
+                  });
+                }
+              } else {
+                console.log('iframe 已失效，跳过发布状态检查');
+                this.emit('log', {
+                  message: 'iframe 已失效，跳过发布状态检查',
+                  type: 'warning',
+                });
+              }
+
+              this.emit('log', {
+                message: `已完成视频发布信息填写`,
+                type: 'info',
+              });
+            } catch (err: any) {
+              console.error('发布流程出错:', err);
+              this.emit('log', {
+                message: `发布流程出错: ${err.message}`,
+                type: 'error',
+              });
+            } finally {
+              // 清理定时器，防止内存泄漏
+              if (checkTimer) clearTimeout(checkTimer);
+            }
           }
         }
       } catch (describeError: any) {
         console.error('发布视频信息填写出错:', describeError.message);
+        this.emit('log', {
+          message: `发布视频信息填写出错: ${describeError.message}`,
+          type: 'error',
+        });
         throw describeError; // 重新抛出异常，让外层处理
       }
 
-      // 任务完成，记录成功日志
-      this.emit('log', {
-        message: `淘宝光合平台视频发布任务处理完成`,
-        type: 'success',
-      });
+      // 使用封装的方法处理任务完成
+      return await this.handleTaskCompletion();
+    } catch (error: any) {
+      // 使用封装的方法处理任务失败
+      return await this.handleTaskFailure(error);
+    } finally {
+      // 无论成功还是失败，都要清理资源
+      // await cleanup();
+    }
+  }
 
-      // 更新发布记录状态为已完成
-      try {
-        if (this.filePathArray && this.filePathArray.length > 0) {
-          // 获取第一个视频文件的路径信息
-          const firstVideoPath = this.filePathArray[0];
-          const currentDir = path.dirname(firstVideoPath);
-          const currentDirName = path.basename(currentDir);
+  /**
+   * 处理任务完成后的逻辑
+   * @param successMessage 成功消息
+   */
+  private async handleTaskCompletion(
+    successMessage: string = '淘宝光合平台视频发布任务处理完成'
+  ) {
+    // 任务完成，记录成功日志
+    this.emit('log', {
+      message: successMessage,
+      type: 'success',
+    });
 
-          // 解析目录名获取guangId
-          const dirParts = currentDirName.split('---');
-          if (dirParts.length >= 4) {
-            const guangId = dirParts[3]; // 获取逛逛ID
+    // 更新发布记录状态为已完成
+    try {
+      if (this.filePathArray && this.filePathArray.length > 0) {
+        // 获取第一个视频文件的路径信息
+        const firstVideoPath = this.filePathArray[0];
+        const currentDir = path.dirname(firstVideoPath);
+        const currentDirName = path.basename(currentDir);
 
-            // 创建GuangProcessor实例来更新状态
-            const guangProcessor = new GuangProcessor();
+        // 解析目录名获取guangId
+        const dirParts = currentDirName.split('---');
+        if (dirParts.length >= 4) {
+          const guangId = dirParts[3]; // 获取逛逛ID
 
-            // 先查询对应的发布记录
-            const record = await guangProcessor.getPublishGuangHeRecord(
-              guangId,
-              firstVideoPath,
-              GuangHePublishStatus.PROCESSING
+          // 创建GuangProcessor实例来更新状态
+          const guangProcessor = new GuangProcessor();
+
+          // 先查询对应的发布记录
+          const record = await guangProcessor.getPublishGuangHeRecord(
+            guangId,
+            firstVideoPath,
+            GuangHePublishStatus.PROCESSING
+          );
+
+          if (record) {
+            // 更新状态为已完成
+            await guangProcessor.updatePublishGuangHeRecord(
+              record.id,
+              GuangHePublishStatus.COMPLETED
             );
 
-            if (record) {
-              // 更新状态为已完成
+            this.emit('log', {
+              message: `更新发布记录状态为已完成 - guangId: ${guangId}`,
+              type: 'info',
+            });
+          } else {
+            // 如果没找到处理中的记录，尝试查找待处理的记录
+            const pendingRecord = await guangProcessor.getPublishGuangHeRecord(
+              guangId,
+              firstVideoPath,
+              GuangHePublishStatus.PENDING
+            );
+
+            if (pendingRecord) {
               await guangProcessor.updatePublishGuangHeRecord(
-                record.id,
+                pendingRecord.id,
                 GuangHePublishStatus.COMPLETED
               );
 
               this.emit('log', {
-                message: `更新发布记录状态为已完成 - guangId: ${guangId}`,
+                message: `更新发布记录状态为已完成（从待处理） - guangId: ${guangId}`,
                 type: 'info',
               });
-            } else {
-              // 如果没找到处理中的记录，尝试查找待处理的记录
-              const pendingRecord =
-                await guangProcessor.getPublishGuangHeRecord(
-                  guangId,
-                  firstVideoPath,
-                  GuangHePublishStatus.PENDING
-                );
-
-              if (pendingRecord) {
-                await guangProcessor.updatePublishGuangHeRecord(
-                  pendingRecord.id,
-                  GuangHePublishStatus.COMPLETED
-                );
-
-                this.emit('log', {
-                  message: `更新发布记录状态为已完成（从待处理） - guangId: ${guangId}`,
-                  type: 'info',
-                });
-              }
             }
           }
         }
-      } catch (statusError) {
-        console.error('更新发布记录状态失败:', statusError);
-        this.emit('log', {
-          message: `更新发布记录状态失败: ${statusError}`,
-          type: 'warning',
-        });
       }
+    } catch (statusError) {
+      console.error('更新发布记录状态失败:', statusError);
+      this.emit('log', {
+        message: `更新发布记录状态失败: ${statusError}`,
+        type: 'warning',
+      });
+    }
 
-      // 任务完成后清理目录 - 修改日期为明天，数字改为0，删除视频文件
-      try {
-        const currentDirectory = this.guangGuangAccountDirectories[0];
-        if (currentDirectory) {
-          console.log(`开始清理目录: ${currentDirectory}`);
+    // 任务完成后清理目录 - 修改日期为明天，数字改为0，删除视频文件
+    try {
+      const currentDirectory = this.guangGuangAccountDirectories[0];
+      if (currentDirectory) {
+        console.log(`开始清理目录: ${currentDirectory}`);
 
-          const dirName = path.basename(currentDirectory);
-          const dirParts = dirName.split('---');
+        const dirName = path.basename(currentDirectory);
+        const dirParts = dirName.split('---');
 
-          if (dirParts.length >= 6) {
-            // 1. 修改日期为当前日期的第二天
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowStr =
-              tomorrow.getFullYear().toString() +
-              String(tomorrow.getMonth() + 1).padStart(2, '0') +
-              String(tomorrow.getDate()).padStart(2, '0');
+        if (dirParts.length >= 6) {
+          // 1. 修改日期为当前日期的第二天
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const tomorrowStr =
+            tomorrow.getFullYear().toString() +
+            String(tomorrow.getMonth() + 1).padStart(2, '0') +
+            String(tomorrow.getDate()).padStart(2, '0');
 
-            dirParts[4] = tomorrowStr; // 更新日期部分
-            dirParts[5] = '0'; // 2. 将末尾数字改为0
+          dirParts[4] = tomorrowStr; // 更新日期部分
+          dirParts[5] = '0'; // 2. 将末尾数字改为0
 
-            const newDirName = dirParts.join('---');
-            const parentDir = path.dirname(currentDirectory);
-            const newDirPath = path.join(parentDir, newDirName);
+          const newDirName = dirParts.join('---');
+          const parentDir = path.dirname(currentDirectory);
+          const newDirPath = path.join(parentDir, newDirName);
 
-            // 重命名目录（修改日期和数字）
+          // 重命名目录（修改日期和数字）
+          try {
+            fs.renameSync(currentDirectory, newDirPath);
+            console.log(`目录重命名成功: ${dirName} -> ${newDirName}`);
+
+            // 3. 删除目录下的视频文件（只在成功时执行）
             try {
-              fs.renameSync(currentDirectory, newDirPath);
-              console.log(`目录重命名成功: ${dirName} -> ${newDirName}`);
+              const files = fs.readdirSync(newDirPath);
+              let deletedCount = 0;
 
-              // 3. 删除目录下的视频文件（只在成功时执行）
-              try {
-                const files = fs.readdirSync(newDirPath);
-                let deletedCount = 0;
+              for (const file of files) {
+                const filePath = path.join(newDirPath, file);
+                const ext = path.extname(file).toLowerCase();
 
-                for (const file of files) {
-                  const filePath = path.join(newDirPath, file);
-                  const ext = path.extname(file).toLowerCase();
-
-                  if (['.mp4', '.avi', '.mov', '.mkv', '.flv'].includes(ext)) {
-                    fs.unlinkSync(filePath);
-                    deletedCount++;
-                    console.log(`删除视频文件: ${file}`);
-                  }
+                if (['.mp4', '.avi', '.mov', '.mkv', '.flv'].includes(ext)) {
+                  fs.unlinkSync(filePath);
+                  deletedCount++;
+                  console.log(`删除视频文件: ${file}`);
                 }
-
-                console.log(`共删除 ${deletedCount} 个视频文件`);
-
-                this.emit('log', {
-                  message: `目录清理完成: ${newDirName}，删除${deletedCount}个视频`,
-                  type: 'info',
-                });
-              } catch (deleteError) {
-                console.error('删除视频文件失败:', deleteError);
-                this.emit('log', {
-                  message: `删除视频文件失败: ${deleteError}`,
-                  type: 'warning',
-                });
               }
-            } catch (renameError) {
-              console.error('目录重命名失败:', renameError);
+
+              console.log(`共删除 ${deletedCount} 个视频文件`);
+
               this.emit('log', {
-                message: `目录重命名失败: ${renameError}`,
+                message: `目录清理完成: ${newDirName}，删除${deletedCount}个视频`,
+                type: 'info',
+              });
+            } catch (deleteError) {
+              console.error('删除视频文件失败:', deleteError);
+              this.emit('log', {
+                message: `删除视频文件失败: ${deleteError}`,
                 type: 'warning',
               });
             }
+          } catch (renameError) {
+            console.error('目录重命名失败:', renameError);
+            this.emit('log', {
+              message: `目录重命名失败: ${renameError}`,
+              type: 'warning',
+            });
           }
         }
-      } catch (cleanupError) {
-        console.error('目录清理操作失败:', cleanupError);
-        this.emit('log', {
-          message: `目录清理失败: ${cleanupError}`,
-          type: 'warning',
-        });
       }
-
-      // 方法成功完成，返回成功状态
-      return {
-        success: true,
-        message: '淘宝光合平台视频发布任务处理完成',
-      };
-    } catch (error: any) {
-      const errorMsg = `发布到淘宝出错: ${error.message}`;
-      console.error(errorMsg);
+    } catch (cleanupError) {
+      console.error('目录清理操作失败:', cleanupError);
       this.emit('log', {
-        message: errorMsg,
-        type: 'error',
+        message: `目录清理失败: ${cleanupError}`,
+        type: 'warning',
       });
+    }
 
-      // 更新发布记录状态为失败
-      try {
-        if (this.filePathArray && this.filePathArray.length > 0) {
-          // 获取第一个视频文件的路径信息
-          const firstVideoPath = this.filePathArray[0];
-          const currentDir = path.dirname(firstVideoPath);
-          const currentDirName = path.basename(currentDir);
+    // 返回成功状态
+    return {
+      success: true,
+      message: successMessage,
+    };
+  }
 
-          // 解析目录名获取guangId
-          const dirParts = currentDirName.split('---');
-          if (dirParts.length >= 4) {
-            const guangId = dirParts[3]; // 获取逛逛ID
+  /**
+   * 处理任务失败后的逻辑
+   * @param error 错误对象
+   */
+  private async handleTaskFailure(error: any) {
+    const errorMsg = `发布到淘宝出错: ${error.message}`;
+    console.error(errorMsg);
+    this.emit('log', {
+      message: errorMsg,
+      type: 'error',
+    });
 
-            // 创建GuangProcessor实例来更新状态
-            const guangProcessor = new GuangProcessor();
+    // 更新发布记录状态为失败
+    try {
+      if (this.filePathArray && this.filePathArray.length > 0) {
+        // 获取第一个视频文件的路径信息
+        const firstVideoPath = this.filePathArray[0];
+        const currentDir = path.dirname(firstVideoPath);
+        const currentDirName = path.basename(currentDir);
 
-            // 先查询对应的发布记录
-            const record = await guangProcessor.getPublishGuangHeRecord(
-              guangId,
-              firstVideoPath,
-              GuangHePublishStatus.PROCESSING
+        // 解析目录名获取guangId
+        const dirParts = currentDirName.split('---');
+        if (dirParts.length >= 4) {
+          const guangId = dirParts[3]; // 获取逛逛ID
+
+          // 创建GuangProcessor实例来更新状态
+          const guangProcessor = new GuangProcessor();
+
+          // 先查询对应的发布记录
+          const record = await guangProcessor.getPublishGuangHeRecord(
+            guangId,
+            firstVideoPath,
+            GuangHePublishStatus.PROCESSING
+          );
+
+          if (record) {
+            // 更新状态为失败
+            await guangProcessor.updatePublishGuangHeRecord(
+              record.id,
+              GuangHePublishStatus.FAILED
             );
 
-            if (record) {
-              // 更新状态为失败
+            this.emit('log', {
+              message: `更新发布记录状态为失败 - guangId: ${guangId}`,
+              type: 'warning',
+            });
+          } else {
+            // 如果没找到处理中的记录，尝试查找待处理的记录
+            const pendingRecord = await guangProcessor.getPublishGuangHeRecord(
+              guangId,
+              firstVideoPath,
+              GuangHePublishStatus.PENDING
+            );
+
+            if (pendingRecord) {
               await guangProcessor.updatePublishGuangHeRecord(
-                record.id,
+                pendingRecord.id,
                 GuangHePublishStatus.FAILED
               );
 
               this.emit('log', {
-                message: `更新发布记录状态为失败 - guangId: ${guangId}`,
-                type: 'warning',
-              });
-            } else {
-              // 如果没找到处理中的记录，尝试查找待处理的记录
-              const pendingRecord =
-                await guangProcessor.getPublishGuangHeRecord(
-                  guangId,
-                  firstVideoPath,
-                  GuangHePublishStatus.PENDING
-                );
-
-              if (pendingRecord) {
-                await guangProcessor.updatePublishGuangHeRecord(
-                  pendingRecord.id,
-                  GuangHePublishStatus.FAILED
-                );
-
-                this.emit('log', {
-                  message: `更新发布记录状态为失败（从待处理） - guangId: ${guangId}`,
-                  type: 'warning',
-                });
-              }
-            }
-          }
-        }
-      } catch (statusError) {
-        console.error('更新发布记录状态失败:', statusError);
-        this.emit('log', {
-          message: `更新发布记录状态失败: ${statusError}`,
-          type: 'warning',
-        });
-      }
-
-      // 发布失败时，将目录末尾数字改为error
-      try {
-        if (this.filePathArray && this.filePathArray.length > 0) {
-          // 获取第一个视频文件的目录路径
-          const firstVideoPath = this.filePathArray[0];
-          const currentDir = path.dirname(firstVideoPath);
-          const currentDirName = path.basename(currentDir);
-
-          // 解析目录名格式：A0---美瞳变色龙---美妆---4701623256---20251106---3
-          const dirParts = currentDirName.split('---');
-          if (dirParts.length === 6) {
-            // 统一改为error
-            dirParts[5] = 'e';
-
-            const newDirName = dirParts.join('---');
-            const parentDir = path.dirname(currentDir);
-            const newDirPath = path.join(parentDir, newDirName);
-
-            try {
-              fs.renameSync(currentDir, newDirPath);
-              this.emit('log', {
-                message: `发布失败，目录重命名: ${currentDirName} -> ${newDirName}`,
-                type: 'warning',
-              });
-            } catch (renameError) {
-              console.error(`目录重命名失败: ${renameError}`);
-              this.emit('log', {
-                message: `目录重命名失败: ${renameError}`,
+                message: `更新发布记录状态为失败（从待处理） - guangId: ${guangId}`,
                 type: 'warning',
               });
             }
           }
         }
-      } catch (dirError) {
-        console.error(`处理失败目录时出错: ${dirError}`);
-        this.emit('log', {
-          message: `处理失败目录时出错: ${dirError}`,
-          type: 'warning',
-        });
       }
-
-      return {
-        success: false,
-        message: `操作失败: ${error.message}`,
-      };
-    } finally {
-      // 无论成功还是失败，都要清理资源
-      await cleanup();
+    } catch (statusError) {
+      console.error('更新发布记录状态失败:', statusError);
+      this.emit('log', {
+        message: `更新发布记录状态失败: ${statusError}`,
+        type: 'warning',
+      });
     }
+
+    // 发布失败时，将目录末尾数字改为error
+    try {
+      if (this.filePathArray && this.filePathArray.length > 0) {
+        // 获取第一个视频文件的目录路径
+        const firstVideoPath = this.filePathArray[0];
+        const currentDir = path.dirname(firstVideoPath);
+        const currentDirName = path.basename(currentDir);
+
+        // 解析目录名格式：A0---美瞳变色龙---美妆---4701623256---20251106---3
+        const dirParts = currentDirName.split('---');
+        if (dirParts.length === 6) {
+          // 统一改为error
+          dirParts[5] = 'e';
+
+          const newDirName = dirParts.join('---');
+          const parentDir = path.dirname(currentDir);
+          const newDirPath = path.join(parentDir, newDirName);
+
+          try {
+            fs.renameSync(currentDir, newDirPath);
+            this.emit('log', {
+              message: `发布失败，目录重命名: ${currentDirName} -> ${newDirName}`,
+              type: 'warning',
+            });
+          } catch (renameError) {
+            console.error(`目录重命名失败: ${renameError}`);
+            this.emit('log', {
+              message: `目录重命名失败: ${renameError}`,
+              type: 'warning',
+            });
+          }
+        }
+      }
+    } catch (dirError) {
+      console.error(`处理失败目录时出错: ${dirError}`);
+      this.emit('log', {
+        message: `处理失败目录时出错: ${dirError}`,
+        type: 'warning',
+      });
+    }
+
+    return {
+      success: false,
+      message: `操作失败: ${error.message}`,
+    };
   }
 
   /**
@@ -1687,9 +1926,6 @@ class GuangheTaobao extends EventEmitter {
             const currentProductName = videoFileParts[2] || '';
 
             if (!currentProductId) {
-              console.log(
-                `视频 ${i} 没有商品ID，使用商品名称: ${currentProductName}`
-              );
               videoDescriptions.push(currentProductName);
               continue;
             }
@@ -1725,16 +1961,16 @@ class GuangheTaobao extends EventEmitter {
                 if (availableIndex !== -1) {
                   const description = descriptionData[availableIndex];
 
-                  // 解析描述格式
-                  const descMatch = description.match(/^(\d+)([^#]+)/);
+                  // 解析描述格式：开头匹配“数字+下划线”（如20251118_），后续内容到#号为止
+                  const descMatch = description.match(/^(\d+_)([^#]+)/);
                   if (descMatch) {
-                    const cleanDesc = descMatch[2].trim();
+                    const cleanDesc = descMatch[2].trim(); // 提取下划线后、#号前的内容
                     videoDescriptions.push(cleanDesc);
                     console.log(
                       `视频 ${i} 使用商品 ${currentProductId} 的描述: ${cleanDesc}`
                     );
 
-                    // 如果是第一个视频，提取标签
+                    // 第一个视频提取标签（逻辑不变）
                     if (i === 0) {
                       const tagMatches = description.match(/#([^#]+)#/g);
                       if (tagMatches && tagMatches.length >= 2) {
@@ -1744,8 +1980,8 @@ class GuangheTaobao extends EventEmitter {
                       }
                     }
                   } else {
-                    // 如果没有井号，截取28位字符
-                    const startMatch = description.match(/^(\d+)(.+)/);
+                    // 不符合上述格式时，简化处理（仅要求开头是“数字+下划线”，截取后续前28位）
+                    const startMatch = description.match(/^(\d+_)(.+)/);
                     if (startMatch) {
                       const shortDesc = startMatch[2].substring(0, 28).trim();
                       videoDescriptions.push(shortDesc);
@@ -1754,25 +1990,6 @@ class GuangheTaobao extends EventEmitter {
                       );
                     }
                   }
-
-                  // 记录已使用的描述索引
-                  usedIndexes.push(availableIndex);
-                  usedDescriptionsMap.set(currentProductId, usedIndexes);
-
-                  // 保存更新后的描述文件（移除已使用的描述）
-                  const remainingDescriptions = descriptionData.filter(
-                    (_, index) => !usedIndexes.includes(index)
-                  );
-                  fs.writeFileSync(
-                    descriptionFilePath,
-                    JSON.stringify(remainingDescriptions, null, 2)
-                  );
-                } else {
-                  // 该商品所有描述都已使用，使用商品名称
-                  console.log(
-                    `商品 ${currentProductId} 所有描述已用完，使用商品名称: ${currentProductName}`
-                  );
-                  videoDescriptions.push(currentProductName);
                 }
               } else {
                 console.log(
@@ -1855,22 +2072,22 @@ class GuangheTaobao extends EventEmitter {
         };
 
         console.log('UserData参数:', JSON.stringify(UserData, null, 2));
-        this.emit('log', {
-          message: `商品ID列表: ${productIds.join(', ')}`,
-          type: 'info',
-        });
-        this.emit('log', {
-          message: `商品名称列表: ${productNames.join(', ')}`,
-          type: 'info',
-        });
-        this.emit('log', {
-          message: `视频描述数量: ${videoDescriptions.length}`,
-          type: 'info',
-        });
-        this.emit('log', {
-          message: `UserData参数: ${JSON.stringify(UserData, null, 2)}`,
-          type: 'info',
-        });
+        // this.emit('log', {
+        //   message: `商品ID列表: ${productIds.join(', ')}`,
+        //   type: 'info',
+        // });
+        // this.emit('log', {
+        //   message: `商品名称列表: ${productNames.join(', ')}`,
+        //   type: 'info',
+        // });
+        // this.emit('log', {
+        //   message: `视频描述数量: ${videoDescriptions.length}`,
+        //   type: 'info',
+        // });
+        // this.emit('log', {
+        //   message: `UserData参数: ${JSON.stringify(UserData, null, 2)}`,
+        //   type: 'info',
+        // });
         // 调用 GuangheTaobaoIssue 处理目录
         await this.GuangheTaobaoIssue(UserData);
 
