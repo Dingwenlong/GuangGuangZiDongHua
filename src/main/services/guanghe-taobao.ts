@@ -673,7 +673,7 @@ class GuangheTaobao extends EventEmitter {
     const fs = require('fs');
     const path = require('path');
     const logPath =
-      '\\\\192.168.31.99\\影视存储\\逛逛客户端\\逛逛账号\\logs\\productRrror.txt';
+      '\\\\192.168.31.99\\影视存储\\逛逛客户端\\逛逛账号\\logs\\productError.txt';
 
     // 1. 记录错误日志
     const logContent = `[${new Date().toLocaleString()}] 账号 ${guangId} 挂车失败，原因：${reason}\n`;
