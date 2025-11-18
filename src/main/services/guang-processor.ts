@@ -51,8 +51,9 @@ export class GuangProcessor extends EventEmitter {
       ignored: [
         /(^|[\/\\])\../, // 忽略隐藏文件
         /temp/, // 忽略临时目录
+        /logs/, // 忽略日志目录
       ],
-      depth: 2, // 监控深度增加到3层
+      depth: 1, // 监控深度增加到3层
       ignoreInitial: false, // 不忽略初始文件
       awaitWriteFinish: {
         stabilityThreshold: 3000, // 文件稳定3秒后才触发
