@@ -122,17 +122,8 @@ function startOrStopTaskHandler(start = true) {
     stepNo: 's6',
     sData: { ...s6.value, running: start },
   });
-  // const dsjioa = [
-  //   // 'C:\\Users\\ASUS\\Downloads\\ces\\S5-123.mp4',
-  //   // 'C:\\Users\\ASUS\\Downloads\\ces\\S5-das.mp4',
-  //   // 'C:\\Users\\ASUS\\Downloads\\ces\\S5-asd\\S5-cxz.mp4',
-  //   'C:\\Users\\ASUS\\Downloads\\ces\\S5-asd\\S5-fdsdf.mp4',
-  // ];
-  // for (const filePath of dsjioa) {
-  //   setCookie(filePath);
-  // }
 
-  guanghe();
+  // guanghe();
 }
 
 function guanghe() {

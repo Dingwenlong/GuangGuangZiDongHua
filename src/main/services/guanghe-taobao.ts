@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import http from 'http';
 import dayjs from 'dayjs';
 import { GuangProcessor, GuangHePublishStatus } from './guang-processor';
+import workbenchManager from './workbench-manager';
 
 class GuangheTaobao extends EventEmitter {
   // 静态属性
@@ -795,6 +796,10 @@ class GuangheTaobao extends EventEmitter {
 
   // 整体调用
   public async GuangheTaobaoIssue(UserData: any) {
+    if (!(await workbenchManager.getByKey('s8')).running) {
+      console.log('s8任务未运行,停止调用');
+      return;
+    }
     let page: any = null;
     let browser: any = null;
     let iframeDetection: any = null;
@@ -1332,6 +1337,7 @@ class GuangheTaobao extends EventEmitter {
                 message: `发布流程出错: ${err.message}`,
                 type: 'error',
               });
+              throw err;
             } finally {
               // 清理定时器，防止内存泄漏
               if (checkTimer) clearTimeout(checkTimer);
@@ -1354,7 +1360,7 @@ class GuangheTaobao extends EventEmitter {
       return await this.handleTaskFailure(error);
     } finally {
       // 无论成功还是失败，都要清理资源
-      // await cleanup();
+      await cleanup();
     }
   }
 
@@ -1912,8 +1918,8 @@ class GuangheTaobao extends EventEmitter {
 
         // 读取视频描述文件 - 为每个商品ID读取对应的描述文件
         let videoDescriptions: string[] = [];
-        let videoTags: string[] = ['标签'];
-        let topics: string[] = ['话题'];
+        let videoTags: string[] = [''];
+        let topics: string[] = [''];
         const usedDescriptionsMap = new Map<string, number[]>(); // 记录每个商品ID已使用的描述索引
 
         try {
