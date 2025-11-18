@@ -243,6 +243,11 @@ export class GuangProcessor extends EventEmitter {
     }
   }
 
+  /**
+   * 获取逛逛号文件夹
+   * @param category
+   * @returns
+   */
   private getGuangHeAccount(category: string): string | null {
     if (!this.accountDirectory) return null;
 
@@ -269,8 +274,8 @@ export class GuangProcessor extends EventEmitter {
       .sort((a, b) => {
         const aParts = a.split('---');
         const bParts = b.split('---');
-        const aCount = parseInt(aParts[4], 10);
-        const bCount = parseInt(bParts[4], 10);
+        const aCount = parseInt(aParts[5], 10);
+        const bCount = parseInt(bParts[5], 10);
         return aCount - bCount;
       })
       .map(item => path.join(this.accountDirectory, item));
