@@ -22,7 +22,7 @@
     },
     "types": ["node"],
     "typeRoots": ["node_modules/@types"],
-    "lib": ["es2018", "dom"],
+    "lib": ["ES2021", "dom"],
     "forceConsistentCasingInFileNames": true,
     "strict": true
   },
