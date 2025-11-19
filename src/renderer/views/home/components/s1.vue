@@ -98,7 +98,9 @@ onMounted(async () => {
     // 添加超时保护，防止获取工作台数据时卡住
     await Promise.race([
       (async () => {
-        const workbench = await ipcRendererChannel.GetWorkbenchData.invoke('s1');
+        const workbench = await ipcRendererChannel.GetWorkbenchData.invoke(
+          's1'
+        );
         s1.taskDirectory = workbench.taskDirectory ?? '';
         s1.running = false;
         if (workbench.running) {
@@ -110,7 +112,7 @@ onMounted(async () => {
       })(),
       new Promise((_, reject) => {
         setTimeout(() => reject(new Error('获取S1工作台数据超时')), 5000);
-      })
+      }),
     ]).catch(error => {
       console.error('获取S1工作台数据失败:', error);
     });
@@ -121,7 +123,10 @@ onMounted(async () => {
           stepNo: 's1',
           sData: { ...newValue },
         });
-        if (newValue.taskDirectory !== oldValue.taskDirectory || !newValue.running)
+        if (
+          newValue.taskDirectory !== oldValue.taskDirectory ||
+          !newValue.running
+        )
           await ipcRendererChannel.StopMonitoringDirectory.invoke(
             oldValue.taskDirectory
           );
@@ -161,7 +166,10 @@ onMounted(async () => {
                 const children = dir.children as any[];
                 return {
                   taskDirectory: s1.taskDirectory,
-                  productDirectory: dir.path.replace(s1.taskDirectory + '\\', ''),
+                  productDirectory: dir.path.replace(
+                    s1.taskDirectory + '\\',
+                    ''
+                  ),
                   videoMaterial: children
                     .filter((file: any) => file.isVideo && file.type === 'file')
                     .sort((a, b) => a.name.localeCompare(b.name))
@@ -180,13 +188,15 @@ onMounted(async () => {
       ipcRendererChannel.CheckKaipaiLoginStatus.invoke(),
       new Promise((_, reject) => {
         setTimeout(() => reject(new Error('登录检测超时')), 3000);
+      }),
+    ])
+      .then(isLogin => {
+        console.log('登录检测结果:', isLogin);
       })
-    ]).then(isLogin => {
-      console.log('登录检测结果:', isLogin);
-    }).catch(error => {
-      console.error('登录检测失败:', error);
-    });
-    
+      .catch(error => {
+        console.error('登录检测失败:', error);
+      });
+
     console.log('S1组件初始化完成');
   } catch (error) {
     console.error('S1组件初始化失败:', error);
@@ -252,7 +262,7 @@ async function batchCreationFolderHandler() {
     )
     .map(([title, category, productId], i) => {
       startFolderIndex += 1;
-      return `S1---${startFolderIndex}---${sanitizeFolderName(title).replace(
+      return `S1---${startFolderIndex}---${sanitizeFolderName(title).replaceAll(
         ' ',
         ''
       )}---${category}---${productId.replace(/\r/g, '')}---${nanoid(8)}`;
