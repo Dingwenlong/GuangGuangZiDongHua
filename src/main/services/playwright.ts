@@ -1033,17 +1033,27 @@ class PlaywrightScript extends EventEmitter {
         // 不影响主流程，继续返回成功结果
       }
       // 清理原始S5文件
-      if (filePath && fs.existsSync(filePath) && filePath.includes('S5')) {
-        try {
-          fs.unlinkSync(filePath);
+      if (filePath && fs.existsSync(filePath)) {
+        const fileName = path.basename(filePath);
+        const isS5File = fileName.startsWith('S5') || /^S5/i.test(fileName);
+
+        if (isS5File) {
+          try {
+            fs.unlinkSync(filePath);
+            this.emit('log', {
+              message: `已清理原始S5文件：${filePath}`,
+              type: 'info',
+            });
+          } catch (e) {
+            this.emit('log', {
+              message: `清理S5文件失败：${(e as Error).message}`,
+              type: 'warning',
+            });
+          }
+        } else {
           this.emit('log', {
-            message: `已清理原始S5文件：${filePath}`,
+            message: `文件 ${fileName} 不是S5文件，跳过清理`,
             type: 'info',
-          });
-        } catch (e) {
-          this.emit('log', {
-            message: `清理S5文件失败：${(e as Error).message}`,
-            type: 'warning',
           });
         }
       }

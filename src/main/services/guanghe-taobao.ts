@@ -21,21 +21,51 @@ class GuangheTaobao extends EventEmitter {
   private guangGuangAccountDirectories: string[] = [];
   private isProcessingQueue: boolean = false;
 
-  // 初始化浏览器实例 - 采用CDP方式
+  // 新增静态变量存储浏览器实例和进程
+  private static browserInstance: any = null;
+  private static chromeProcess: any = null;
+  private static readonly FIXED_DEBUG_PORT = 9222; // 固定调试端口
+  private static readonly remoteDebuggingUrl = `http://127.0.0.1:${GuangheTaobao.FIXED_DEBUG_PORT}`;
+
+  // 初始化浏览器实例 - 采用CDP方式，复用固定端口实例
   private static async initBrowser() {
-    // 使用Chrome默认配置文件，保留登录状态
+    // 如果已有浏览器实例且有效，直接返回
+    if (GuangheTaobao.browserInstance) {
+      console.log('复用已存在的浏览器实例');
+      return GuangheTaobao.browserInstance;
+    }
+
     return new Promise(async resolve => {
       try {
-        console.log('开始初始化浏览器实例，使用默认用户配置');
-        // 为每次调用生成唯一的调试端口，避免端口冲突
-        const debugPort = 9222 + Math.floor(Math.random() * 1000);
-        const remoteDebuggingUrl = `http://127.0.0.1:${debugPort}`;
+        console.log(
+          '开始初始化浏览器实例，使用固定端口:',
+          GuangheTaobao.FIXED_DEBUG_PORT
+        );
+
+        // 检查端口是否已被占用（可能已有浏览器实例在运行）
+        const isPortInUse = await GuangheTaobao.isPortAvailableAsync(
+          GuangheTaobao.FIXED_DEBUG_PORT
+        );
+
+        if (isPortInUse) {
+          console.log('固定端口已有浏览器在运行，尝试连接...');
+          const existingBrowser = await GuangheTaobao.connectToBrowserAsync(
+            GuangheTaobao.remoteDebuggingUrl,
+            5,
+            3000
+          );
+
+          if (existingBrowser) {
+            GuangheTaobao.browserInstance = existingBrowser;
+            console.log('成功连接到已运行的浏览器实例');
+            resolve(existingBrowser);
+            return;
+          }
+        }
 
         // 设置Chrome路径
         GuangheTaobao.chromePath =
           'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-        // GuangheTaobao.chromePath =
-        //   'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
 
         // 使用C盘根目录下的自定义用户数据目录
         const username = os.userInfo().username;
@@ -44,7 +74,7 @@ class GuangheTaobao extends EventEmitter {
           `guanghe_${username}_data`
         );
 
-        // 如果目录不存在，则创建
+        // 创建用户数据目录（如果不存在）
         try {
           if (!fs.existsSync(browserUserDataDir)) {
             fs.mkdirSync(browserUserDataDir, { recursive: true });
@@ -54,53 +84,60 @@ class GuangheTaobao extends EventEmitter {
           console.error('创建用户数据目录失败:', error.message);
         }
 
-        console.log(`使用Chrome默认用户数据目录: ${browserUserDataDir}`);
+        console.log(`使用用户数据目录: ${browserUserDataDir}`);
         console.log('准备启动新的Chrome浏览器实例');
 
-        // 启动Chrome浏览器，使用动态生成的端口
-        console.log('启动Chrome浏览器...');
+        // 启动Chrome浏览器，使用固定端口
         const chromeProcess = await GuangheTaobao.startChromeWithDebugPort(
-          debugPort,
+          GuangheTaobao.FIXED_DEBUG_PORT,
           browserUserDataDir
         );
 
-        // 等待Chrome完全启动，增加等待时间
+        if (!chromeProcess) {
+          console.error('启动Chrome进程失败');
+          resolve(null);
+          return;
+        }
+
+        GuangheTaobao.chromeProcess = chromeProcess;
+
+        // 等待Chrome完全启动
         console.log('等待Chrome浏览器完全启动...');
         await new Promise(resolve => setTimeout(resolve, 5000));
         console.log('Chrome浏览器启动完成，准备连接...');
 
-        // 连接浏览器，增加重试次数
+        // 连接浏览器
         const connectedBrowser = await GuangheTaobao.connectToBrowserAsync(
-          remoteDebuggingUrl,
+          GuangheTaobao.remoteDebuggingUrl,
           5,
           3000
         );
 
         if (!connectedBrowser) {
           console.error('浏览器连接失败');
+          resolve(null);
           return;
         }
 
-        // 将Chrome进程引用附加到浏览器实例上
-        if (chromeProcess) {
-          (connectedBrowser as any).chromeProcess = chromeProcess;
-          console.log('Chrome进程引用已附加到浏览器实例');
-        }
+        // 存储浏览器实例引用
+        GuangheTaobao.browserInstance = connectedBrowser;
+        (connectedBrowser as any).chromeProcess = chromeProcess;
 
         console.log('浏览器初始化成功，已准备就绪');
         resolve(connectedBrowser);
       } catch (error: any) {
         console.error('初始化浏览器失败:', error.message);
+        resolve(null);
       }
     });
   }
 
   /**
    * 检查指定端口是否可用
+   * 调整为：返回true表示端口已被占用（有服务在运行）
    */
   private static async isPortAvailableAsync(port: number): Promise<boolean> {
     return new Promise(resolve => {
-      // 使用127.0.0.1而不是localhost避免IPv6问题
       const options = {
         hostname: '127.0.0.1',
         port: port,
@@ -115,23 +152,20 @@ class GuangheTaobao extends EventEmitter {
           data += chunk;
         });
         res.on('end', () => {
-          // 检查响应是否为有效的JSON
           try {
             JSON.parse(data);
-            resolve(res.statusCode === 200);
+            resolve(res.statusCode === 200); // 端口已被占用且是Chrome调试服务
           } catch (e) {
             resolve(false);
           }
         });
       });
 
-      req.on('error', error => {
-        console.log(`端口检查错误: ${error.message}`);
-        resolve(false);
+      req.on('error', () => {
+        resolve(false); // 端口未被占用
       });
 
       req.on('timeout', () => {
-        console.log(`端口检查超时: ${port}`);
         req.destroy();
         resolve(false);
       });
@@ -147,22 +181,15 @@ class GuangheTaobao extends EventEmitter {
     debugPort: number,
     userDataDir: string
   ): Promise<any> {
-    // 使用默认用户数据目录时不需要创建，只需要验证是否存在
-    if (!fs.existsSync(userDataDir)) {
-      console.warn(`警告: 默认用户数据目录不存在: ${userDataDir}`);
-    }
-
-    // 移除路径中的引号，避免路径解析问题
     const cleanUserDataDir = userDataDir.replace(/"/g, '');
 
     const args = [
       `--remote-debugging-port=${debugPort}`,
-      `--remote-debugging-address=127.0.0.1`, // 指定绑定到IPv4地址
+      `--remote-debugging-address=127.0.0.1`,
       `--user-data-dir=${cleanUserDataDir}`,
       '--no-first-run',
       '--no-default-browser-check',
       '--start-maximized',
-      // 添加绕过检测的参数
       '--disable-blink-features=AutomationControlled',
       '--disable-features=IsolateOrigins,site-per-process',
       '--flag-switches-begin',
@@ -172,40 +199,42 @@ class GuangheTaobao extends EventEmitter {
       '--disable-default-apps',
       '--disable-extensions',
       '--disable-gpu',
-      '--no-startup-window', // 不自动打开新窗口
+      // 移除--no-startup-window，确保启动时打开窗口
     ];
 
     try {
       console.log(
         `启动Chrome命令: ${GuangheTaobao.chromePath} ${args.join(' ')}`
       );
-      // 使用require方式导入child_process以避免TypeScript类型错误
       const { spawn } = require('child_process');
-      // 使用spawn而不是execFile，这样可以获取进程引用
       const chromeProcess = spawn(GuangheTaobao.chromePath, args, {
         windowsHide: false,
-        detached: false, // 不分离进程，便于后续管理
-        stdio: 'ignore', // 忽略标准输入输出
+        detached: false,
+        stdio: 'ignore',
       });
 
-      console.log(
-        `Chrome浏览器已启动，调试端口: ${debugPort}，使用默认用户数据目录`
-      );
+      // 监听进程退出事件，清理实例引用
+      chromeProcess.on('exit', () => {
+        console.log('Chrome进程已退出');
+        GuangheTaobao.browserInstance = null;
+        GuangheTaobao.chromeProcess = null;
+      });
 
-      // 返回进程引用，便于后续清理
+      console.log(`Chrome浏览器已启动，调试端口: ${debugPort}`);
+
       return chromeProcess;
     } catch (error: any) {
       console.error(`无法启动Chrome浏览器: ${error.message}`);
-      // 尝试使用另一种方式启动Chrome
       try {
         const { exec } = require('child_process');
-        // 使用start命令启动，注意路径中包含空格的处理
         const command = `start "" "${GuangheTaobao.chromePath}" ${args
           .map((arg: string) => `"${arg}"`)
           .join(' ')}`;
         console.log(`尝试使用start命令启动: ${command}`);
         exec(command);
-        return null; // exec方式无法获取进程引用
+        // 轮询等待进程启动
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        return { kill: () => {} }; // 模拟进程对象
       } catch (innerError: any) {
         console.error(`使用start命令启动Chrome也失败: ${innerError.message}`);
         return null;
@@ -224,16 +253,13 @@ class GuangheTaobao extends EventEmitter {
     for (let i = 0; i < maxRetries; i++) {
       try {
         console.log(`尝试连接到Chrome浏览器... (第${i + 1}/${maxRetries}次)`);
-        console.log(`连接URL: ${remoteDebuggingUrl}`);
 
-        // 使用connectOverCDP连接到已启动的Chrome
         const browser = await chromium.connectOverCDP(remoteDebuggingUrl, {
           slowMo: 50,
-          timeout: 30000, // 增加超时时间
+          timeout: 30000,
         });
 
         console.log('成功连接到Chrome浏览器');
-
         return browser;
       } catch (error: any) {
         console.error(`连接错误详情: ${error.stack || error.message}`);
@@ -245,9 +271,7 @@ class GuangheTaobao extends EventEmitter {
           return null;
         }
 
-        console.log(
-          `连接浏览器失败，${retryDelay / 1000}秒后重试... (第${i + 1}次)`
-        );
+        console.log(`连接浏览器失败，${retryDelay / 1000}秒后重试...`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
     }
@@ -366,6 +390,37 @@ class GuangheTaobao extends EventEmitter {
       await describeInputWrapper.type(currentDescription);
 
       // 开始输入标签
+      const currentTagsStr =
+        UserData.videoTags?.[this.currentVideoIndex || 0] || '';
+      // 转换为标签数组（过滤空空值）
+
+      let currentTags = currentTagsStr
+        ? currentTagsStr.split(',').filter(Boolean)
+        : [];
+
+      // 如果当前视频没有有效标签，从config.json获取默认标签
+      if (currentTags.length === 0) {
+        try {
+          const configPath = path.join(UserData.directory, 'config.json');
+          if (fs.existsSync(configPath)) {
+            const configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            if (
+              configData.tags &&
+              Array.isArray(configData.tags) &&
+              configData.tags.length > 0
+            ) {
+              // 取前两个标签并删除所有下划线
+              currentTags = configData.tags
+                .slice(0, 2)
+                .map((tag: string) => tag.replace(/_/g, ''))
+                .filter(Boolean);
+            }
+          }
+        } catch (configError) {
+          console.error('读取config.json获取默认标签失败:', configError);
+        }
+      }
+
       const labelInput = await frame.locator('div[data-cangjie-editable]');
       if (await labelInput.isVisible()) {
         console.log('开始输入标签');
@@ -373,11 +428,13 @@ class GuangheTaobao extends EventEmitter {
         await labelInput.press('Control+A'); // 全选内容
         await labelInput.press('Delete'); // 删除选中内容
 
-        for (const item of UserData.videoTags) {
+        // 使用处理后的当前视频标签数组
+        for (const item of currentTags) {
           await this.simulateHumanInput(labelInput, `#${item}#`);
         }
       }
       await new Promise(resolve => setTimeout(resolve, 1500));
+
       // 点击话题活动
       await frame
         .locator('.publish-content__topic-v2--select--1E8f4Wd ')
@@ -804,48 +861,39 @@ class GuangheTaobao extends EventEmitter {
     let browser: any = null;
     let iframeDetection: any = null;
 
-    // 定义清理函数，确保资源正确释放
     const cleanup = async () => {
       try {
         if (iframeDetection) {
           clearInterval(iframeDetection);
           iframeDetection = null;
         }
-        if (page) {
-          await page.close().catch(() => {});
-          page = null;
-        }
+
         if (browser) {
-          // 获取所有上下文并关闭它们
           const contexts = browser.contexts();
           for (const context of contexts) {
             const pages = context.pages();
-            for (const p of pages) {
-              await p.close().catch(() => {});
-            }
-            await context.close().catch(() => {});
-          }
-
-          // 注意：通过CDP连接的浏览器实例没有disconnect方法
-          // 直接跳过disconnect步骤
-
-          // 获取Chrome进程引用并终止
-          const chromeProcess = (browser as any).chromeProcess;
-          if (chromeProcess) {
-            try {
-              chromeProcess.kill('SIGTERM');
-              console.log('Chrome进程已终止');
-            } catch (killError) {
-              console.error('终止Chrome进程失败:', killError);
+            // 只保留第一个标签页（通常是初始空白页或首页），关闭后续所有标签
+            // 若只有一个标签页则不关闭（避免浏览器退出）
+            if (pages.length > 1) {
+              const pagesToClose = pages.slice(1); // 从第二个标签开始关闭
+              for (const p of pagesToClose) {
+                // 无论是否是当前操作的page，都关闭后续标签
+                await p.close().catch(() => {});
+              }
+              console.log(
+                `已保留第一个标签页，关闭了${pagesToClose.length}个后续标签`
+              );
+            } else {
+              console.log('仅存在一个标签页，无需关闭');
             }
           }
-
-          browser = null;
         }
 
-        console.log('浏览器资源已完全清理');
+        // 清空当前page引用
+        page = null;
+        console.log('资源清理完成');
       } catch (error) {
-        console.error('清理浏览器资源时出错:', error);
+        console.error('清理资源时出错:', error);
       }
     };
 
@@ -1833,10 +1881,14 @@ class GuangheTaobao extends EventEmitter {
     try {
       // 只处理第一个目录
       const directory = this.guangGuangAccountDirectories[0];
+      if (!directory) {
+        console.log('目录队列中没有可处理的目录');
+        return;
+      }
       console.log(`处理目录: ${directory}`);
 
       try {
-        // 获取目录名
+        // 获取目录名及分割部分
         const dirName = path.basename(directory);
         console.log(`目录名: ${dirName}`);
         const dirParts = dirName.split('---');
@@ -1895,7 +1947,7 @@ class GuangheTaobao extends EventEmitter {
           return;
         }
 
-        // 获取所有视频的productId列表，用于后续匹配
+        // 提取所有视频的productId和productName列表
         const productIds: string[] = [];
         const productNames: string[] = [];
 
@@ -1916,14 +1968,14 @@ class GuangheTaobao extends EventEmitter {
         console.log(`商品ID列表: ${productIds.join(', ')}`);
         console.log(`商品名称列表: ${productNames.join(', ')}`);
 
-        // 读取视频描述文件 - 为每个商品ID读取对应的描述文件
-        let videoDescriptions: string[] = [];
-        let videoTags: string[] = [''];
+        // 处理视频描述和标签
+        const videoDescriptions: string[] = [];
+        const videoTagsStr: string[] = [];
         let topics: string[] = [''];
         const usedDescriptionsMap = new Map<string, number[]>(); // 记录每个商品ID已使用的描述索引
 
         try {
-          // 为每个视频获取对应的商品描述
+          // 为每个视频获取对应的商品描述和标签
           for (let i = 0; i < videoFiles.length; i++) {
             const videoFile = videoFiles[i];
             const videoFileName = path.basename(videoFile);
@@ -1931,134 +1983,169 @@ class GuangheTaobao extends EventEmitter {
             const currentProductId = videoFileParts[4] || '';
             const currentProductName = videoFileParts[2] || '';
 
-            if (!currentProductId) {
-              videoDescriptions.push(currentProductName);
-              continue;
-            }
+            let currentDescription = currentProductName; // 默认使用商品名称
+            let currentTagsStr = '';
 
-            const descriptionFilePath = `\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频标题\\${currentProductId}_gg.json`;
-            console.log(`视频 ${i} 尝试读取描述文件: ${descriptionFilePath}`);
+            if (currentProductId) {
+              const descriptionFilePath = `\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频标题\\${currentProductId}_gg.json`;
+              console.log(`视频 ${i} 尝试读取描述文件: ${descriptionFilePath}`);
 
-            if (fs.existsSync(descriptionFilePath)) {
-              const descriptionData = JSON.parse(
-                fs.readFileSync(descriptionFilePath, 'utf-8')
-              );
-              console.log(
-                `商品 ${currentProductId} 描述文件包含 ${descriptionData.length} 条描述`
-              );
+              if (fs.existsSync(descriptionFilePath)) {
+                try {
+                  const descriptionData = JSON.parse(
+                    fs.readFileSync(descriptionFilePath, 'utf-8')
+                  );
+                  console.log(
+                    `商品 ${currentProductId} 描述文件包含 ${descriptionData.length} 条描述`
+                  );
 
-              if (
-                Array.isArray(descriptionData) &&
-                descriptionData.length > 0
-              ) {
-                // 获取该商品已使用的描述索引
-                const usedIndexes =
-                  usedDescriptionsMap.get(currentProductId) || [];
+                  if (
+                    Array.isArray(descriptionData) &&
+                    descriptionData.length > 0
+                  ) {
+                    // 获取该商品已使用的描述索引
+                    const usedIndexes =
+                      usedDescriptionsMap.get(currentProductId) || [];
 
-                // 找到第一个未使用的描述
-                let availableIndex = -1;
-                for (let j = 0; j < descriptionData.length; j++) {
-                  if (!usedIndexes.includes(j)) {
-                    availableIndex = j;
-                    break;
-                  }
-                }
+                    // 找到第一个未使用的描述
+                    let availableIndex = -1;
+                    for (let j = 0; j < descriptionData.length; j++) {
+                      if (!usedIndexes.includes(j)) {
+                        availableIndex = j;
+                        break;
+                      }
+                    }
 
-                if (availableIndex !== -1) {
-                  const description = descriptionData[availableIndex];
+                    if (availableIndex !== -1) {
+                      // 记录已使用的描述索引
+                      usedDescriptionsMap.set(currentProductId, [
+                        ...usedIndexes,
+                        availableIndex,
+                      ]);
 
-                  // 解析描述格式：开头匹配“数字+下划线”（如20251118_），后续内容到#号为止
-                  const descMatch = description.match(/^(\d+_)([^#]+)/);
-                  if (descMatch) {
-                    const cleanDesc = descMatch[2].trim(); // 提取下划线后、#号前的内容
-                    videoDescriptions.push(cleanDesc);
-                    console.log(
-                      `视频 ${i} 使用商品 ${currentProductId} 的描述: ${cleanDesc}`
-                    );
+                      const description = descriptionData[availableIndex];
 
-                    // 第一个视频提取标签（逻辑不变）
-                    if (i === 0) {
-                      const tagMatches = description.match(/#([^#]+)#/g);
-                      if (tagMatches && tagMatches.length >= 2) {
-                        videoTags = tagMatches
-                          .slice(0, 2)
-                          .map((tag: string) => tag.replace(/#/g, ''));
+                      // 解析描述：提取数字+下划线之后、#号之前的内容
+                      const descMatch = description.match(/^\d+_([^#]+)/);
+
+                      if (descMatch) {
+                        let cleanDesc = descMatch[1].trim();
+                        // 检查描述长度，少于3个字则使用商品名
+                        if (cleanDesc.length >= 3) {
+                          currentDescription = cleanDesc;
+                        } else {
+                          console.log(
+                            `视频 ${i} 描述过短(${cleanDesc.length}字)，使用商品名称: ${currentProductName}`
+                          );
+                        }
+                        console.log(
+                          `视频 ${i} 使用商品 ${currentProductId} 的描述: ${currentDescription}`
+                        );
+                      } else {
+                        // 不符合格式时，使用简化描述
+                        const startMatch = description.match(/^\d+_(.+)/);
+                        if (startMatch) {
+                          let shortDesc = startMatch[2].substring(0, 28).trim();
+                          // 检查描述长度
+                          if (shortDesc.length >= 3) {
+                            currentDescription = shortDesc;
+                          }
+                          console.log(
+                            `视频 ${i} 使用商品 ${currentProductId} 的简化描述: ${currentDescription}`
+                          );
+                        }
+                      }
+
+                      // 提取标签（修复的核心部分）
+                      // 处理连续#号，然后匹配所有#后面到下一个#之前的内容
+                      const processedDescription = description.replace(
+                        /#+/g,
+                        '#'
+                      );
+                      const tagMatches =
+                        processedDescription.match(/#([^#]+)/g);
+
+                      if (tagMatches && tagMatches.length > 0) {
+                        currentTagsStr = tagMatches
+                          .map((tag: string) => {
+                            // 先去除#号和下划线
+                            let cleanTag = tag
+                              .replace(/#/g, '')
+                              .replace(/_/g, '');
+                            // 清除除中英文、数字以外的所有字符（包括表情、特殊符号）
+                            // 匹配规则：保留 [a-zA-Z0-9]（英文数字）和 [\u4e00-\u9fa5]（中文）
+                            cleanTag = cleanTag.replace(
+                              /[^\u4e00-\u9fa5a-zA-Z0-9]/g,
+                              ''
+                            );
+                            return cleanTag;
+                          })
+                          .filter(Boolean) // 过滤空标签（处理后可能变为空的标签）
+                          .slice(0, 2) // 取前两个
+                          .join(',');
                       }
                     }
                   } else {
-                    // 不符合上述格式时，简化处理（仅要求开头是“数字+下划线”，截取后续前28位）
-                    const startMatch = description.match(/^(\d+_)(.+)/);
-                    if (startMatch) {
-                      const shortDesc = startMatch[2].substring(0, 28).trim();
-                      videoDescriptions.push(shortDesc);
-                      console.log(
-                        `视频 ${i} 使用商品 ${currentProductId} 的简化描述: ${shortDesc}`
-                      );
-                    }
+                    console.log(
+                      `商品 ${currentProductId} 描述文件为空，使用商品名称: ${currentProductName}`
+                    );
                   }
+                } catch (parseError) {
+                  console.error(`解析描述文件失败: ${parseError}`);
                 }
               } else {
                 console.log(
-                  `商品 ${currentProductId} 描述文件为空，使用商品名称: ${currentProductName}`
+                  `商品 ${currentProductId} 描述文件不存在，使用商品名称: ${currentProductName}`
                 );
-                videoDescriptions.push(currentProductName);
               }
-            } else {
-              console.log(
-                `商品 ${currentProductId} 描述文件不存在，使用商品名称: ${currentProductName}`
-              );
-              videoDescriptions.push(currentProductName);
             }
+
+            videoDescriptions.push(currentDescription);
+            videoTagsStr.push(currentTagsStr);
           }
         } catch (descError) {
           console.error('读取视频描述文件失败:', descError);
-          // 出错时用商品名称填充剩余位置
+          // 出错时用商品名称填充剩余位置，标签为空
           while (videoDescriptions.length < videoFiles.length) {
             const videoFile = videoFiles[videoDescriptions.length];
             const videoFileName = path.basename(videoFile);
             const videoFileParts = videoFileName.split('---');
             const currentProductName = videoFileParts[2] || '';
             videoDescriptions.push(currentProductName);
+            videoTagsStr.push('');
           }
         }
 
-        // 如果没有获取到描述，使用空描述数组
-        if (videoDescriptions.length === 0) {
-          videoDescriptions = new Array(videoFiles.length).fill('');
-          console.log('没有获取到视频描述，使用空描述');
+        // 确保描述和标签数组长度与视频数量一致
+        if (videoDescriptions.length < videoFiles.length) {
+          const diff = videoFiles.length - videoDescriptions.length;
+          videoDescriptions.push(...new Array(diff).fill(''));
+          videoTagsStr.push(...new Array(diff).fill(''));
         }
 
-        // 如果没有有效的标签，尝试从config.json获取
-        if (videoTags.length === 0 || videoTags[0] === '标签') {
-          const configPath = path.join(directory, 'config.json');
-          try {
-            if (fs.existsSync(configPath)) {
-              const configData = JSON.parse(
-                fs.readFileSync(configPath, 'utf-8')
-              );
+        // 读取话题配置
+        const configPath = path.join(directory, 'config.json');
+        try {
+          if (fs.existsSync(configPath)) {
+            const configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
-              if (
-                configData.tags &&
-                Array.isArray(configData.tags) &&
-                configData.tags.length > 0
-              ) {
-                videoTags = configData.tags.slice(0, 2); // 取前两个标签
-              }
-
-              if (
-                configData.topics &&
-                Array.isArray(configData.topics) &&
-                configData.topics.length > 0
-              ) {
-                topics = configData.topics;
-              }
+            if (
+              configData.topics &&
+              Array.isArray(configData.topics) &&
+              configData.topics.length > 0
+            ) {
+              topics = configData.topics;
+            } else {
+              console.warn('config.json中未配置有效的topics数组');
             }
-          } catch (configError) {
-            console.error('读取config.json失败:', configError);
+          } else {
+            console.warn('未找到config.json，无法获取话题');
           }
+        } catch (configError) {
+          console.error('读取config.json获取话题失败:', configError);
         }
 
-        console.log(`videoTags: ${videoTags}`);
+        console.log(`videoTagsStr: ${JSON.stringify(videoTagsStr)}`);
         console.log(`topics数量: ${topics.length}`);
         console.log(`videoDescriptions数量: ${videoDescriptions.length}`);
 
@@ -2067,14 +2154,15 @@ class GuangheTaobao extends EventEmitter {
         console.log(`guangCatalogue: ${guangCatalogue}`);
 
         const UserData = {
+          directory: directory,
           filePathArray: videoFiles,
           guangId: guangId,
-          videoTags: videoTags,
-          topic: topics, // 改为数组
-          videoDescription: videoDescriptions, // 改为数组
+          videoTags: videoTagsStr,
+          topic: topics,
+          videoDescription: videoDescriptions,
           guangCatalogue: guangCatalogue,
-          productIds, // 使用商品ID列表
-          productNames, // 使用商品名称列表
+          productIds,
+          productNames,
         };
 
         console.log('UserData参数:', JSON.stringify(UserData, null, 2));
