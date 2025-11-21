@@ -577,7 +577,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       },
     },
     {
-      channel: 'guangheTaobao',
+      channel: 'guangheCes',
       handler: async (event, arg: { videoPath: string }) => {
         return await guangheTaobao.GuangheTaobaoIssue('123');
       },

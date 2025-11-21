@@ -118,16 +118,16 @@ const videoMonitoringRunning = ref(false);
 
 function startOrStopTaskHandler(start = true) {
   // 更新 s6 的 running 状态
-  ipcRendererChannel.UpdateWorkbenchData.invoke({
-    stepNo: 's6',
-    sData: { ...s6.value, running: start },
-  });
+  // ipcRendererChannel.UpdateWorkbenchData.invoke({
+  //   stepNo: 's6',
+  //   sData: { ...s6.value, running: start },
+  // });
 
-  // guanghe();
+  guanghe();
 }
 
 function guanghe() {
-  ipcRendererChannel.guangheTaobao.invoke();
+  ipcRendererChannel.guangheCes.invoke();
 }
 
 // 调用高清化脚本
@@ -160,37 +160,6 @@ function setCookie(filePath: string) {
     console.error('执行去水印脚本时出错:', error.message);
   }
 }
-
-// 调用登录检测脚本
-// function checkLogin() {
-//   console.log('开始检测登录状态');
-
-//   try {
-//     // 调用登录检测脚本
-//     ipcRendererChannel.CheckKaipaiLoginStatus.invoke()
-//       .then(result => {
-//         console.log('登录检测结果:', result);
-//         // 日志信息会通过IPC事件自动显示在页面上
-//       })
-//       .catch(error => {
-//         console.error('检测登录状态时出错:', error);
-//       });
-//   } catch (error: any) {
-//     console.error('检测登录状态时出错:', error.message);
-//   }
-// }
-
-watch(s6.value, async (val, _) => {
-  // ipcRendererChannel.UpdateWorkbenchData.invoke({
-  //   stepNo: 's1',
-  //   sData: { ...val },
-  // });
-  // 监听视频
-  // if(!val.autoMonitoring) {
-  //   videoMonitoringRunning.value = false;
-  //   ipcRendererChannel.StopMonitoringVideo.invoke();
-  // }
-});
 
 onMounted(async () => {
   // 获取历史缓存

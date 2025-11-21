@@ -8,6 +8,8 @@ import http from 'http';
 import dayjs from 'dayjs';
 import { GuangProcessor, GuangHePublishStatus } from './guang-processor';
 import workbenchManager from './workbench-manager';
+import { writeLog, type LogEvent } from '@main/utils/log';
+import SliderValidator from './SliderValidator';
 
 class GuangheTaobao extends EventEmitter {
   // 静态属性
@@ -26,6 +28,7 @@ class GuangheTaobao extends EventEmitter {
   private static chromeProcess: any = null;
   private static readonly FIXED_DEBUG_PORT = 9222; // 固定调试端口
   private static readonly remoteDebuggingUrl = `http://127.0.0.1:${GuangheTaobao.FIXED_DEBUG_PORT}`;
+  private detector: SliderValidator = new SliderValidator();
 
   // 初始化浏览器实例 - 采用CDP方式，复用固定端口实例
   private static async initBrowser() {
@@ -418,6 +421,10 @@ class GuangheTaobao extends EventEmitter {
           }
         } catch (configError) {
           console.error('读取config.json获取默认标签失败:', configError);
+          this.writeLog(
+            `读取config.json获取默认标签失败: ${configError}`,
+            'info'
+          );
         }
       }
 
@@ -427,10 +434,14 @@ class GuangheTaobao extends EventEmitter {
         await labelInput.click();
         await labelInput.press('Control+A'); // 全选内容
         await labelInput.press('Delete'); // 删除选中内容
+        console.log(currentTags.join(','));
 
         // 使用处理后的当前视频标签数组
         for (const item of currentTags) {
-          await this.simulateHumanInput(labelInput, `#${item}#`);
+          console.log(`输入标签: ${item}`);
+          if (item && item !== '') {
+            await this.simulateHumanInput(labelInput, `#${item}#`);
+          }
         }
       }
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -636,6 +647,7 @@ class GuangheTaobao extends EventEmitter {
       //   .locator('.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))') // 包含"自主拍摄"文本的选项
       //   .click();
     } catch (error: any) {
+      this.writeLog(`填写信息失败: ${error.message}`, 'info');
       throw error;
     }
   }
@@ -975,8 +987,12 @@ class GuangheTaobao extends EventEmitter {
       // 创建新标签页
       page = await context.newPage();
 
+      this.writeLog(`开始发布到淘宝平台`, 'info');
+
       console.log('导航到淘宝光合平台...');
-      await page.goto('https://mcn.guanghe.taobao.com/', { timeout: 60000 });
+      await page.goto('https://mcn.guanghe.taobao.com/page/talent', {
+        timeout: 60000,
+      });
       await page.waitForLoadState('networkidle');
 
       // 直接在方法中检查是否需要登录
@@ -1148,6 +1164,7 @@ class GuangheTaobao extends EventEmitter {
         }
       } catch (uploadError: any) {
         console.error('视频上传过程中出错:', uploadError.message);
+        this.writeLog(`视频上传过程中出错: ${uploadError.message}`, 'info');
         // 不抛出错误，继续执行后续步骤
       }
 
@@ -1207,6 +1224,7 @@ class GuangheTaobao extends EventEmitter {
           }
         }, 1000); // 每1秒检测一次
         if (frame) {
+          this.writeLog(`开始输入视频信息`, 'info');
           // 获取所有视频的队列
           const videoQueue = await frame.locator('.batchItemWrap').all();
           for (let i = 0; i < videoQueue.length; i++) {
@@ -1245,6 +1263,54 @@ class GuangheTaobao extends EventEmitter {
             await publishBtn.click();
             await new Promise(resolve => setTimeout(resolve, 3000));
 
+            // 等待iframe加载
+            const iframeElement = await frame.locator(
+              'iframe#baxia-dialog-content'
+            );
+            await iframeElement.waitFor({ state: 'attached', timeout: 10000 });
+
+            // 获取iframe的contentFrame
+            const iframe = await iframeElement.contentFrame();
+            if (!iframe) {
+              console.error('无法获取iframe内容');
+              return;
+            }
+
+            // 在iframe内查找图片元素
+            const bgImg = await iframe.locator('#puzzle-captcha-question-img');
+
+            // 等待图片元素可见
+            await bgImg.waitFor({ state: 'visible', timeout: 10000 });
+
+            // 获取图片的src属性
+            const src = await bgImg.getAttribute('src');
+            console.log('图片src:', src);
+            const srcBox = await iframe.locator('.puzzle-captcha-puzzle');
+
+            const topValue = await srcBox.evaluate((element: HTMLElement) => {
+              return window.getComputedStyle(element).top;
+            });
+
+            console.log('srcBox的top值:', topValue);
+            const distance = await this.detector.detectFromUrl(
+              src,
+              0,
+              topValue,
+              320,
+              80,
+              50,
+              0.08
+            );
+            console.log('距离:', distance);
+
+            const slidingBtn = await iframe.locator('#puzzle-captcha-btn');
+
+            await this.detector.simulateHumanSlideMultiIframe(
+              page,
+              slidingBtn,
+              distance
+            );
+
             // 定位滑块弹窗（使用 locator 而非直接获取元素，保持引用有效性）
             const confirmLocator = frame.locator('.baxia-dialog-content');
             let checkTimer: any = null; // 用于存储定时器，便于中途清除
@@ -1257,81 +1323,150 @@ class GuangheTaobao extends EventEmitter {
                   type: 'warning',
                 });
 
-                const checkInterval = 10000; // 每10秒检查一次
+                const checkInterval = 5000; // 改为5秒检查一次，更快响应
                 let remainingTime = 300000;
+                let checkTimer: NodeJS.Timeout | null = null;
+                const successUrl = 'https://mcn.guanghe.taobao.com/page/talent';
 
                 // 用 setTimeout 实现可中断的循环（替代 while）
                 const checkPopup = async () => {
-                  // 1. 检查 frame 是否仍有效（是否在页面的有效 iframe 列表中）
-                  const allFrames = page.frames();
-                  const isFrameValid = allFrames.includes(frame);
-                  if (!isFrameValid) {
-                    this.emit('log', {
-                      message: '页面跳转，iframe 已失效，操作成功',
-                      type: 'info',
-                    });
-                    // 清除定时器
-                    clearTimeout(checkTimer);
-                    checkTimer = null;
-                    return;
-                  }
-
-                  // 2. 检查滑块弹窗是否仍可见（捕获可能的错误）
-                  let isStillVisible;
                   try {
-                    isStillVisible = await confirmLocator.isVisible();
-                  } catch (err: any) {
+                    // 1. 直接通过浏览器上下文获取当前活动页面的URL
+                    let currentUrl = '';
+                    try {
+                      // 获取浏览器上下文
+                      const context = browser.contexts()[0]; // 获取第一个浏览器上下文
+                      const pages = await context.pages(); // 获取该上下文中的所有页面
+                      if (pages.length > 0) {
+                        // 通常最后一个页面是最新打开的页面，或者我们可以查找包含目标URL的页面
+                        for (const p of pages) {
+                          try {
+                            const url = p.url();
+                            if (url.includes(successUrl)) {
+                              currentUrl = url;
+                              break;
+                            }
+                            // 如果没有找到目标URL，使用第一个非空页面
+                            if (!currentUrl && url && url !== 'about:blank') {
+                              currentUrl = url;
+                            }
+                          } catch (e) {
+                            // 忽略无效页面
+                            continue;
+                          }
+                        }
+                      }
+                    } catch (urlErr: any) {
+                      console.log('获取页面URL失败:', urlErr.message);
+                    }
+
+                    // 检查是否跳转到成功页面
+                    if (currentUrl.includes(successUrl)) {
+                      console.log('已跳转到成功页面，滑块验证成功');
+                      this.emit('log', {
+                        message: '已跳转到成功页面，滑块验证完成',
+                        type: 'info',
+                      });
+                      if (checkTimer) clearTimeout(checkTimer);
+                      checkTimer = null;
+                      return;
+                    }
+
+                    // 2. 检查滑块弹窗是否仍可见
+                    let isStillVisible = false;
+                    try {
+                      // 尝试在当前页面查找滑块弹窗
+                      const context = browser.contexts()[0];
+                      const pages = await context.pages();
+                      for (const p of pages) {
+                        try {
+                          const popupLocator = p.locator(
+                            '.baxia-dialog-content'
+                          );
+                          isStillVisible = await popupLocator
+                            .isVisible()
+                            .catch(() => false);
+                          if (isStillVisible) break;
+                        } catch (e) {
+                          // 继续检查下一个页面
+                          continue;
+                        }
+                      }
+                    } catch (popupErr: any) {
+                      console.log('滑块弹窗检查失败:', popupErr.message);
+                    }
+
+                    // 如果弹窗不可见且不在成功页面，可能是其他情况
+                    if (!isStillVisible && !currentUrl.includes(successUrl)) {
+                      console.log(
+                        '滑块弹窗已关闭，但未跳转到目标页面，等待确认...'
+                      );
+                      // 等待一下再检查URL，可能页面正在跳转
+                      await new Promise(resolve => setTimeout(resolve, 2000));
+
+                      // 再次检查URL
+                      try {
+                        const context = browser.contexts()[0];
+                        const pages = await context.pages();
+                        for (const p of pages) {
+                          try {
+                            const url = p.url();
+                            if (url.includes(successUrl)) {
+                              console.log('确认已跳转到成功页面');
+                              this.emit('log', {
+                                message: '确认已跳转到成功页面',
+                                type: 'info',
+                              });
+                              if (checkTimer) clearTimeout(checkTimer);
+                              checkTimer = null;
+                              return;
+                            }
+                          } catch (e) {
+                            continue;
+                          }
+                        }
+                      } catch (err) {
+                        // 忽略错误
+                      }
+
+                      // 如果还是没有跳转，可能是其他情况，继续等待
+                      console.log('弹窗关闭但未跳转，继续等待...');
+                    }
+
+                    // 超时处理
+                    remainingTime -= checkInterval;
+                    if (remainingTime <= 0) {
+                      console.log('滑块验证超时，操作失败');
+                      this.emit('log', {
+                        message: '滑块验证超时，操作失败',
+                        type: 'error',
+                      });
+                      this.writeLog(`滑块验证超时，操作失败`, 'info');
+                      if (checkTimer) clearTimeout(checkTimer);
+                      checkTimer = null;
+                      await this.handleTaskFailure({ message: '滑块验证超时' });
+                      return;
+                    }
+
                     console.log(
-                      '滑块弹窗元素已不可访问，终止等待:',
-                      err.message
+                      `继续等待滑块验证完成，剩余时间: ${Math.ceil(
+                        remainingTime / 1000
+                      )}秒，当前URL: ${currentUrl || '未知'}`
                     );
                     this.emit('log', {
-                      message: '滑块弹窗元素已不可访问，终止等待:',
-                      type: 'error',
-                    });
-                    return;
-                  }
-
-                  if (!isStillVisible) {
-                    console.log('滑块验证弹窗已关闭，视为成功');
-                    this.emit('log', {
-                      message: '滑块验证弹窗已关闭，继续执行...',
+                      message: `继续等待滑块验证完成，剩余时间: ${Math.ceil(
+                        remainingTime / 1000
+                      )}秒`,
                       type: 'info',
                     });
-                    // 清除定时器
-                    clearTimeout(checkTimer);
-                    checkTimer = null;
-                    return;
+                    checkTimer = setTimeout(checkPopup, checkInterval);
+                  } catch (err) {
+                    console.error('检查滑块验证状态出错:', err);
+                    remainingTime -= checkInterval;
+                    if (remainingTime > 0) {
+                      checkTimer = setTimeout(checkPopup, checkInterval);
+                    }
                   }
-
-                  // 超时处理
-                  remainingTime -= checkInterval;
-                  if (remainingTime <= 0) {
-                    console.log('滑块验证超时，操作失败');
-                    this.emit('log', {
-                      message: '滑块验证超时，操作失败',
-                      type: 'error',
-                    });
-                    // 清除定时器
-                    clearTimeout(checkTimer);
-                    checkTimer = null;
-                    // 执行任务失败处理
-                    await this.handleTaskFailure({ message: '滑块验证超时' });
-                    return;
-                  }
-
-                  console.log(
-                    `继续等待滑块验证完成，剩余时间: ${Math.ceil(
-                      remainingTime / 1000
-                    )}秒`
-                  );
-                  this.emit('log', {
-                    message: `继续等待滑块验证完成，剩余时间: ${Math.ceil(
-                      remainingTime / 1000
-                    )}秒`,
-                    type: 'info',
-                  });
-                  checkTimer = setTimeout(checkPopup, checkInterval);
                 };
 
                 checkTimer = setTimeout(checkPopup, checkInterval);
@@ -1345,33 +1480,41 @@ class GuangheTaobao extends EventEmitter {
                 });
               }
 
-              this.emit('log', {
-                message: '滑块验证弹窗已关闭，视为成功',
-                type: 'info',
-              });
-              // 后续逻辑：检查发布状态（需先确认 frame 仍有效）
-              const allFrames = page.frames();
-              const isFrameValid = allFrames.includes(frame);
-              if (isFrameValid) {
-                const firstStatus = await frame
-                  .locator('.batchItemStatus > div')
-                  .first()
-                  .textContent();
-
-                if (firstStatus === '发布失败') {
-                  this.emit('log', {
-                    message: '检测到发布失败视频',
-                    type: 'warning',
-                  });
-                  return await this.handleTaskFailure({
-                    message: '检测到发布失败视频',
-                  });
+              // 最终状态检查
+              let finalUrl = '';
+              try {
+                const context = browser.contexts()[0];
+                const pages = await context.pages();
+                for (const p of pages) {
+                  try {
+                    const url = p.url();
+                    if (
+                      url.includes('https://mcn.guanghe.taobao.com/page/talent')
+                    ) {
+                      finalUrl = url;
+                      break;
+                    }
+                  } catch (e) {
+                    continue;
+                  }
                 }
-              } else {
-                console.log('iframe 已失效，跳过发布状态检查');
+              } catch (err: any) {
+                console.log('获取最终URL失败:', err.message);
+              }
+
+              if (
+                finalUrl.includes('https://mcn.guanghe.taobao.com/page/talent')
+              ) {
+                console.log('发布成功：已跳转到目标页面');
                 this.emit('log', {
-                  message: 'iframe 已失效，跳过发布状态检查',
-                  type: 'warning',
+                  message: '发布成功：已跳转到目标页面',
+                  type: 'info',
+                });
+              } else {
+                console.log('发布流程完成，但未检测到目标页面跳转');
+                this.emit('log', {
+                  message: '发布流程完成',
+                  type: 'info',
                 });
               }
 
@@ -1380,12 +1523,46 @@ class GuangheTaobao extends EventEmitter {
                 type: 'info',
               });
             } catch (err: any) {
-              console.error('发布流程出错:', err);
-              this.emit('log', {
-                message: `发布流程出错: ${err.message}`,
-                type: 'error',
-              });
-              throw err;
+              // 检查是否实际上已经成功跳转
+              let currentUrl = '';
+              try {
+                const context = browser.contexts()[0];
+                const pages = await context.pages();
+                for (const p of pages) {
+                  try {
+                    const url = p.url();
+                    if (
+                      url.includes('https://mcn.guanghe.taobao.com/page/talent')
+                    ) {
+                      currentUrl = url;
+                      break;
+                    }
+                  } catch (e) {
+                    continue;
+                  }
+                }
+              } catch (urlErr) {
+                /* 忽略 */
+              }
+
+              if (
+                currentUrl.includes(
+                  'https://mcn.guanghe.taobao.com/page/talent'
+                )
+              ) {
+                console.log('页面已跳转到成功页面，忽略其他错误');
+                this.emit('log', {
+                  message: '发布成功，页面跳转完成',
+                  type: 'info',
+                });
+              } else {
+                console.error('发布流程出错:', err);
+                this.emit('log', {
+                  message: `发布流程出错: ${err.message}`,
+                  type: 'error',
+                });
+                throw err;
+              }
             } finally {
               // 清理定时器，防止内存泄漏
               if (checkTimer) clearTimeout(checkTimer);
@@ -1405,6 +1582,7 @@ class GuangheTaobao extends EventEmitter {
       return await this.handleTaskCompletion();
     } catch (error: any) {
       // 使用封装的方法处理任务失败
+      this.writeLog(`发布视频出错: ${error.message}`, 'error');
       return await this.handleTaskFailure(error);
     } finally {
       // 无论成功还是失败，都要清理资源
@@ -1825,15 +2003,6 @@ class GuangheTaobao extends EventEmitter {
   }
 
   /**
-   * 清空逛逛账号目录数组（置空等待处理）
-   */
-  private clearGuangGuangAccountDirectories(): void {
-    // 这个方法可以根据实际需求来实现清空逻辑
-    // 例如可以移动目录、重命名、或者只是返回空数组
-    console.log('清空逛逛账号目录数组，置空等待处理');
-  }
-
-  /**
    * 检测并更新目录数组
    */
   public async checkAndUpdateDirectories(): Promise<void> {
@@ -1957,9 +2126,8 @@ class GuangheTaobao extends EventEmitter {
           const productId = videoFileParts[4] || '';
           const productName = videoFileParts[2] || '';
 
-          if (productId && !productIds.includes(productId)) {
-            productIds.push(productId);
-          }
+          productIds.push(productId);
+
           if (productName && !productNames.includes(productName)) {
             productNames.push(productName);
           }
@@ -2078,7 +2246,7 @@ class GuangheTaobao extends EventEmitter {
                               /[^\u4e00-\u9fa5a-zA-Z0-9]/g,
                               ''
                             );
-                            return cleanTag;
+                            return cleanTag.length > 10 ? '' : cleanTag;
                           })
                           .filter(Boolean) // 过滤空标签（处理后可能变为空的标签）
                           .slice(0, 2) // 取前两个
@@ -2201,6 +2369,15 @@ class GuangheTaobao extends EventEmitter {
       this.isProcessingQueue = false;
       console.log('队列处理结束');
     }
+  }
+
+  private writeLog(message: string, type: LogEvent['type'] = 'info') {
+    if (!message) {
+      console.error('writeLog called with empty message');
+      return;
+    }
+
+    writeLog.call(this, message, type);
   }
 }
 

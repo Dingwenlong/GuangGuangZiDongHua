@@ -6,9 +6,9 @@ import replace from '@rollup/plugin-replace';
 import alias from '@rollup/plugin-alias';
 import json from '@rollup/plugin-json';
 import esbuild from 'rollup-plugin-esbuild';
-import obfuscator from 'rollup-plugin-obfuscator';
 import { defineConfig } from 'rollup';
 import { getConfig } from './utils';
+
 const config = getConfig();
 
 export default (env = 'production', type = 'main') => {
@@ -31,11 +31,30 @@ export default (env = 'production', type = 'main') => {
       sourcemap: false,
     },
     plugins: [
+      // 处理 .onnx 文件导入的插件
+      {
+        name: 'ignore-onnx-imports',
+        resolveId(source) {
+          // 完全忽略 .onnx 文件的导入
+          if (source.endsWith('.onnx')) {
+            // 返回一个虚拟模块ID
+            return { id: '\0onnx-virtual-module', external: false };
+          }
+          return null;
+        },
+        load(id) {
+          // 对于 .onnx 文件，返回空内容
+          if (id === '\0onnx-virtual-module') {
+            return 'export default "";';
+          }
+          return null;
+        },
+      },
       replace({
         preventAssignment: true,
         'process.env.userConfig': config ? JSON.stringify(config) : '{}',
+        'process.env.NODE_ENV': JSON.stringify(env),
       }),
-      // 提供路径和读取别名
       nodeResolve({
         preferBuiltins: true,
         browser: false,
@@ -43,26 +62,19 @@ export default (env = 'production', type = 'main') => {
       }),
       commonjs({
         sourceMap: false,
+        ignoreDynamicRequires: true,
       }),
       json(),
       esbuild({
-        // All options are optional
-        include: /\.[jt]s?$/, // default, inferred from `loaders` option
-        exclude: /node_modules/, // default
-        // watch: process.argv.includes('--watch'), // rollup 中有配置
-        sourceMap: false, // default
+        include: /\.[jt]s?$/,
+        sourceMap: false,
         minify: env === 'production',
-        target: 'es2017', // default, or 'es20XX', 'esnext'
-        // Like @rollup/plugin-replace
+        target: 'es2017',
         define: {
           __VERSION__: '"x.y.z"',
         },
-        // Add extra loaders
         loaders: {
-          // Add .json files support
-          // require @rollup/plugin-commonjs
           '.json': 'json',
-          // Enable JSX in .js files too
           '.js': 'jsx',
         },
       }),
@@ -79,11 +91,11 @@ export default (env = 'production', type = 'main') => {
           },
         ],
       }),
-      process.env.NODE_ENV == 'production' && obfuscator({}),
     ],
     external: [
       ...builtinModules,
       'electron',
+      'electron-updater',
       'express',
       'ffi-napi',
       'ref-napi',
@@ -91,6 +103,9 @@ export default (env = 'production', type = 'main') => {
       'semver',
       'glob',
       'sqlite3',
+      'onnxruntime-node',
+      'sharp',
+      /\.node$/,
     ],
   });
 };

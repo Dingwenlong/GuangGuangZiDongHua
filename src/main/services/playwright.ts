@@ -225,6 +225,10 @@ class PlaywrightScript extends EventEmitter {
           message: `检测到下载文件: ${downloadFileName}，文件路径将保存在: ${downloadDir}`,
           type: 'info',
         });
+        this.writeLog(
+          `检测到下载文件: ${downloadFileName}，文件路径将保存在: ${downloadDir}`,
+          'info'
+        );
       };
 
       page.on('download', handleDownload);
@@ -263,6 +267,7 @@ class PlaywrightScript extends EventEmitter {
           message: `下载触发过程出错: ${err.message}`,
           type: 'error',
         });
+        this.writeLog(`下载触发过程出错: ${err.message}`, 'info');
         page.off('download', handleDownload);
         return { success: false, message: `下载触发失败: ${err.message}` };
       }
@@ -272,6 +277,10 @@ class PlaywrightScript extends EventEmitter {
           message: `未捕获到与原始文件匹配的下载（期望包含: ${originalFileName}）`,
           type: 'warning',
         });
+        this.writeLog(
+          `未捕获到与原始文件匹配的下载（期望包含: ${originalFileName}）`,
+          'error'
+        );
         return { success: false, message: '未捕获到匹配的下载文件' };
       } else {
         // 移除事件监听器
@@ -333,6 +342,10 @@ class PlaywrightScript extends EventEmitter {
               message: `处理临时UUID文件出错: ${err.message}，请手动删除。`,
               type: 'warning',
             });
+            this.writeLog(
+              `处理临时UUID文件出错: ${err.message}，请手动删除。`,
+              'info'
+            );
           }
         }
       }
@@ -354,6 +367,10 @@ class PlaywrightScript extends EventEmitter {
               }，请手动删除。`,
               type: 'warning',
             });
+            this.writeLog(
+              `删除临时UUID文件失败: ${(e as Error).message}，请手动删除。`,
+              'info'
+            );
           }
         }
       }
@@ -1025,63 +1042,64 @@ class PlaywrightScript extends EventEmitter {
             });
           }
         }
-      } catch (copyError) {
-        this.emit('log', {
-          message: `处理S6文件复制时出错: ${(copyError as Error).message}`,
-          type: 'error',
-        });
-        // 不影响主流程，继续返回成功结果
-      }
-      // 清理原始S5文件
-      if (filePath && fs.existsSync(filePath)) {
-        const fileName = path.basename(filePath);
-        const isS5File = fileName.startsWith('S5') || /^S5/i.test(fileName);
 
-        if (isS5File) {
-          try {
-            fs.unlinkSync(filePath);
+        // 复制完成后，清理当前目录下的S6文件
+        if (targetPath && fs.existsSync(targetPath)) {
+          const fileName = path.basename(targetPath);
+          const isS6File = fileName.startsWith('S6') || /^S6/i.test(fileName);
+
+          if (isS6File) {
+            try {
+              fs.unlinkSync(targetPath);
+              this.emit('log', {
+                message: `已清理原始S6文件：${targetPath}`,
+                type: 'info',
+              });
+            } catch (e) {
+              this.emit('log', {
+                message: `清理S6文件失败：${(e as Error).message}`,
+                type: 'warning',
+              });
+            }
+          } else {
             this.emit('log', {
-              message: `已清理原始S5文件：${filePath}`,
+              message: `文件 ${fileName} 不是S6文件，跳过清理`,
               type: 'info',
             });
-          } catch (e) {
+          }
+        }
+
+        // 检查当前下载目录是否为空，如果为空则删除目录
+        try {
+          const downloadDir = path.dirname(targetPath); // 获取当前文件所在目录
+          const remainingFiles = fs.readdirSync(downloadDir);
+          const nonSystemFiles = remainingFiles.filter(
+            file => !file.startsWith('.') && file !== 'desktop.ini'
+          );
+
+          if (nonSystemFiles.length === 0) {
+            // 目录为空，删除目录
+            fs.rmdirSync(downloadDir);
             this.emit('log', {
-              message: `清理S5文件失败：${(e as Error).message}`,
-              type: 'warning',
+              message: `下载目录已清空，删除目录：${downloadDir}`,
+              type: 'info',
+            });
+          } else {
+            this.emit('log', {
+              message: `下载目录中还有 ${nonSystemFiles.length} 个文件，保留目录：${downloadDir}`,
+              type: 'info',
             });
           }
-        } else {
+        } catch (dirError) {
           this.emit('log', {
-            message: `文件 ${fileName} 不是S5文件，跳过清理`,
-            type: 'info',
+            message: `检查下载目录状态时出错：${(dirError as Error).message}`,
+            type: 'warning',
           });
         }
-      }
-
-      // 检查下载目录是否为空，如果为空则删除目录
-      try {
-        const remainingFiles = fs.readdirSync(downloadDir);
-        const nonSystemFiles = remainingFiles.filter(
-          file => !file.startsWith('.') && file !== 'desktop.ini'
-        );
-
-        if (nonSystemFiles.length === 0) {
-          // 目录为空，删除目录
-          fs.rmdirSync(downloadDir);
-          this.emit('log', {
-            message: `下载目录已清空，删除目录：${downloadDir}`,
-            type: 'info',
-          });
-        } else {
-          this.emit('log', {
-            message: `下载目录中还有 ${nonSystemFiles.length} 个文件，保留目录：${downloadDir}`,
-            type: 'info',
-          });
-        }
-      } catch (dirError) {
+      } catch (copyError) {
         this.emit('log', {
-          message: `检查下载目录状态时出错：${(dirError as Error).message}`,
-          type: 'warning',
+          message: `处理S6文件复制时出错：${(copyError as Error).message}`,
+          type: 'error',
         });
       }
 
