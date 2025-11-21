@@ -26,6 +26,6 @@
     "forceConsistentCasingInFileNames": true,
     "strict": true
   },
-  "include": ["src/**/*", "customTypes/*"],
+  "include": ["src/**/*", "customTypes/*", "src/main/lib/best.onnx"],
   "exclude": ["node_modules"]
 }
