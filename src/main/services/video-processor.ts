@@ -280,16 +280,32 @@ class VideoProcessor extends EventEmitter {
     eventType: string
   ): Promise<void> {
     if (await this.doneForVideoProcess(filePath)) {
+      this.writeLog(`文件: ${path.basename(filePath)}，已作废`, 'warning');
       return;
     }
 
-    // 基础检查
-    if (!isVideoFile(filePath) || !this.isInProductDirectory(filePath)) {
+    if (!isVideoFile(filePath)) {
+      this.writeLog(
+        `文件: ${path.basename(filePath)}，不是视频文件`,
+        'warning'
+      );
+      return;
+    }
+
+    if (!this.isInProductDirectory(filePath)) {
+      this.writeLog(
+        `文件: ${path.basename(filePath)}，不在商品目录中`,
+        'warning'
+      );
       return;
     }
 
     if (isProcessedVideoFile(filePath)) {
       // 检查是否是处理后的视频文件
+      this.writeLog(
+        `文件: ${path.basename(filePath)}，已跳过处理(isProcessedVideoFile)`,
+        'warning'
+      );
       return;
     }
 
@@ -302,6 +318,10 @@ class VideoProcessor extends EventEmitter {
 
       // 检查是否正在处理或已处理
       if (this.isFileBeingProcessed(fileKey)) {
+        this.writeLog(
+          `文件: ${path.basename(filePath)}，已跳过处理(isFileBeingProcessed)`,
+          'warning'
+        );
         return;
       }
 
@@ -317,6 +337,9 @@ class VideoProcessor extends EventEmitter {
     }
   }
 
+  /**
+   * 检查视频是否已处理
+   */
   private async doneForVideoProcess(filePath: string) {
     const fileName = path.basename(filePath);
     const fileDir = path.dirname(filePath);
