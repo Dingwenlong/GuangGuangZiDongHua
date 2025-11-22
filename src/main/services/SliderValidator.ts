@@ -121,7 +121,7 @@ export class SliderGapDetector {
     sliderWidth: number = 40,
     adjustmentFactor: number = 0.08
   ): Promise<number> {
-    console.log('[SliderGapDetector] Starting detection from URL...');
+    // console.log('[SliderGapDetector] Starting detection from URL...');
 
     try {
       // 1. 获取图片并转换为base64
@@ -158,7 +158,7 @@ export class SliderGapDetector {
     sliderWidth: number = 40,
     adjustmentFactor: number = 0.08
   ): Promise<number> {
-    console.log('[SliderGapDetector] Starting detection and calculation...');
+    // console.log('[SliderGapDetector] Starting detection and calculation...');
 
     try {
       // 1. 确保模型已初始化
@@ -170,22 +170,26 @@ export class SliderGapDetector {
       const detectionResults = await this.detectGaps(imageBase64);
 
       if (detectionResults.length === 0) {
-        console.log(
-          '[SliderGapDetector] No gaps detected, returning 0 distance.'
-        );
+        console.log('[SliderGapDetector] 未检测到缺口，返回0距离.');
         return 0;
       }
+      console.log('检测结果:', detectionResults);
+      const sliderCenterY = sliderStartY + sliderWidth / 2;
+      console.log(
+        `滑动距离参数：sliderStartX=${sliderStartX}, sliderStartY=${sliderCenterY}, bgImageWidth=${bgImageWidth}, bgImageHeight=${bgImageHeight}, sliderWidth=${sliderWidth}, adjustmentFactor=${adjustmentFactor}`
+      );
 
       // 3. 计算滑动距离
       const distance = this.calculateSlideDistance(
         sliderStartX,
-        sliderStartY,
+        sliderCenterY,
         bgImageWidth,
         bgImageHeight,
         detectionResults,
         sliderWidth,
         adjustmentFactor
       );
+      console.log('滑动计算距离:', distance);
 
       console.log(
         `[SliderGapDetector] Final result: ${distance.toFixed(2)} pixels`
@@ -204,7 +208,7 @@ export class SliderGapDetector {
    * 从URL获取图片并转换为base64
    */
   private async fetchImageAsBase64(imageUrl: string): Promise<string> {
-    console.log(`[SliderGapDetector] Fetching image from URL: ${imageUrl}`);
+    // console.log(`[SliderGapDetector] Fetching image from URL: ${imageUrl}`);
 
     const response = await fetch(imageUrl);
     if (!response.ok) {
@@ -215,7 +219,7 @@ export class SliderGapDetector {
     const buffer = Buffer.from(arrayBuffer);
     const imageBase64 = buffer.toString('base64');
 
-    console.log('[SliderGapDetector] Image fetched and converted to base64');
+    // console.log('[SliderGapDetector] Image fetched and converted to base64');
     return imageBase64;
   }
 
@@ -262,7 +266,7 @@ export class SliderGapDetector {
       throw new Error('Model not initialized.');
     }
 
-    console.log('[SliderGapDetector] Detecting gaps in image...');
+    // console.log('[SliderGapDetector] Detecting gaps in image...');
 
     try {
       // 1. 图像预处理
@@ -271,6 +275,7 @@ export class SliderGapDetector {
 
       // 2. 模型推理
       const outputData = await this.runInference(inputTensor);
+      console.log('模型输出:', outputData);
 
       // 3. 后处理
       const results = this.postProcessResults(
@@ -281,9 +286,10 @@ export class SliderGapDetector {
         padLeft,
         padTop
       );
+      console.log('后处理结果:', results);
 
       console.log(
-        `[SliderGapDetector] Detection completed. Found ${results.length} gaps.`
+        `[SliderGapDetector] 检测已完成. 发现 ${results.length} 个缺口.`
       );
       return results;
     } catch (error) {
@@ -301,7 +307,7 @@ export class SliderGapDetector {
     const origW = metadata.width!;
     const origH = metadata.height!;
 
-    console.log(`[SliderGapDetector] Original image size: ${origW}x${origH}`);
+    // console.log(`[SliderGapDetector] Original image size: ${origW}x${origH}`);
 
     // 计算 letterbox 参数
     const scale = Math.min(
@@ -315,11 +321,11 @@ export class SliderGapDetector {
     const padLeft = Math.floor(padW / 2);
     const padTop = Math.floor(padH / 2);
 
-    console.log(
-      `[SliderGapDetector] Scale: ${scale.toFixed(
-        4
-      )}, Resize: ${resizeW}x${resizeH}, Padding: left=${padLeft}, top=${padTop}`
-    );
+    // console.log(
+    //   `[SliderGapDetector] Scale: ${scale.toFixed(
+    //     4
+    //   )}, Resize: ${resizeW}x${resizeH}, Padding: left=${padLeft}, top=${padTop}`
+    // );
 
     // 使用 sharp 进行 letterbox 处理
     const rawPaddedData = await sharp(imageBuffer)
@@ -395,9 +401,9 @@ export class SliderGapDetector {
     const numPredictions = Math.floor(outputData.length / 6);
     const numAttributes = 6;
 
-    console.log(
-      `[SliderGapDetector] Processing ${numPredictions} predictions.`
-    );
+    // console.log(
+    //   `[SliderGapDetector] Processing ${numPredictions} predictions.`
+    // );
 
     for (
       let i = 0;
@@ -461,15 +467,12 @@ export class SliderGapDetector {
       });
     }
 
-    console.log(
-      `[SliderGapDetector] Found ${candidateBoxes.length} candidates before NMS.`
-    );
+    // console.log(
+    //   `[SliderGapDetector] Found ${candidateBoxes.length} candidates before NMS.`
+    // );
 
     // 应用非极大值抑制
     const finalLabels = this.nonMaxSuppression(candidateBoxes);
-    console.log(
-      `[SliderGapDetector] Found ${finalLabels.length} objects after NMS.`
-    );
 
     // 转换为 DetectionResult 格式
     return finalLabels.map(label => {
@@ -533,10 +536,10 @@ export class SliderGapDetector {
     sliderWidth: number = 40,
     adjustmentFactor: number = 0.08
   ): number {
-    console.log('[SliderGapDetector] Calculating slide distance...');
+    // console.log('[SliderGapDetector] Calculating slide distance...');
 
     if (detectionResults.length === 0) {
-      console.log('[SliderGapDetector] Error: No detection results available.');
+      // console.log('[SliderGapDetector] Error: No detection results available.');
       return 0;
     }
 
@@ -553,9 +556,9 @@ export class SliderGapDetector {
       return { pixelX, pixelY, pixelW, pixelH, gapLeftEdge };
     });
 
-    console.log(
-      `[SliderGapDetector] Converted ${gaps.length} detections to pixel coordinates.`
-    );
+    // console.log(
+    //   `[SliderGapDetector] Converted ${gaps.length} detections to pixel coordinates.`
+    // );
 
     // 选择最佳缺口（Y坐标最接近滑块起始位置）
     let bestGap = gaps[0];
@@ -574,16 +577,144 @@ export class SliderGapDetector {
       bestGap.gapLeftEdge - sliderStartX - sliderWidth * adjustmentFactor;
     const finalDistance = Math.max(0, distance);
 
-    console.log(
-      `[SliderGapDetector] Final slide distance: ${finalDistance.toFixed(
-        2
-      )} pixels.`
-    );
+    // console.log(
+    //   `[SliderGapDetector] Final slide distance: ${finalDistance.toFixed(
+    //     2
+    //   )} pixels.`
+    // );
     return finalDistance;
   }
+  /**
+   * 模拟人类滑动滑块（多层iframe版本）- 淘宝光合平台极速版
+   * @param page 最外层的 Playwright Page 实例
+   * @param sliderElement 已经定位到的滑块元素
+   * @param distance 需要滑动的距离（像素）
+   */
+  // async simulateHumanSlideMultiIframe(
+  //   page: any,
+  //   sliderElement: any,
+  //   distance: number
+  // ): Promise<void> {
+  //   console.log(`开始极速模拟人类滑动，距离: ${distance}px`);
+
+  //   try {
+  //     // 1. 检查滑块元素是否有效
+  //     if (!sliderElement || typeof sliderElement.boundingBox !== 'function') {
+  //       throw new Error('滑块元素无效');
+  //     }
+
+  //     // 2. 检查元素是否可见
+  //     const isVisible = await sliderElement.isVisible();
+  //     if (!isVisible) {
+  //       throw new Error('滑块元素不可见');
+  //     }
+
+  //     console.log('滑块元素验证通过');
+
+  //     // 3. 获取滑块的边界框信息
+  //     const sliderBox = await sliderElement.boundingBox();
+  //     if (!sliderBox) {
+  //       throw new Error('无法获取滑块位置信息');
+  //     }
+
+  //     const startX = sliderBox.x + sliderBox.width / 2;
+  //     const startY = sliderBox.y + sliderBox.height / 2;
+
+  //     console.log(`滑块起始位置: (${startX}, ${startY})`);
+
+  //     // 4. 生成极速滑动轨迹（无初始/加速延迟）
+  //     const segments: Array<{ x: number; y: number; delay: number }> = [];
+  //     let currentX = startX;
+  //     let currentY = startY;
+
+  //     // 第一阶段：直接启动（无迟疑，0-5%距离）
+  //     currentX = startX + distance * 0.05;
+  //     segments.push({
+  //       x: currentX,
+  //       y: startY + (Math.random() - 0.5) * 0.3,
+  //       delay: 0,
+  //     });
+
+  //     // 第二阶段：极速加速滑动（5%-85%距离，无延迟）
+  //     const accelerationDistance = distance * 0.8;
+  //     const accelerationSteps = 6; // 极少步骤
+  //     let accelCurrent = 0;
+  //     for (let i = 1; i <= accelerationSteps; i++) {
+  //       const progress = i / accelerationSteps;
+  //       const ease = Math.pow(progress, 1.5); // 快速加速曲线
+  //       const targetDistance = accelerationDistance * ease;
+  //       const stepDistance = targetDistance - accelCurrent;
+  //       accelCurrent = targetDistance;
+
+  //       currentX += stepDistance;
+  //       const jitterX = (Math.random() - 0.5) * 0.5;
+  //       const jitterY = (Math.random() - 0.5) * 0.8;
+  //       segments.push({
+  //         x: currentX + jitterX,
+  //         y: currentY + jitterY,
+  //         delay: 0,
+  //       }); // 无延迟
+  //     }
+  //     currentX = startX + distance * 0.85;
+
+  //     // 第三阶段：减速调整（85%-95%距离，微延迟）
+  //     const decelerationDistance = distance * 0.1;
+  //     const decelerationSteps = 3;
+  //     let decelCurrent = 0;
+  //     for (let i = 1; i <= decelerationSteps; i++) {
+  //       const progress = i / decelerationSteps;
+  //       const ease = 1 - Math.pow(1 - progress, 1.2);
+  //       const targetDistance = decelerationDistance * ease;
+  //       const stepDistance = targetDistance - decelCurrent;
+  //       decelCurrent = targetDistance;
+
+  //       currentX += stepDistance;
+  //       const jitterX = (Math.random() - 0.5) * 1.0;
+  //       const jitterY = (Math.random() - 0.5) * 1.0;
+  //       segments.push({
+  //         x: currentX + jitterX,
+  //         y: currentY + jitterY,
+  //         delay: 3,
+  //       }); // 极短延迟
+  //     }
+  //     currentX = startX + distance * 0.95;
+
+  //     // 第四阶段：最终微调（95%-100%距离，短延迟）
+  //     segments.push({
+  //       x: startX + distance * 1.02,
+  //       y: currentY + (Math.random() - 0.5) * 0.5,
+  //       delay: 5,
+  //     }); // 轻微过冲
+  //     segments.push({ x: startX + distance, y: startY, delay: 10 }); // 精准定位
+
+  //     // 5. 执行滑动操作（极速）
+  //     console.log(`开始极速滑动，共 ${segments.length} 个步骤`);
+
+  //     await sliderElement.hover();
+  //     await page.mouse.down();
+
+  //     const startTime = Date.now();
+  //     for (const segment of segments) {
+  //       await page.mouse.move(segment.x, segment.y, { steps: 1 }); // 最快移动
+  //       if (segment.delay > 0) {
+  //         await page.waitForTimeout(segment.delay);
+  //       }
+  //     }
+  //     await page.mouse.up();
+
+  //     const totalDuration = Date.now() - startTime;
+  //     console.log(`极速滑动完成，总耗时：${totalDuration}ms`);
+
+  //     // 滑动后无额外等待
+  //     await page.waitForTimeout(20);
+  //   } catch (error) {
+  //     console.error('滑动过程中出错:', error);
+  //     throw error;
+  //   }
+  // }
 
   /**
-   * 模拟人类滑动滑块（多层iframe版本）- 极速优化版
+   * 模拟人类滑动滑块（多层iframe版本）- 淘宝光合平台优化版
    * @param page 最外层的 Playwright Page 实例
    * @param sliderElement 已经定位到的滑块元素
    * @param distance 需要滑动的距离（像素）
@@ -620,75 +751,148 @@ export class SliderGapDetector {
 
       console.log(`滑块起始位置: (${startX}, ${startY})`);
 
-      // 4. 生成人类滑动轨迹 - 极速优化版
-      const totalSteps = Math.floor(20 + distance / 15 + Math.random() * 10); // 大幅减少总步数
+      // 4. 针对淘宝光合平台优化的滑动轨迹
       const segments: Array<{ x: number; y: number; delay: number }> = [];
+
+      // 针对淘宝平台调整参数
+      const totalSteps = 16 + Math.floor(Math.random() * 4); // 适中的步数
+      const finalPosition = startX + distance;
 
       let currentX = startX;
       let currentY = startY;
 
-      // 主轨迹生成 - 更快的加速曲线
-      for (let i = 0; i <= totalSteps; i++) {
-        const t = i / totalSteps;
+      // 起始点
+      segments.push({
+        x: startX,
+        y: startY,
+        delay: 8 + Math.random() * 8, // 适中的起始延迟
+      });
 
-        // 更激进的加速曲线：更快达到高速，更早完成滑动
-        const ease =
-          t < 0.5
-            ? Math.pow(t / 0.5, 0.5) * 0.85 // 50%步骤完成85%距离
-            : 0.85 + (1 - Math.pow((1 - t) / 0.5, 2)) * 0.15; // 剩余50%步骤完成15%距离
+      // 使用更平滑的加速度曲线
+      for (let i = 1; i <= totalSteps; i++) {
+        const progress = i / totalSteps;
 
-        let targetX = startX + distance * ease;
+        // 平滑的加速度曲线 - 缓入缓出
+        let easeX;
+        if (progress < 0.3) {
+          // 前30%缓入
+          easeX = 1 - Math.pow(1 - progress / 0.3, 1.5);
+        } else if (progress < 0.8) {
+          // 中间50%匀速
+          easeX = 0.3 + ((progress - 0.3) * 0.7) / 0.5;
+        } else {
+          // 后20%缓出
+          easeX = 0.8 + (1 - Math.pow(1 - (progress - 0.8) / 0.2, 2)) * 0.2;
+        }
 
-        // 减少抖动幅度（更快滑动时抖动更小）
-        const jitterScale = (1 - ease) * 0.8 + 0.2;
-        const jitterX = (Math.random() - 0.5) * jitterScale * 0.8;
-        const jitterY = (Math.random() - 0.5) * jitterScale * 0.5;
+        const targetX = startX + distance * easeX;
 
-        currentX = targetX + jitterX;
-        currentY = startY + jitterY;
+        // Y轴抖动 - 更自然的垂直移动
+        const baseYVariation = Math.sin(progress * Math.PI * 5) * 1.0;
+        const randomYJitter = (Math.random() - 0.5) * 1.2;
+        const yOffset = baseYVariation + randomYJitter;
 
-        // 极速延迟计算：基础延迟2-5ms，动态延迟系数减半
-        const delay = 2 + Math.random() * 3 + (1 - ease) * 4;
+        // 速度控制 - 平滑过渡
+        let stepDelay: number;
+        if (progress < 0.3) {
+          // 开始阶段：平稳启动
+          stepDelay = 6 + Math.random() * 6;
+        } else if (progress < 0.8) {
+          // 中间阶段：稳定滑动
+          stepDelay = 4 + Math.random() * 4;
+        } else {
+          // 结束阶段：平稳减速
+          stepDelay = 8 + Math.random() * 8;
+        }
 
-        segments.push({ x: currentX, y: currentY, delay });
+        // 随机速度变化
+        if (Math.random() > 0.85) {
+          stepDelay *= 0.7 + Math.random() * 0.6;
+        }
+
+        segments.push({
+          x: targetX,
+          y: currentY + yOffset,
+          delay: Math.max(3, stepDelay),
+        });
+
+        currentX = targetX;
       }
 
-      // 可选：减少矫正动作概率或移除（这里设置为20%概率）
-      if (Math.random() < 0.2) {
-        const back = distance * (0.005 + Math.random() * 0.01);
+      // 更自然的结束动作 - 避免跳跃
+      const shouldOvershoot = Math.random() > 0.25; // 75%概率过冲
+
+      if (shouldOvershoot) {
+        const overshootDistance = distance * (0.02 + Math.random() * 0.04); // 更小的过冲距离
+
+        // 轻微过冲 - 分两步进行更平滑
+        const overshootStep1 = overshootDistance * 0.6;
         segments.push({
-          x: startX + distance - back,
-          y: startY,
-          delay: 30 + Math.random() * 20, // 极短矫正延迟
+          x: currentX + overshootStep1,
+          y: currentY + (Math.random() - 0.5) * 0.8,
+          delay: 10 + Math.random() * 8,
         });
+
+        const overshootStep2 = overshootDistance * 0.4;
         segments.push({
-          x: startX + distance,
-          y: startY,
-          delay: 20 + Math.random() * 10,
+          x: currentX + overshootStep1 + overshootStep2,
+          y: currentY + (Math.random() - 0.5) * 0.6,
+          delay: 8 + Math.random() * 6,
         });
-        console.log(`添加极速矫正动作：-${back.toFixed(2)}px`);
+
+        // 平滑回调 - 分两步进行
+        const backStep1 = overshootDistance * 0.5;
+        segments.push({
+          x: currentX + overshootDistance - backStep1,
+          y: currentY + (Math.random() - 0.5) * 0.4,
+          delay: 8 + Math.random() * 6,
+        });
+
+        // 最终精确定位
+        segments.push({
+          x: finalPosition,
+          y: currentY,
+          delay: 12 + Math.random() * 10,
+        });
+      } else {
+        // 无过冲时直接精确定位
+        segments.push({
+          x: finalPosition,
+          y: currentY,
+          delay: 15 + Math.random() * 10,
+        });
       }
 
-      // 移除停顿点（或设置极低概率）
-      // const pauseCount = Math.random() < 0.1 ? 1 : 0; // 10%概率停顿
-      // if (pauseCount) {
-      //   const index = 3 + Math.floor(Math.random() * (segments.length - 6));
-      //   segments[index].delay += 20 + Math.random() * 30; // 极短停顿
-      // }
+      // 最终微调 - 更平滑的小幅移动
+      if (Math.random() > 0.4) {
+        const microAdjust = (Math.random() - 0.5) * 1.5;
+        segments.push({
+          x: finalPosition + microAdjust,
+          y: currentY + (Math.random() - 0.5) * 0.3,
+          delay: 15 + Math.random() * 10,
+        });
+
+        // 回到精确位置
+        segments.push({
+          x: finalPosition,
+          y: currentY,
+          delay: 10 + Math.random() * 8,
+        });
+      }
+
+      console.log(`轨迹: ${JSON.stringify(segments)}`);
 
       // 5. 执行滑动操作
-      console.log(`开始极速滑动，共 ${segments.length} 个步骤`);
+      console.log(`开始自然滑动，共 ${segments.length} 个步骤`);
 
-      // 鼠标移动到滑块（无等待）
       await sliderElement.hover();
-      // await page.waitForTimeout(50); // 移除初始等待
-
-      // 按下鼠标
+      // 添加随机反应时间
+      await page.waitForTimeout(80 + Math.random() * 120);
       await page.mouse.down();
 
       const startTime = Date.now();
 
-      // 执行滑动轨迹（无额外延迟）
+      // 执行滑动轨迹 - 确保每个移动都平滑
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
         await page.mouse.move(segment.x, segment.y);
@@ -697,17 +901,15 @@ export class SliderGapDetector {
         }
       }
 
-      // 最终精确定位
-      await page.mouse.move(startX + distance, startY);
-
-      // 释放鼠标
+      // 释放前短暂停顿
+      await page.waitForTimeout(15 + Math.random() * 20);
       await page.mouse.up();
 
       const totalDuration = Date.now() - startTime;
-      console.log(`极速滑动完成，总耗时：${totalDuration}ms`);
+      console.log(`自然滑动完成，总耗时：${totalDuration}ms`);
 
-      // 移除结果等待（或缩短到100ms）
-      // await page.waitForTimeout(100);
+      // 释放后随机等待
+      await page.waitForTimeout(150 + Math.random() * 200);
     } catch (error) {
       console.error('滑动过程中出错:', error);
       throw error;

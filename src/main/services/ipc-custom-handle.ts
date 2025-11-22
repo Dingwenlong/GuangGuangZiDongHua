@@ -17,6 +17,7 @@ import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
 import PlaywrightScript from './playwright';
 import GuangheTaobao from './guanghe-taobao';
+// import GuangheCes from './guanghe-ces';
 import VideoSceneSplitter from './video-scene-splitter';
 import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
 import S5TaskProcessor from './s5-task-processor';
@@ -108,6 +109,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const mainWindow = mainInit.mainWindow!;
   const playwrightScript = new PlaywrightScript();
   const guangheTaobao = new GuangheTaobao();
+  // const guangheces = new GuangheCes();
   const audioExtractor = new AudioExtractor();
   const audioProcessor = new AudioProcessor();
   const videoProcessor = new VideoProcessor('');
@@ -579,7 +581,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       channel: 'guangheCes',
       handler: async (event, arg: { videoPath: string }) => {
-        return await guangheTaobao.GuangheTaobaoIssue('123');
+        // return await guangheces.GuangheTaobaoIssue();
       },
     },
   ];
