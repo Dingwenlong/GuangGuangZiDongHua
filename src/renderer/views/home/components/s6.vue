@@ -118,12 +118,12 @@ const videoMonitoringRunning = ref(false);
 
 function startOrStopTaskHandler(start = true) {
   // 更新 s6 的 running 状态
-  // ipcRendererChannel.UpdateWorkbenchData.invoke({
-  //   stepNo: 's6',
-  //   sData: { ...s6.value, running: start },
-  // });
+  ipcRendererChannel.UpdateWorkbenchData.invoke({
+    stepNo: 's6',
+    sData: { ...s6.value, running: start },
+  });
 
-  guanghe();
+  // guanghe();
 }
 
 function guanghe() {

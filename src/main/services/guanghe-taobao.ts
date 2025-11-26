@@ -504,9 +504,6 @@ class GuangheTaobao extends EventEmitter {
         }
       }
 
-      console.log(`当前guangCatalogue: ${UserData.guangCatalogue}`);
-      console.log(`是否找到选品车: ${hasProductCart}`);
-
       // 选品车处理逻辑（优化版）
       // 仅处理A0/A1类型，其他类型直接抛出错误
       // if (
@@ -688,7 +685,7 @@ class GuangheTaobao extends EventEmitter {
       }
 
       // 2. 等待选品车内容加载
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // 3. 输入商品ID并确认
       const input = await frame.locator(
@@ -698,19 +695,40 @@ class GuangheTaobao extends EventEmitter {
         console.error('未找到商品搜索输入框');
         return false;
       }
-      await input.type(productId);
+      await input.fill(productId);
       await input.press('Enter');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // 4. 匹配并点击目标商品
+      // 4. 匹配并点击目标商品（通过可见性筛选）
       const productItems = frame.locator(
         `div.publish-content__item-v2--item--1zog_Vq:has(a[href*="id=${productId}"])`
       );
-      if ((await productItems.count()) === 0) {
+
+      // 先获取所有匹配元素的Locator集合
+      const allItems = await productItems.all();
+      if (allItems.length === 0) {
         console.error(`未找到商品ID为 ${productId} 的选项`);
         return false;
       }
-      await productItems.click();
+
+      // 筛选出当前可见的元素
+      let targetItem = null;
+      for (const item of allItems) {
+        const isVisible = await item.isVisible(); // 检查元素是否可见
+        if (isVisible) {
+          targetItem = item;
+          break; // 找到第一个可见元素即可
+        }
+      }
+
+      // 若未找到可见元素，可尝试点击第一个元素（兜底）
+      if (!targetItem) {
+        targetItem = allItems[0];
+        console.warn('未找到可见的目标商品，将尝试点击第一个匹配元素');
+      }
+
+      // 执行点击
+      await targetItem.click();
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // 5. 点击确认按钮
@@ -872,6 +890,7 @@ class GuangheTaobao extends EventEmitter {
     let page: any = null;
     let browser: any = null;
     let iframeDetection: any = null;
+    let frameSwitch: boolean = false;
 
     const cleanup = async () => {
       try {
@@ -1023,8 +1042,8 @@ class GuangheTaobao extends EventEmitter {
       }
 
       // 点击达人管理
-      await page.locator('.next-menu-sub-menu > li').nth(1).click();
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // await page.locator('.next-menu-sub-menu > li').nth(1).click();
+      // await new Promise(resolve => setTimeout(resolve, 3000));
 
       const userNameInput = await page
         .locator('.search-view > .next-input')
@@ -1109,7 +1128,7 @@ class GuangheTaobao extends EventEmitter {
             await page.waitForSelector('iframe.publish-content--Cl3CtTGD', {
               timeout: 5000,
             });
-            console.log('iframe已加载');
+            // console.log('iframe已加载');
 
             // 获取iframe内容
             const iframeElement = await page.$(
@@ -1119,6 +1138,7 @@ class GuangheTaobao extends EventEmitter {
             if (iframeElement) {
               frame = await iframeElement.contentFrame();
               console.log('成功获取iframe内容');
+              frameSwitch = true;
             }
 
             // 逐个上传剩余的视频
@@ -1182,44 +1202,57 @@ class GuangheTaobao extends EventEmitter {
         if (iframeElement) {
           // 获取iframe的contentFrame
           frame = await iframeElement.contentFrame();
+          console.log('成功获取iframe内容');
         }
+        console.log('iframe内容获取完成:', frame);
+
+        console.log('赋值定时器');
+
         iframeDetection = setInterval(async () => {
-          if (frame) {
-            console.log('iframe已加载,开始检测关闭按钮和目标图片...');
+          // 检测当前iframe的状态，true为存在，false为已经清空
+          if (!frameSwitch) {
+            console.log('frame不存在或已断开连接，清理定时器');
+            if (iframeDetection) {
+              clearInterval(iframeDetection);
+              iframeDetection = null;
+            }
+            return;
+          }
 
-            // 确保frame已获取
+          // 检测关闭按钮是否存在
+          const closeBtn = await frame.$('.baxia-dialog-close');
+          if (closeBtn) {
             try {
-              // 检测关闭按钮是否存在
-              const closeBtn = await frame.$('.baxia-dialog-close');
-              // 检测目标图片是否存在（通过src精确匹配）
+              // 使用较短的超时时间并添加try-catch处理嵌套iframe访问
+              const imgIframeSelector = await frame.waitForSelector(
+                'iframe#baxia-dialog-content',
+                { timeout: 3000 }
+              );
 
-              // 只有当关闭按钮和目标图片同时存在时才执行关闭
-              if (closeBtn) {
-                const imgIframeSelector = await frame.waitForSelector(
-                  'iframe#baxia-dialog-content',
-                  { timeout: 5000 }
-                );
-                const imgIframe = await imgIframeSelector.contentFrame();
-                const targetImg = await imgIframe.$(
-                  `img[src="https://img.alicdn.com/imgextra/i2/O1CN010VLpQY1VWKHBQuBUQ_!!6000000002660-2-tps-222-222.png"]`
-                );
+              // 再次检查frame连接状态
+              if (!frameSwitch) {
+                console.log('frame在访问嵌套iframe前断开连接');
+                return;
+              }
+              const imgIframe = await imgIframeSelector.contentFrame();
+              const targetImg = await imgIframe.$(
+                `img[src="https://img.alicdn.com/imgextra/i2/O1CN010VLpQY1VWKHBQuBUQ_!!6000000002660-2-tps-222-222.png"]`
+              );
+
+              if (targetImg) {
                 this.emit('log', {
-                  message: '检测到关闭按钮',
+                  message: '检测到人机验证弹窗，执行关闭',
                   type: 'info',
                 });
-                if (targetImg) {
-                  this.emit('log', {
-                    message: '检测到目标图片，执行关闭',
-                    type: 'info',
-                  });
-                  console.log('检测到目标图片和关闭按钮，准备执行关闭');
-                  await new Promise(resolve => setTimeout(resolve, 200));
-                  await closeBtn.click();
-                  console.log('检测到目标图片和关闭按钮，已执行关闭');
-                }
+                await new Promise(resolve => setTimeout(resolve, 200));
+                await closeBtn.click();
               }
-            } catch (err) {
-              console.log('检测过程出错:', err);
+            } catch (innerErr: any) {
+              // 嵌套iframe访问出错，不清理定时器，继续下一次检测
+              // console.log(
+              //   '访问嵌套iframe出错，继续下一次检测:',
+              //   innerErr.message
+              // );
             }
           }
         }, 1000); // 每1秒检测一次
@@ -1239,16 +1272,11 @@ class GuangheTaobao extends EventEmitter {
           // 先清理定时器
           if (iframeDetection) {
             // 确保定时器存在
-            console.log('iframeDetection 存在,关闭定时器');
-            this.emit('log', {
-              message: 'iframeDetection 存在,关闭定时器',
-              type: 'info',
-            });
             clearInterval(iframeDetection);
             iframeDetection = null;
           }
-
-          await new Promise(resolve => setTimeout(resolve, 4000));
+          frameSwitch = false;
+          await new Promise(resolve => setTimeout(resolve, 3000));
 
           const publishBtn = await frame
             .locator('.batch-button-area > div')
@@ -1256,316 +1284,303 @@ class GuangheTaobao extends EventEmitter {
 
           if (await publishBtn.isVisible()) {
             console.log('点击批量发布按钮...');
-            this.emit('log', {
-              message: '点击批量发布按钮...',
-              type: 'info',
-            });
+            this.emit('log', { message: '点击批量发布按钮...', type: 'info' });
             await publishBtn.click();
+
             await new Promise(resolve => setTimeout(resolve, 3000));
+            const maxRetryTimes = 10;
+            let verifySuccess = false;
+            const targetUrl = 'https://mcn.guanghe.taobao.com/page/talent';
 
-            // 等待iframe加载
-            const iframeElement = await frame.locator(
-              'iframe#baxia-dialog-content'
-            );
-            await iframeElement.waitFor({ state: 'attached', timeout: 10000 });
-
-            // 获取iframe的contentFrame
-            const iframe = await iframeElement.contentFrame();
-            if (!iframe) {
-              console.error('无法获取iframe内容');
-              return;
-            }
-
-            // 在iframe内查找图片元素
-            const bgImg = await iframe.locator('#puzzle-captcha-question-img');
-
-            // 等待图片元素可见
-            await bgImg.waitFor({ state: 'visible', timeout: 10000 });
-
-            // 获取图片的src属性
-            const src = await bgImg.getAttribute('src');
-            console.log('图片src:', src);
-            const srcBox = await iframe.locator('.puzzle-captcha-puzzle');
-
-            const topValue = await srcBox.evaluate((element: HTMLElement) => {
-              return window.getComputedStyle(element).top;
-            });
-
-            console.log('srcBox的top值:', topValue);
-            const distance = await this.detector.detectFromUrl(
-              src,
-              0,
-              topValue,
-              320,
-              80,
-              50,
-              0.08
-            );
-            console.log('距离:', distance);
-
-            const slidingBtn = await iframe.locator('#puzzle-captcha-btn');
-
-            await this.detector.simulateHumanSlideMultiIframe(
-              page,
-              slidingBtn,
-              distance
-            );
-
-            // 定位滑块弹窗（使用 locator 而非直接获取元素，保持引用有效性）
-            const confirmLocator = frame.locator('.baxia-dialog-content');
-            let checkTimer: any = null; // 用于存储定时器，便于中途清除
-
-            try {
-              if (await confirmLocator.isVisible()) {
-                console.log('检测到滑块验证弹窗，等待人工操作...');
-                this.emit('log', {
-                  message: '检测到滑块验证弹窗，等待人工操作...',
-                  type: 'warning',
-                });
-
-                const checkInterval = 5000; // 改为5秒检查一次，更快响应
-                let remainingTime = 300000;
-                let checkTimer: NodeJS.Timeout | null = null;
-                const successUrl = 'https://mcn.guanghe.taobao.com/page/talent';
-
-                // 用 setTimeout 实现可中断的循环（替代 while）
-                const checkPopup = async () => {
-                  try {
-                    // 1. 直接通过浏览器上下文获取当前活动页面的URL
-                    let currentUrl = '';
-                    try {
-                      // 获取浏览器上下文
-                      const context = browser.contexts()[0]; // 获取第一个浏览器上下文
-                      const pages = await context.pages(); // 获取该上下文中的所有页面
-                      if (pages.length > 0) {
-                        // 通常最后一个页面是最新打开的页面，或者我们可以查找包含目标URL的页面
-                        for (const p of pages) {
-                          try {
-                            const url = p.url();
-                            if (url.includes(successUrl)) {
-                              currentUrl = url;
-                              break;
-                            }
-                            // 如果没有找到目标URL，使用第一个非空页面
-                            if (!currentUrl && url && url !== 'about:blank') {
-                              currentUrl = url;
-                            }
-                          } catch (e) {
-                            // 忽略无效页面
-                            continue;
-                          }
-                        }
-                      }
-                    } catch (urlErr: any) {
-                      console.log('获取页面URL失败:', urlErr.message);
-                    }
-
-                    // 检查是否跳转到成功页面
-                    if (currentUrl.includes(successUrl)) {
-                      console.log('已跳转到成功页面，滑块验证成功');
-                      this.emit('log', {
-                        message: '已跳转到成功页面，滑块验证完成',
-                        type: 'info',
-                      });
-                      if (checkTimer) clearTimeout(checkTimer);
-                      checkTimer = null;
-                      return;
-                    }
-
-                    // 2. 检查滑块弹窗是否仍可见
-                    let isStillVisible = false;
-                    try {
-                      // 尝试在当前页面查找滑块弹窗
-                      const context = browser.contexts()[0];
-                      const pages = await context.pages();
-                      for (const p of pages) {
-                        try {
-                          const popupLocator = p.locator(
-                            '.baxia-dialog-content'
-                          );
-                          isStillVisible = await popupLocator
-                            .isVisible()
-                            .catch(() => false);
-                          if (isStillVisible) break;
-                        } catch (e) {
-                          // 继续检查下一个页面
-                          continue;
-                        }
-                      }
-                    } catch (popupErr: any) {
-                      console.log('滑块弹窗检查失败:', popupErr.message);
-                    }
-
-                    // 如果弹窗不可见且不在成功页面，可能是其他情况
-                    if (!isStillVisible && !currentUrl.includes(successUrl)) {
-                      console.log(
-                        '滑块弹窗已关闭，但未跳转到目标页面，等待确认...'
-                      );
-                      // 等待一下再检查URL，可能页面正在跳转
-                      await new Promise(resolve => setTimeout(resolve, 2000));
-
-                      // 再次检查URL
-                      try {
-                        const context = browser.contexts()[0];
-                        const pages = await context.pages();
-                        for (const p of pages) {
-                          try {
-                            const url = p.url();
-                            if (url.includes(successUrl)) {
-                              console.log('确认已跳转到成功页面');
-                              this.emit('log', {
-                                message: '确认已跳转到成功页面',
-                                type: 'info',
-                              });
-                              if (checkTimer) clearTimeout(checkTimer);
-                              checkTimer = null;
-                              return;
-                            }
-                          } catch (e) {
-                            continue;
-                          }
-                        }
-                      } catch (err) {
-                        // 忽略错误
-                      }
-
-                      // 如果还是没有跳转，可能是其他情况，继续等待
-                      console.log('弹窗关闭但未跳转，继续等待...');
-                    }
-
-                    // 超时处理
-                    remainingTime -= checkInterval;
-                    if (remainingTime <= 0) {
-                      console.log('滑块验证超时，操作失败');
-                      this.emit('log', {
-                        message: '滑块验证超时，操作失败',
-                        type: 'error',
-                      });
-                      this.writeLog(`滑块验证超时，操作失败`, 'info');
-                      if (checkTimer) clearTimeout(checkTimer);
-                      checkTimer = null;
-                      await this.handleTaskFailure({ message: '滑块验证超时' });
-                      return;
-                    }
-
-                    console.log(
-                      `继续等待滑块验证完成，剩余时间: ${Math.ceil(
-                        remainingTime / 1000
-                      )}秒，当前URL: ${currentUrl || '未知'}`
-                    );
-                    this.emit('log', {
-                      message: `继续等待滑块验证完成，剩余时间: ${Math.ceil(
-                        remainingTime / 1000
-                      )}秒`,
-                      type: 'info',
-                    });
-                    checkTimer = setTimeout(checkPopup, checkInterval);
-                  } catch (err) {
-                    console.error('检查滑块验证状态出错:', err);
-                    remainingTime -= checkInterval;
-                    if (remainingTime > 0) {
-                      checkTimer = setTimeout(checkPopup, checkInterval);
-                    }
-                  }
-                };
-
-                checkTimer = setTimeout(checkPopup, checkInterval);
-                await new Promise<void>(resolve => {
-                  const waitInterval = setInterval(() => {
-                    if (!checkTimer) {
-                      clearInterval(waitInterval);
-                      resolve();
-                    }
-                  }, 1000);
-                });
-              }
-
-              // 最终状态检查
-              let finalUrl = '';
+            // 优化：增强URL检测逻辑，添加详细日志
+            const checkSuccessUrl = async (): Promise<boolean> => {
               try {
-                const context = browser.contexts()[0];
-                const pages = await context.pages();
-                for (const p of pages) {
-                  try {
-                    const url = p.url();
-                    if (
-                      url.includes('https://mcn.guanghe.taobao.com/page/talent')
-                    ) {
-                      finalUrl = url;
-                      break;
+                const contexts = browser.contexts();
+                console.log(`[URL检测] 当前上下文数量: ${contexts.length}`);
+
+                for (let ctxIndex = 0; ctxIndex < contexts.length; ctxIndex++) {
+                  const context = contexts[ctxIndex];
+                  const pages = context.pages();
+                  console.log(
+                    `[URL检测] 上下文${ctxIndex}中的页面数量: ${pages.length}`
+                  );
+
+                  for (
+                    let pageIndex = 0;
+                    pageIndex < pages.length;
+                    pageIndex++
+                  ) {
+                    const p = pages[pageIndex];
+                    if (p.isClosed()) {
+                      console.log(`[URL检测] 页面${pageIndex}已关闭，跳过`);
+                      continue;
                     }
-                  } catch (e) {
-                    continue;
+
+                    const currentUrl = p.url();
+                    console.log(
+                      `[URL检测] 页面${pageIndex} URL: ${currentUrl}`
+                    );
+                    console.log(
+                      `[URL检测] 页面${pageIndex} 是否目标URL: ${
+                        currentUrl === targetUrl
+                      }`
+                    );
+
+                    if (currentUrl === targetUrl) {
+                      // 确保页面加载完成
+                      await p.waitForLoadState('networkidle');
+                      console.log(
+                        `[URL检测] 找到目标页面！页面索引: ${pageIndex}`
+                      );
+                      return true;
+                    }
                   }
                 }
-              } catch (err: any) {
-                console.log('获取最终URL失败:', err.message);
+              } catch (e) {
+                console.error(
+                  '[URL检测] 检查URL时发生错误:',
+                  (e as Error).message
+                );
+              }
+              console.log('[URL检测] 未找到目标页面');
+              return false;
+            };
+
+            // 优化：更可靠的滑块弹窗检测，添加日志
+            const isCaptchaVisible = async (): Promise<boolean> => {
+              try {
+                console.log('[滑块检测] 检查滑块弹窗是否可见');
+                const confirmLocator = frame.locator('.baxia-dialog-content');
+                const visible = await confirmLocator.isVisible({
+                  timeout: 1000,
+                });
+                console.log(`[滑块检测] 滑块弹窗可见状态: ${visible}`);
+                return visible;
+              } catch (e) {
+                console.error(
+                  '[滑块检测] 检测滑块时出错:',
+                  (e as Error).message
+                );
+                return false;
+              }
+            };
+
+            // 优化：等待页面跳转的辅助函数，添加详细日志
+            const waitForNavigation = async (
+              timeout = 10000
+            ): Promise<boolean> => {
+              console.log(
+                `[导航等待] 开始等待页面跳转，超时时间: ${timeout}ms`
+              );
+              const startTime = Date.now();
+
+              while (Date.now() - startTime < timeout) {
+                if (await checkSuccessUrl()) {
+                  console.log('[导航等待] 检测到页面已跳转');
+                  return true;
+                }
+                await new Promise(resolve => setTimeout(resolve, 500));
               }
 
-              if (
-                finalUrl.includes('https://mcn.guanghe.taobao.com/page/talent')
-              ) {
-                console.log('发布成功：已跳转到目标页面');
-                this.emit('log', {
-                  message: '发布成功：已跳转到目标页面',
-                  type: 'info',
-                });
-              } else {
-                console.log('发布流程完成，但未检测到目标页面跳转');
-                this.emit('log', {
-                  message: '发布流程完成',
-                  type: 'info',
-                });
+              console.log('[导航等待] 超时未检测到页面跳转');
+              return false;
+            };
+
+            console.log(
+              '[主流程] 开始滑块验证循环，最大重试次数:',
+              maxRetryTimes
+            );
+
+            for (let retryCount = 0; retryCount < maxRetryTimes; retryCount++) {
+              console.log(`\n[主流程] 第${retryCount + 1}次循环开始`);
+
+              // 先检查是否已经成功跳转
+              console.log('[主流程] 第一步：检查是否已跳转');
+              if (await checkSuccessUrl()) {
+                verifySuccess = true;
+                console.log('[主流程] 已跳转，验证成功');
+                break;
               }
 
+              // 检查是否有滑块弹窗
+              console.log('[主流程] 第二步：检查滑块弹窗');
+              if (!(await isCaptchaVisible())) {
+                console.log('[主流程] 未检测到滑块弹窗，等待页面跳转...');
+
+                // 等待一段时间看是否跳转
+                if (await waitForNavigation(5000)) {
+                  verifySuccess = true;
+                  console.log('[主流程] 等待后检测到跳转，验证成功');
+                  break;
+                }
+
+                console.log('[主流程] 仍未跳转，继续重试...');
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                continue;
+              }
+
+              try {
+                console.log(
+                  `[滑块验证] 开始第 ${retryCount + 1} 次滑块验证尝试`
+                );
+                this.emit('log', {
+                  message: `滑块验证第 ${retryCount + 1} 次尝试`,
+                  type: 'info',
+                });
+
+                console.log('[滑块验证] 等待iframe加载');
+                const iframeElement = await frame.locator(
+                  'iframe#baxia-dialog-content'
+                );
+                await iframeElement.waitFor({
+                  state: 'attached',
+                  timeout: 10000,
+                });
+                const iframe = await iframeElement.contentFrame();
+
+                if (!iframe) {
+                  throw new Error('无法获取iframe内容');
+                }
+                console.log('[滑块验证] 成功获取iframe');
+
+                console.log('[滑块验证] 等待验证码图片加载');
+                const bgImg = iframe.locator('#puzzle-captcha-question-img');
+                await bgImg.waitFor({ state: 'visible', timeout: 10000 });
+
+                const src = await bgImg.getAttribute('src');
+                if (!src) {
+                  throw new Error('无法获取验证码图片SRC');
+                }
+                console.log('[滑块验证] 成功获取验证码图片SRC');
+
+                console.log('[滑块验证] 获取滑块位置信息');
+                const srcBox = iframe.locator('.puzzle-captcha-puzzle');
+                const topValue = await srcBox.evaluate(
+                  (element: HTMLElement) => window.getComputedStyle(element).top
+                );
+                console.log(`[滑块验证] Top值: ${topValue}`);
+
+                console.log('[滑块验证] 计算滑动距离');
+                const distance = await this.detector.detectFromUrl(
+                  src,
+                  0,
+                  Number(topValue.replace('px', '')),
+                  320,
+                  180,
+                  50,
+                  0.08
+                );
+                console.log(`[滑块验证] 计算距离: ${distance}`);
+
+                console.log('[滑块验证] 执行滑动操作');
+                const slidingBtn = iframe.locator('#puzzle-captcha-btn');
+                await this.detector.simulateHumanSlideMultiIframe(
+                  page,
+                  slidingBtn,
+                  distance
+                );
+                console.log('[滑块验证] 滑动操作完成');
+
+                // 滑块操作后等待弹窗消失和页面跳转
+                console.log('[滑块验证] 开始检查滑动结果');
+                const checkStartTime = Date.now();
+                let slideSuccess = false;
+
+                while (Date.now() - checkStartTime < 8000) {
+                  // 延长等待时间到8秒
+                  // 检查是否跳转成功
+                  if (await checkSuccessUrl()) {
+                    verifySuccess = true;
+                    slideSuccess = true;
+                    console.log('[滑块验证] 检测到页面跳转，滑动成功');
+                    break;
+                  }
+
+                  // 检查弹窗是否消失
+                  if (!(await isCaptchaVisible())) {
+                    console.log('[滑块验证] 滑块弹窗已消失，等待页面跳转...');
+                    // 额外等待3秒看是否跳转
+                    if (await waitForNavigation(3000)) {
+                      verifySuccess = true;
+                      console.log('[滑块验证] 弹窗消失后检测到页面跳转');
+                    } else {
+                      console.log(
+                        '[滑块验证] 弹窗消失但未跳转，可能需要重新验证'
+                      );
+                    }
+                    slideSuccess = true;
+                    break;
+                  }
+
+                  await new Promise(resolve => setTimeout(resolve, 300));
+                }
+
+                if (verifySuccess) {
+                  console.log('[滑块验证] 滑块验证成功！');
+                  this.emit('log', {
+                    message: '滑块验证成功！',
+                    type: 'success',
+                  });
+                  break;
+                } else if (!slideSuccess) {
+                  console.log('[滑块验证] 滑动后状态无变化，将重试');
+                }
+
+                if (retryCount < maxRetryTimes - 1) {
+                  const waitTime = Math.min((retryCount + 1) * 1000, 5000); // 最多等待5秒
+                  console.log(
+                    `[滑块验证] 验证未通过，${waitTime / 1000}秒后重试...`
+                  );
+                  this.emit('log', {
+                    message: `验证未通过，准备重试...`,
+                    type: 'warning',
+                  });
+                  await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+              } catch (error) {
+                console.error(
+                  `[滑块验证] 第 ${retryCount + 1} 次滑块验证出错:`,
+                  error
+                );
+                this.emit('log', {
+                  message: `滑块验证出错: ${(error as Error).message}`,
+                  type: 'error',
+                });
+                await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+            }
+
+            // 最终检查（包括新标签页）
+            if (!verifySuccess) {
+              console.log('\n[主流程] 最后检查页面跳转状态...');
+              if (await waitForNavigation(3000)) {
+                verifySuccess = true;
+                console.log('[主流程] 最后检查检测到页面跳转');
+              }
+            }
+
+            // 最终结果判断
+            console.log(
+              `\n[主流程] 验证最终结果: ${verifySuccess ? '成功' : '失败'}`
+            );
+
+            if (verifySuccess) {
+              console.log('[主流程] 发布流程完成：检测到目标页面');
+              this.emit('log', {
+                message: '发布成功：已跳转到目标页面',
+                type: 'success',
+              });
               this.emit('log', {
                 message: `已完成视频发布信息填写`,
                 type: 'info',
               });
-            } catch (err: any) {
-              // 检查是否实际上已经成功跳转
-              let currentUrl = '';
-              try {
-                const context = browser.contexts()[0];
-                const pages = await context.pages();
-                for (const p of pages) {
-                  try {
-                    const url = p.url();
-                    if (
-                      url.includes('https://mcn.guanghe.taobao.com/page/talent')
-                    ) {
-                      currentUrl = url;
-                      break;
-                    }
-                  } catch (e) {
-                    continue;
-                  }
-                }
-              } catch (urlErr) {
-                /* 忽略 */
-              }
-
-              if (
-                currentUrl.includes(
-                  'https://mcn.guanghe.taobao.com/page/talent'
-                )
-              ) {
-                console.log('页面已跳转到成功页面，忽略其他错误');
-                this.emit('log', {
-                  message: '发布成功，页面跳转完成',
-                  type: 'info',
-                });
-              } else {
-                console.error('发布流程出错:', err);
-                this.emit('log', {
-                  message: `发布流程出错: ${err.message}`,
-                  type: 'error',
-                });
-                throw err;
-              }
-            } finally {
-              // 清理定时器，防止内存泄漏
-              if (checkTimer) clearTimeout(checkTimer);
+            } else {
+              console.error('[主流程] 发布失败：滑块验证超时或未跳转');
+              this.emit('log', {
+                message: '发布失败：滑块验证超时或未跳转',
+                type: 'error',
+              });
+              throw new Error('滑块验证失败，发布流程终止');
             }
           }
         }
@@ -2010,14 +2025,7 @@ class GuangheTaobao extends EventEmitter {
       console.log('开始检测逛逛账号目录...');
       const newDirectories = this.getGuangGuangAccountDirectories();
 
-      // 检查是否有新目录
-      const hasNewDirectories =
-        newDirectories.length > this.guangGuangAccountDirectories.length;
-
-      if (hasNewDirectories) {
-        console.log(`发现新目录，更新目录数组: ${newDirectories.length} 个`);
-        this.guangGuangAccountDirectories = newDirectories;
-      }
+      this.guangGuangAccountDirectories = newDirectories;
 
       if (this.guangGuangAccountDirectories.length > 0) {
         await this.processDirectoryQueue();
