@@ -2022,7 +2022,16 @@ class GuangheTaobao extends EventEmitter {
    */
   public async checkAndUpdateDirectories(): Promise<void> {
     try {
+      // 检查当前时间是否在早上七点之前
+      const now = dayjs();
+      const currentHour = now.hour();
+      // 早于七点不发
+      if (currentHour < 7) {
+        return;
+      }
+
       console.log('开始检测逛逛账号目录...');
+
       const newDirectories = this.getGuangGuangAccountDirectories();
 
       this.guangGuangAccountDirectories = newDirectories;

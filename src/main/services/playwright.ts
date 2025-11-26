@@ -1133,10 +1133,8 @@ class PlaywrightScript extends EventEmitter {
   public async CheckKaipaiLoginStatus() {
     try {
       // 确定下载目录
-      const defaultDownloadDir = path.join(os.homedir(), 'Downloads', 'ces');
-
       // 初始化浏览器实例
-      await PlaywrightScript.initBrowser(defaultDownloadDir);
+      await PlaywrightScript.initBrowser('');
 
       if (!PlaywrightScript.browser) {
         throw new Error('无法初始化浏览器实例');
