@@ -266,7 +266,7 @@ export async function renameProductDirs(
     try {
       // 重命名目录
       const newDirName = dir.replace(searchVal, replaceVal);
-      fs.renameSync(dir, newDirName);
+      await fs.promises.rename(dir, newDirName);
     } catch (error) {
       throw new Error(
         `重命名目录失败: ${path.basename(dir)} - ${(error as Error).message}`
@@ -288,6 +288,26 @@ export async function cutFileToOtherDirectory(
       const targetFilePath = path.join(targetDirectory, targetFileName);
       console.log('rename', sourceFilePath, targetFilePath);
       await fs.promises.rename(sourceFilePath, targetFilePath);
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+export async function cutDirectoryToOtherDirectory(
+  sourceDirectoryPath: string,
+  targetDirectory: string,
+  targetDirectoryName: string
+): Promise<void> {
+  return new Promise<void>(async (resolve, reject) => {
+    try {
+      await fs.promises.access(targetDirectory);
+      await fs.promises.mkdir(targetDirectory, { recursive: true });
+
+      const targetFilePath = path.join(targetDirectory, targetDirectoryName);
+      console.log('rename', sourceDirectoryPath, targetFilePath);
+      await fs.promises.rename(sourceDirectoryPath, targetFilePath);
       resolve();
     } catch (error) {
       reject(error);
