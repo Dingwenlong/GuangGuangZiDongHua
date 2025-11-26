@@ -2026,7 +2026,7 @@ class GuangheTaobao extends EventEmitter {
       const now = dayjs();
       const currentHour = now.hour();
       // 早于七点不发
-      if (currentHour < 7) {
+      if (currentHour < 12) {
         return;
       }
 

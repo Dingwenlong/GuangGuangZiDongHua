@@ -20,6 +20,7 @@ export class GuangProcessor extends EventEmitter {
   private watcher: FileWatcher | null;
   private fileEventQueue: Array<() => Promise<void>> = [];
   private isProcessingQueue: boolean = false;
+  private restartTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -28,16 +29,34 @@ export class GuangProcessor extends EventEmitter {
 
   public startMonitor(monitorDirectory: string): void {
     try {
+      // 如果已经有监控在运行，先停止它
+      if (this.watcher || this.restartTimer) {
+        this.writeLog('检测到已有监控在运行，先停止现有监控', 'info');
+        this.stopMonitor();
+      }
+
       if (!fs.existsSync(monitorDirectory))
         this.writeLog('监控目录不存在', 'warning');
 
       this.initializeSchema();
       this.startFileWatching(monitorDirectory);
 
-      this.writeLog(
-        `已启动光合发布文件监控，监控目录: ${monitorDirectory}`,
-        'success'
+      // 设置定时重启监控的定时器
+      this.restartTimer = setInterval(
+        () => {
+          const now = dayjs();
+          // 检查当前时间是否是凌晨5点（允许1分钟的误差）
+          if (now.hour() === 5 && now.minute() === 0) {
+            this.writeLog('定时重启文件监控', 'info');
+            // 不清理定时器，只停止文件监控
+            this.stopMonitor(false);
+            this.startFileWatching(monitorDirectory);
+          }
+        },
+        60000 // 每分钟检查一次
       );
+
+      this.writeLog(`已设置定时重启监控，将在每天凌晨5点自动重启`, 'info');
     } catch (error) {
       this.writeLog(
         `启动光合发布文件监控，监控目录: ${monitorDirectory}异常：${error}`,
@@ -84,11 +103,23 @@ export class GuangProcessor extends EventEmitter {
       });
 
     this.watcher.start();
+
+    this.writeLog(
+      `已启动光合发布文件监控，监控目录: ${monitorDirectory}`,
+      'success'
+    );
   }
 
-  public stopMonitor(): void {
+  public stopMonitor(clearTimer: boolean = true): void {
     this.fileEventQueue = [];
     this.isProcessingQueue = false;
+
+    // 根据参数决定是否清理定时器
+    if (clearTimer && this.restartTimer) {
+      clearInterval(this.restartTimer);
+      this.restartTimer = null;
+      this.writeLog('已清理定时重启监控器', 'info');
+    }
 
     if (this.watcher) {
       this.watcher.stop();

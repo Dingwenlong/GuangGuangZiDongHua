@@ -6,10 +6,12 @@ import EventEmitter from 'events';
 import { writeLog, type LogEvent } from '@main/utils/log';
 import type { S4VideosChunk } from './workbench-manager';
 import {
+  cutDirectoryToOtherDirectory,
   insertDirectoryBeforeLast,
   removeFilesByPrefix,
   renameProductDir,
 } from '@main/utils/file';
+import dayjs from 'dayjs';
 
 /**
  * 视频场景分割配置选项
@@ -210,6 +212,20 @@ export class VideoSceneSplitter extends EventEmitter {
       // 商品目录的 S3 改为 S4
       await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
       this.writeLog(`${videosChunk.folderName}目录已重命名为S4`);
+      // 把四个分镜视频文件夹移动到规定文件夹
+      for (const childFolder of videosChunk.childFolders) {
+        const childFolderName = childFolder.folderName;
+        const targetDir = path.join(
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分镜',
+          dayjs().format('YYYYMM')
+        );
+        await cutDirectoryToOtherDirectory(
+          childFolderName,
+          targetDir,
+          path.basename(childFolderName)
+        );
+        this.writeLog(`${childFolderName}已移动到${targetDir}`);
+      }
       this.emit('s4OkCallback', videos);
       this.writeLog(
         `视频混剪任务混剪完成 ${videosChunk.folderName}, ${videos}`
