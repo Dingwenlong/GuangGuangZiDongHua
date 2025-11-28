@@ -397,7 +397,7 @@ class PlaywrightScript extends EventEmitter {
               // 如果不是S1开头，添加Y1前缀
               const ext = path.extname(processedName);
               const nameWithoutExt = processedName.replace(ext, '');
-              processedName = `Y1_${nameWithoutExt}${ext}`;
+              processedName = `Y1---${nameWithoutExt}${ext}`;
             }
             if (!processedName.endsWith('.mp4')) {
               processedName = `${processedName}.mp4`;
@@ -420,6 +420,25 @@ class PlaywrightScript extends EventEmitter {
         `S2处理完成，触发成功的回调，文件路径: ${targetPath}`,
         'info'
       );
+
+      // 清理原始文件
+      if (filePath && fs.existsSync(filePath)) {
+        try {
+          fs.unlinkSync(filePath);
+          this.emit('log', {
+            message: `已清理原始文件：${filePath}`,
+            type: 'info',
+          });
+          this.writeLog(`已清理原始文件：${filePath}`, 'info');
+        } catch (e) {
+          this.emit('log', {
+            message: `清理原始文件失败：${(e as Error).message}`,
+            type: 'warning',
+          });
+          this.writeLog(`清理原始文件失败：${(e as Error).message}`, 'warning');
+        }
+      }
+
       setTimeout(() => {
         this.okCallback(targetPath);
       }, 2000);
@@ -1069,30 +1088,52 @@ class PlaywrightScript extends EventEmitter {
           }
         }
 
+        // 清理原始S5文件
+        if (filePath && fs.existsSync(filePath)) {
+          const originalFileName = path.basename(filePath);
+          if (originalFileName.startsWith('S5')) {
+            try {
+              fs.unlinkSync(filePath);
+              this.emit('log', {
+                message: `已清理原始S5文件：${filePath}`,
+                type: 'info',
+              });
+            } catch (e) {
+              this.emit('log', {
+                message: `清理S5文件失败：${(e as Error).message}`,
+                type: 'warning',
+              });
+            }
+          }
+        }
+
         // 检查当前下载目录是否为空，如果为空则删除目录
         try {
-          const downloadDir = path.dirname(targetPath); // 获取当前文件所在目录
-          const remainingFiles = fs.readdirSync(downloadDir);
+          // 检查原始S5文件所在目录
+          const originalFileDir = path.dirname(filePath);
+          const remainingFiles = fs.readdirSync(originalFileDir);
           const nonSystemFiles = remainingFiles.filter(
             file => !file.startsWith('.') && file !== 'desktop.ini'
           );
 
           if (nonSystemFiles.length === 0) {
             // 目录为空，删除目录
-            fs.rmdirSync(downloadDir);
+            fs.rmdirSync(originalFileDir);
             this.emit('log', {
-              message: `下载目录已清空，删除目录：${downloadDir}`,
+              message: `原始文件目录已清空，删除目录：${originalFileDir}`,
               type: 'info',
             });
           } else {
             this.emit('log', {
-              message: `下载目录中还有 ${nonSystemFiles.length} 个文件，保留目录：${downloadDir}`,
+              message: `原始文件目录中还有 ${nonSystemFiles.length} 个文件，保留目录：${originalFileDir}`,
               type: 'info',
             });
           }
         } catch (dirError) {
           this.emit('log', {
-            message: `检查下载目录状态时出错：${(dirError as Error).message}`,
+            message: `检查原始文件目录状态时出错：${
+              (dirError as Error).message
+            }`,
             type: 'warning',
           });
         }
@@ -1133,8 +1174,9 @@ class PlaywrightScript extends EventEmitter {
   public async CheckKaipaiLoginStatus() {
     try {
       // 确定下载目录
+      const defaultDownloadDir = path.join(__dirname, '../../downloads');
       // 初始化浏览器实例
-      await PlaywrightScript.initBrowser('');
+      await PlaywrightScript.initBrowser(defaultDownloadDir);
 
       if (!PlaywrightScript.browser) {
         throw new Error('无法初始化浏览器实例');
