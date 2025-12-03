@@ -127,7 +127,10 @@ function startOrStopTaskHandler(start = true) {
 }
 
 function guanghe() {
-  ipcRendererChannel.guangheCes.invoke();
+  ipcRendererChannel.guangheCes.invoke({
+    filePath:
+      'C:\\Users\\ASUS\\Downloads\\ces\\@c45311fcaca9e41698117ff4e6e26b53.mp4',
+  });
 }
 
 // 调用高清化脚本

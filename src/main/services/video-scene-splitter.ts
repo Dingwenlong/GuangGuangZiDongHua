@@ -219,6 +219,19 @@ export class VideoSceneSplitter extends EventEmitter {
           '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分镜',
           dayjs().format('YYYYMM')
         );
+
+        // 检查目录是否存在，不存在则创建
+        if (!fs.existsSync(targetDir)) {
+          try {
+            fs.mkdirSync(targetDir);
+          } catch (err) {
+            // 如果父目录不存在，可能需要递归创建
+            const mkdirp = require('mkdirp');
+            mkdirp.sync(targetDir);
+          }
+          this.writeLog(`目标目录不存在，创建目录: ${targetDir}`);
+        }
+
         await cutDirectoryToOtherDirectory(
           childFolderName,
           targetDir,

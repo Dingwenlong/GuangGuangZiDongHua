@@ -74,8 +74,15 @@ let currMonitoringDirectory = '';
 
 onMounted(() => {
   ipcRendererChannel.GetWorkbenchData.invoke('s7').then(workbench => {
-    s7.value.taskDirectory = workbench.taskDirectory;
-    s7.value.running = workbench.running;
+    // 处理workbench可能为undefined的情况
+    if (workbench) {
+      s7.value.taskDirectory = workbench.taskDirectory ?? '';
+      s7.value.running = workbench.running ?? false;
+    } else {
+      // 初始化默认值
+      s7.value.taskDirectory = '';
+      s7.value.running = false;
+    }
   });
 
   watch(s7.value, async newValue => {

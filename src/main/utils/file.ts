@@ -32,6 +32,10 @@ export function isVideoFile(filePath: string): boolean {
  */
 export function isProcessedVideoFile(filePath: string): boolean {
   const fileName = path.basename(filePath);
+  // 以@开头的文件不被视为已处理文件
+  if (fileName.startsWith('@')) {
+    return false;
+  }
   const processedPattern = /^.+\-\-\-\d+\.mp4$/;
   return processedPattern.test(fileName);
 }

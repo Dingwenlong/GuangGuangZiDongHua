@@ -11,6 +11,7 @@ import {
 import { FFmpegUtil, FFmpegProgressEvent, VideoSegment } from '../lib/ffmpeg';
 import { S3VideosChunk, type FolderItem } from './workbench-manager';
 import { writeLog, type LogEvent } from '@main/utils/log';
+import FaceRecognition from './face-recognition';
 
 // 类型定义
 interface VideoProcessorOptions {
@@ -146,7 +147,10 @@ class VideoProcessor extends EventEmitter {
       this.writeLog('监控目录不存在', 'error');
       return;
     }
-
+    this.emit('log', {
+      message: `监控目录: ${this.monitorDirectory}`,
+      type: 'info',
+    });
     // 创建必要的子目录
     this.createSubdirectories();
 
@@ -234,11 +238,12 @@ class VideoProcessor extends EventEmitter {
     this.watcher = new FileWatcher(this.monitorDirectory, {
       ignored: [
         /(^|[\/\\])\../, // 忽略隐藏文件
-        /.*---\d+\.mp4$/, // 忽略已处理的视频文件
+        /^(?!@).*---\d+\.mp4$/, // 忽略已处理的视频文件，但不忽略以@开头的文件
         /视频去字幕任务/, // 忽略输出目录
         /temp/, // 忽略临时目录
         /音频输出/, // 忽略输出目录
         /视频分镜任务/, // 忽略输出目录
+        /temp_face/, // 忽略人脸识别临时目录
         /node_modules/,
       ],
       depth: 3, // 监控深度增加到3层
@@ -440,6 +445,41 @@ class VideoProcessor extends EventEmitter {
 
     this.writeLog(`开始处理视频: ${path.basename(filePath)}`);
     try {
+      // 检查文件名是否以@开头，需要先进行人脸识别处理
+      console.log('触发处理队列视频，视频:', filePath);
+
+      const fileName = path.basename(filePath);
+      if (fileName.startsWith('@')) {
+        this.writeLog(`检测到@开头文件，开始人脸识别处理: ${fileName}`);
+        console.log('检测到@，触发人脸识别');
+
+        // 创建temp_face目录（父级目录平级）
+        const fileDir = path.dirname(filePath);
+        const parentDir = path.dirname(fileDir);
+        const tempFaceDir = path.join(parentDir, 'temp_face');
+        if (!fs.existsSync(tempFaceDir)) {
+          fs.mkdirSync(tempFaceDir, { recursive: true });
+        }
+
+        // 将文件移动到temp_face目录
+        const tempFilePath = path.join(tempFaceDir, fileName);
+        fs.renameSync(filePath, tempFilePath);
+
+        // 进行人脸识别处理
+        const faceRecognition = new FaceRecognition();
+        const processedPath = await faceRecognition.processVideo(tempFilePath);
+
+        // 删除临时目录中的原文件
+        fs.unlinkSync(tempFilePath);
+
+        // 将处理后的文件移动回原目录
+        const finalPath = path.join(fileDir, path.basename(processedPath));
+        fs.renameSync(processedPath, finalPath);
+
+        return;
+      }
+
+      // 正常处理视频
       await this.processVideo(filePath);
 
       // 处理成功，从队列移除

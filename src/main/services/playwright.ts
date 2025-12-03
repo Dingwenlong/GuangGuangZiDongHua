@@ -152,7 +152,7 @@ class PlaywrightScript extends EventEmitter {
       // 上传文件
       const uploadArea = await page.waitForSelector(
         '.UploadContentV2_cardRightBox__s8gmc',
-        { timeout: 30000 }
+        { timeout: 1 * 60 * 1000 } // 一分钟等待时间
       );
       const [fileChooser] = await Promise.all([
         page.waitForEvent('filechooser', { timeout: 15000 }),
@@ -186,7 +186,7 @@ class PlaywrightScript extends EventEmitter {
       console.log('等待30秒后继续,检测列表第一个的导出按钮');
 
       // 全局超时和检测间隔设置
-      const maxWaitTime = 120 * 60 * 1000; // 2小时
+      const maxWaitTime = 60 * 60 * 1000; // 1小时
       const checkInterval = 30 * 1000; // 30秒
 
       let exportButton: any = null;
@@ -784,7 +784,7 @@ class PlaywrightScript extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 20000));
 
       // 全局超时和检测间隔设置
-      const maxWaitTime = 120 * 60 * 1000; // 2小时
+      const maxWaitTime = 30 * 60 * 1000; // 30分钟
       const checkInterval = 10 * 1000; // 10秒
 
       // 等待任务项DOM稳定

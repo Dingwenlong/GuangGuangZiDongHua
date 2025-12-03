@@ -23,6 +23,8 @@ import TaskScheduler from '../lib/task-scheduler'; // 创建任务调度器
 import S5TaskProcessor from './s5-task-processor';
 import { GuangProcessor } from './guang-processor';
 
+import FaceRecognition from './face-recognition';
+
 /**
  * 自定义全局
  * @param mainInit
@@ -120,6 +122,8 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const dirMonitors: DirectoryMonitor[] = [];
   const isTest = false;
 
+  const faceRecognition = new FaceRecognition();
+
   // ----------------------执行每一步---------------------
   // s1
   workbenchManager.watch('s1', async (newValue: WorkbenchStoreSchema['s1']) => {
@@ -128,7 +132,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       if (status.monitoring) await videoProcessor.stop();
       return;
     }
-
     if (videoProcessor.monitorDirectory !== newValue.taskDirectory)
       videoProcessor.updateWatchedDirectory(newValue.taskDirectory);
 
@@ -463,6 +466,13 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     });
   });
 
+  faceRecognition.on('log', ({ message, type }) => {
+    webContentSend.LogUpdate(mainWindow.webContents, {
+      message: '[faceRecognition]' + message,
+      type,
+    });
+  });
+
   return [
     {
       channel: 'RunWatermarkRemoval',
@@ -580,8 +590,24 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     },
     {
       channel: 'guangheCes',
-      handler: async (event, arg: { videoPath: string }) => {
-        // return await guangheces.GuangheTaobaoIssue();
+      handler: async (event, arg: { filePath: string }) => {
+        const arr = {
+          filePathArray: [
+            'C:\\Users\\ASUS\\Downloads\\ces\\S1---ces\\@jasdok4.mp4',
+            'C:\\Users\\ASUS\\Downloads\\ces\\S1---ces\\@jasdok3.mp4',
+            'C:\\Users\\ASUS\\Downloads\\ces\\S1---ces\\@jasdok2.mp4',
+          ],
+          guangId: '',
+          videoDescription: '测试视频描述',
+          videoTags: ['测试标签1', '测试标签2'],
+          topic: '测试话题',
+          productIds: ['1234567890'],
+        };
+        return await guangheTaobao.GuangheTaobaoIssue(arr);
+        // const { filePath } = arg;
+        // console.log(`[guangheCes] 输入视频路径: ${filePath}`);
+
+        // return await faceRecognition.processVideo(filePath);
       },
     },
   ];

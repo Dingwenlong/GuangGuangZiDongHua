@@ -209,6 +209,109 @@ export class FFmpegUtil extends EventEmitter {
   }
 
   /**
+   * 检测视频中所有场景变化，返回场景片段数组
+   */
+  public detectScenes(
+    videoPath: string
+  ): Promise<{ start: number; end: number }[]> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // 使用更敏感的阈值
+        const threshold = 0.3;
+        const normalizedPath = this.normalizeWindowsPath(
+          path.resolve(videoPath)
+        );
+
+        // 构建滤镜：检测所有场景变化超过阈值的帧
+        const videoFilter = `select='gt(scene,${threshold})',showinfo`;
+
+        const args = [
+          '-hide_banner',
+          '-i',
+          normalizedPath,
+          '-vf',
+          videoFilter,
+          '-an', // 禁用音频处理
+          '-f',
+          'null',
+          '-', // 输出到空
+        ];
+
+        this.emit('log', {
+          message: `[FFmpeg命令] 检测视频中所有场景变化 ${this.ffmpegPath}`,
+          type: 'debug',
+        });
+
+        const ffmpegProcess = spawn(this.ffmpegPath, args, {
+          windowsHide: true,
+        });
+
+        let stderrOutput = '';
+        ffmpegProcess.stderr.on('data', chunk => {
+          stderrOutput += chunk.toString();
+        });
+
+        ffmpegProcess.on('error', error => {
+          console.error(`[FFmpeg错误] 场景检测进程错误: ${error.message}`);
+          reject(new Error(`场景检测进程错误: ${error.message}`));
+        });
+
+        ffmpegProcess.on('close', async () => {
+          try {
+            // 解析场景变化时间点
+            const sceneTimes: number[] = [0]; // 从0秒开始
+            const timeRegex = /pts_time:([0-9]+\.[0-9]+)/g;
+            let match;
+            while ((match = timeRegex.exec(stderrOutput)) !== null) {
+              sceneTimes.push(parseFloat(match[1]));
+            }
+
+            // 获取视频总时长
+            let duration = 0;
+            try {
+              duration = await this.getVideoDuration(videoPath);
+            } catch (error) {
+              console.warn(
+                `[FFmpeg警告] 获取视频时长失败，使用最后一个场景时间: ${error}`
+              );
+              duration = sceneTimes[sceneTimes.length - 1] || 0;
+            }
+
+            // 确保最后一个场景结束于视频末尾
+            if (sceneTimes[sceneTimes.length - 1] < duration) {
+              sceneTimes.push(duration);
+            }
+
+            // 去重并排序
+            const uniqueTimes = Array.from(new Set(sceneTimes)).sort(
+              (a, b) => a - b
+            );
+
+            // 生成场景片段
+            const scenes: { start: number; end: number }[] = [];
+            for (let i = 0; i < uniqueTimes.length - 1; i++) {
+              const start = uniqueTimes[i];
+              const end = uniqueTimes[i + 1];
+              // 忽略极短片段（小于0.05秒）
+              if (end - start > 0.05) {
+                scenes.push({ start, end });
+              }
+            }
+
+            resolve(scenes);
+          } catch (error) {
+            reject(
+              new Error(`处理场景检测结果失败: ${(error as Error).message}`)
+            );
+          }
+        });
+      } catch (error) {
+        reject(new Error(`场景检测失败: ${(error as Error).message}`));
+      }
+    });
+  }
+
+  /**
    * 提取视频片段
    */
   public extractSegment(

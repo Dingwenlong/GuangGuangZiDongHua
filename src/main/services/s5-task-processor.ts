@@ -1,13 +1,15 @@
+import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import WorkbenchManager, { WorkbenchTaskStatus } from './workbench-manager';
 import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
+import { writeLog, type LogEvent } from '@main/utils/log';
 
 /**
  * S5任务处理器
  * 负责处理音频提取和音频处理任务
  */
-class S5TaskProcessor {
+class S5TaskProcessor extends EventEmitter {
   private audioExtractor: AudioExtractor;
   private audioProcessor: AudioProcessor;
   private audioProcessCount: number = 0;
@@ -19,6 +21,7 @@ class S5TaskProcessor {
   private rebootThreshold: number = 5; // 重启阈值
 
   constructor(audioExtractor: AudioExtractor, audioProcessor: AudioProcessor) {
+    super();
     this.audioExtractor = audioExtractor;
     this.audioProcessor = audioProcessor;
     // 初始化时读取配置
@@ -109,6 +112,31 @@ class S5TaskProcessor {
       this.audioProcessCount++;
     } catch (error) {
       console.error('S5任务执行失败:', error);
+      this.writeLog(`S5任务执行失败: ${error}`, 'error');
+    }
+  }
+  /**
+   * 执行S5任务
+   * @returns Promise<void>
+   */
+  async executes(): Promise<void> {
+    // 如果正在重启，跳过当前任务
+    if (this.isRebooting) {
+      console.log('服务正在重启中，等待3分钟后再继续处理任务');
+      return;
+    }
+    // console.log('开始处理S5任务');
+
+    const task = await WorkbenchManager.dequeueTask('s5TasksQueue');
+    if (!task) return;
+    console.log('执行任务s5');
+
+    try {
+      // 处理音频提取任务
+      const [videoPath, id] = task as [string, number];
+      console.log('视频路径:', videoPath);
+    } catch (error) {
+      console.error('S5任务执行失败:', error);
     }
   }
 
@@ -155,6 +183,15 @@ class S5TaskProcessor {
    */
   getProcessCount(): number {
     return this.audioProcessCount;
+  }
+
+  private writeLog(message: string, type: LogEvent['type'] = 'info') {
+    if (!message) {
+      console.error('writeLog called with empty message');
+      return;
+    }
+
+    writeLog.call(this, message, type);
   }
 }
 

@@ -378,6 +378,44 @@ class GuangheTaobao extends EventEmitter {
    */
   private async fillVideoInfo(frame: any, UserData: any) {
     try {
+      // 选中生成的封面
+      // 等待封面生成，等待 10 秒
+      await new Promise(resolve => setTimeout(resolve, 10000));
+
+      // 获取所有类名为 publish-content__cover-v2--listItem--3-CA5w- 的元素
+      const coverItems = frame.locator(
+        '.publish-content__cover-v2--listItem--3-CA5w-'
+      );
+
+      const coverItemsCount = await coverItems.count();
+
+      if (coverItemsCount > 0) {
+        // 随机选择一个封面
+        const randomIndex = Math.floor(Math.random() * coverItemsCount);
+
+        // 1. **点击选中的封面**
+        await coverItems.nth(randomIndex).click(); // 修正：直接使用 randomIndex
+
+        console.log(`成功选中第 ${randomIndex + 1} 个封面`);
+
+        // --- 关键步骤：执行鼠标滑动操作以消除遮挡元素 ---
+
+        // 假设 frame 是一个 Page 或 Frame 对象
+        const page = frame.page();
+
+        // 3. **执行随机滑动并停在左侧**
+        // 先移动到一个随机位置（例如 X=500, Y=500），模拟“滑一下”
+        await page.mouse.move(500, 500, { steps: 5 });
+
+        // 再移动到最左侧 (X=0)，消除遮挡元素，并确保鼠标停在安全区
+        await page.mouse.move(0, 500, { steps: 5 });
+
+        console.log('执行了鼠标移动操作，以消除悬浮遮挡元素。');
+        // ---------------------------------------------------
+      } else {
+        console.warn('未找到任何封面元素，跳过封面选择');
+      }
+
       // 在iframe内查找视频描述输入框
       const describeInputWrapper = await frame
         .locator('.publish-content__title-input--inputWrap--3rmMJEo')
@@ -385,12 +423,34 @@ class GuangheTaobao extends EventEmitter {
         .locator('input');
 
       console.log('开始输入视频描述...');
-      // 使用当前视频索引对应的描述
-      const currentDescription =
-        UserData.videoDescription[this.currentVideoIndex as number] ||
-        UserData.videoDescription;
-      // await this.simulateHumanInput(describeInputWrapper, currentDescription);
-      await describeInputWrapper.type(currentDescription);
+
+      const scriptionBox = await frame.locator(
+        '.publish-content__title-input--main--2PpRw9m'
+      );
+
+      // 查找容器内的所有span标签
+      const spanElements = scriptionBox.locator('span');
+      const spanCount = await spanElements.count();
+
+      if (spanCount > 0) {
+        // 随机选择一个span标签点击
+        const randomSpanIndex = Math.floor(Math.random() * spanCount);
+        console.log(
+          `在描述容器中找到 ${spanCount} 个span标签，随机点击第 ${
+            randomSpanIndex + 1
+          } 个`
+        );
+        await spanElements.nth(randomSpanIndex).click();
+        await new Promise(resolve => setTimeout(resolve, 500)); // 等待点击效果
+      } else {
+        console.log('描述容器中未找到span标签，执行默认描述输入逻辑');
+        // 使用当前视频索引对应的描述
+        const currentDescription =
+          UserData.videoDescription[this.currentVideoIndex as number] ||
+          UserData.videoDescription;
+        // await this.simulateHumanInput(describeInputWrapper, currentDescription);
+        await describeInputWrapper.type(currentDescription);
+      }
 
       // 开始输入标签
       const currentTagsStr =
@@ -422,7 +482,7 @@ class GuangheTaobao extends EventEmitter {
         } catch (configError) {
           console.error('读取config.json获取默认标签失败:', configError);
           this.writeLog(
-            `读取config.json获取默认标签失败: ${configError}`,
+            `GuangheError:读取config.json获取默认标签失败: ${configError}`,
             'info'
           );
         }
@@ -434,13 +494,23 @@ class GuangheTaobao extends EventEmitter {
         await labelInput.click();
         await labelInput.press('Control+A'); // 全选内容
         await labelInput.press('Delete'); // 删除选中内容
-        console.log(currentTags.join(','));
 
-        // 使用处理后的当前视频标签数组
-        for (const item of currentTags) {
-          console.log(`输入标签: ${item}`);
-          if (item && item !== '') {
-            await this.simulateHumanInput(labelInput, `#${item}#`);
+        const tagItems = await frame.locator('.hashTag-recommend-item');
+        const tagItemsCount = await tagItems.count(); // 等待count()异步方法完成
+        this.emit('log', {
+          message: `找到 ${tagItemsCount} 个标签项`,
+          type: 'info',
+        });
+        if (tagItemsCount > 2) {
+          await tagItems.nth(0).click(); // 等待点击完成
+          await tagItems.nth(1).click(); // 等待点击完成
+        } else {
+          // 使用处理后的当前视频标签数组
+          for (const item of currentTags) {
+            console.log(`输入标签: ${item}`);
+            if (item && item !== '') {
+              await this.simulateHumanInput(labelInput, `#${item}#`);
+            }
           }
         }
       }
@@ -644,7 +714,10 @@ class GuangheTaobao extends EventEmitter {
       //   .locator('.next-radio-wrapper:has(.next-radio-label:text("自主拍摄"))') // 包含"自主拍摄"文本的选项
       //   .click();
     } catch (error: any) {
-      this.writeLog(`填写信息失败: ${error.message}`, 'info');
+      this.writeLog(
+        `GuangheError:填写信息失败: ${error.message}；逛逛ID：${UserData.guangId}`,
+        'info'
+      );
       throw error;
     }
   }
@@ -730,6 +803,31 @@ class GuangheTaobao extends EventEmitter {
       // 执行点击
       await targetItem.click();
       await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 检测并关闭可能出现的弹窗
+      const quickDialog = frame.locator('.next-dialog-quick');
+      if ((await quickDialog.count()) > 0) {
+        console.log('检测到next-dialog-quick弹窗，准备关闭');
+        try {
+          // 找到关闭按钮：.next-dialog-body > .next-dialog-footer > button
+          const closeButton = quickDialog.locator(
+            '.next-dialog-body .next-dialog-footer button'
+          );
+          if ((await closeButton.count()) > 0) {
+            await closeButton.click();
+            console.log('成功关闭next-dialog-quick弹窗');
+            await new Promise(resolve => setTimeout(resolve, 500)); // 等待弹窗关闭
+          } else {
+            console.warn('找到弹窗但未找到关闭按钮');
+          }
+        } catch (dialogError: any) {
+          console.error('关闭弹窗时出错:', dialogError.message);
+          this.writeLog(
+            `GuangheError:关闭风险弹窗时出错: ${dialogError.message}`,
+            'info'
+          );
+        }
+      }
 
       // 5. 点击确认按钮
       const confirmButton = frame
@@ -883,10 +981,10 @@ class GuangheTaobao extends EventEmitter {
 
   // 整体调用
   public async GuangheTaobaoIssue(UserData: any) {
-    if (!(await workbenchManager.getByKey('s8')).running) {
-      console.log('s8任务未运行,停止调用');
-      return;
-    }
+    // if (!(await workbenchManager.getByKey('s8')).running) {
+    //   console.log('s8任务未运行,停止调用');
+    //   return;
+    // }
     let page: any = null;
     let browser: any = null;
     let iframeDetection: any = null;
@@ -1012,7 +1110,8 @@ class GuangheTaobao extends EventEmitter {
       await page.goto('https://mcn.guanghe.taobao.com/page/talent', {
         timeout: 60000,
       });
-      await page.waitForLoadState('networkidle');
+      // await page.waitForLoadState('networkidle');
+      console.log('等待页面加载完成...');
 
       // 直接在方法中检查是否需要登录
       let needsLogin = false;
@@ -1086,7 +1185,7 @@ class GuangheTaobao extends EventEmitter {
       try {
         // 等待上传区域可见
         console.log('等待上传区域加载...');
-        await page.waitForSelector('.next-upload-dragable', { timeout: 3000 });
+        await page.waitForSelector('.next-upload-dragable', { timeout: 6000 });
         console.log('上传区域已加载');
         // 检查文件路径数组是否有效
         if (UserData.filePathArray && UserData.filePathArray.length > 0) {
@@ -1108,7 +1207,7 @@ class GuangheTaobao extends EventEmitter {
 
             // 触发文件上传对话框
             const uploadPromise = page.waitForEvent('filechooser', {
-              timeout: 5000,
+              timeout: 8000,
             });
             await page.click('.next-upload-dragable', {
               delay: 200,
@@ -1120,13 +1219,13 @@ class GuangheTaobao extends EventEmitter {
 
             // 等待第一个视频上传完成
             console.log('等待第一个视频上传完成...');
-            await new Promise(resolve => setTimeout(resolve, 10000));
+            await new Promise(resolve => setTimeout(resolve, 15000));
             console.log('第一个视频上传等待完成');
 
             // 等待iframe加载完成
             console.log('等待iframe加载完成...');
             await page.waitForSelector('iframe.publish-content--Cl3CtTGD', {
-              timeout: 5000,
+              timeout: 10000,
             });
             // console.log('iframe已加载');
 
@@ -1184,7 +1283,10 @@ class GuangheTaobao extends EventEmitter {
         }
       } catch (uploadError: any) {
         console.error('视频上传过程中出错:', uploadError.message);
-        this.writeLog(`视频上传过程中出错: ${uploadError.message}`, 'info');
+        this.writeLog(
+          `GuangheError:视频上传过程中出错: ${uploadError.message}`,
+          'error'
+        );
         // 不抛出错误，继续执行后续步骤
       }
 
@@ -1194,7 +1296,7 @@ class GuangheTaobao extends EventEmitter {
         console.log('获取iframe内容...');
         const iframeSelector = 'iframe.publish-content--Cl3CtTGD';
         // 等待iframe元素出现
-        await page.waitForSelector(iframeSelector, { timeout: 5000 });
+        await page.waitForSelector(iframeSelector, { timeout: 15000 });
         // 获取iframe元素
         const iframeElement = await page.$(iframeSelector);
         let frame = null;
@@ -1257,7 +1359,6 @@ class GuangheTaobao extends EventEmitter {
           }
         }, 1000); // 每1秒检测一次
         if (frame) {
-          this.writeLog(`开始输入视频信息`, 'info');
           // 获取所有视频的队列
           const videoQueue = await frame.locator('.batchItemWrap').all();
           for (let i = 0; i < videoQueue.length; i++) {
@@ -1594,10 +1695,17 @@ class GuangheTaobao extends EventEmitter {
       }
 
       // 使用封装的方法处理任务完成
+      this.writeLog(
+        `光合发布视频成功；逛逛ID：${UserData.guangId}。`,
+        'success'
+      );
       return await this.handleTaskCompletion();
     } catch (error: any) {
       // 使用封装的方法处理任务失败
-      this.writeLog(`发布视频出错: ${error.message}`, 'error');
+      this.writeLog(
+        `GuangheError:发布视频出错: ${error.message}；逛逛ID：${UserData.guangId}`,
+        'error'
+      );
       return await this.handleTaskFailure(error);
     } finally {
       // 无论成功还是失败，都要清理资源
@@ -2350,23 +2458,7 @@ class GuangheTaobao extends EventEmitter {
           productNames,
         };
 
-        console.log('UserData参数:', JSON.stringify(UserData, null, 2));
-        // this.emit('log', {
-        //   message: `商品ID列表: ${productIds.join(', ')}`,
-        //   type: 'info',
-        // });
-        // this.emit('log', {
-        //   message: `商品名称列表: ${productNames.join(', ')}`,
-        //   type: 'info',
-        // });
-        // this.emit('log', {
-        //   message: `视频描述数量: ${videoDescriptions.length}`,
-        //   type: 'info',
-        // });
-        // this.emit('log', {
-        //   message: `UserData参数: ${JSON.stringify(UserData, null, 2)}`,
-        //   type: 'info',
-        // });
+        // console.log('UserData参数:', JSON.stringify(UserData, null, 2));
         // 调用 GuangheTaobaoIssue 处理目录
         await this.GuangheTaobaoIssue(UserData);
 

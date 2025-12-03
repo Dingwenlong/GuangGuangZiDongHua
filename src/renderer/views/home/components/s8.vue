@@ -197,8 +197,8 @@ const modalColumns: TableColumnType[] = [
 let currMonitoringDirectory = '';
 onMounted(() => {
   ipcRendererChannel.GetWorkbenchData.invoke('s8').then(workbench => {
-    s8.value.taskDirectory = workbench.taskDirectory ?? '';
-    s8.value.running = workbench.running;
+    s8.value.taskDirectory = workbench?.taskDirectory ?? '';
+    s8.value.running = workbench?.running ?? false;
   });
 
   watch(s8.value, async newValue => {
@@ -382,8 +382,16 @@ async function batchCreationFolderHandler() {
       dirName: sanitizeFolderName(
         `${item.mark}---${item.name}---${item.category}---${item.guangId}---${timeStr}---0`
       ),
-      tags: item.tags ? (item.tags as string).split('|').map(tag => tag.trim().replace('\\n', '').replace('\\r', '')) : [],
-      topics: item.topics ? (item.topics as string).split('|').map(topic => topic.trim().replace('\\n', '').replace('\\r', '')) : [],
+      tags: item.tags
+        ? (item.tags as string)
+            .split('|')
+            .map(tag => tag.trim().replace('\\n', '').replace('\\r', ''))
+        : [],
+      topics: item.topics
+        ? (item.topics as string)
+            .split('|')
+            .map(topic => topic.trim().replace('\\n', '').replace('\\r', ''))
+        : [],
     };
   });
 

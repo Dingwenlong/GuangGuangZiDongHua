@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 import * as https from 'https';
+import { writeLog, type LogEvent } from '@main/utils/log';
 
 // 类型定义
 interface AudioProcessorOptions {
@@ -24,17 +25,6 @@ interface VideoConfig extends AudioConfig {
 interface ConfigData {
   audio_config: AudioConfig[];
   video_config: VideoConfig[];
-}
-
-interface ProcessedPromptResult {
-  prompt_id: string;
-  number: number;
-  node_errors: object;
-}
-
-interface LogEvent {
-  message: string;
-  type: 'info' | 'error' | 'success' | 'warning' | 'debug';
 }
 
 interface StatusObject {
@@ -161,6 +151,12 @@ class AudioProcessor extends EventEmitter {
         }`,
         type: 'error',
       } as LogEvent);
+      this.writeLog(
+        `音频处理失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        'error'
+      );
     }
   }
 
@@ -201,6 +197,12 @@ class AudioProcessor extends EventEmitter {
         }`,
         type: 'error',
       } as LogEvent);
+      this.writeLog(
+        `音视频处理流程失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        'error'
+      );
     }
   }
 
@@ -227,6 +229,12 @@ class AudioProcessor extends EventEmitter {
         }`,
         type: 'error',
       } as LogEvent);
+      this.writeLog(
+        `视频处理失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        'error'
+      );
     }
   }
 
@@ -995,6 +1003,15 @@ class AudioProcessor extends EventEmitter {
       return this.videoConfig.reboot;
     }
     return null;
+  }
+
+  private writeLog(message: string, type: LogEvent['type'] = 'info') {
+    if (!message) {
+      console.error('writeLog called with empty message');
+      return;
+    }
+
+    writeLog.call(this, message, type);
   }
 }
 
