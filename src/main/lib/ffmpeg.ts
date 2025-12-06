@@ -423,7 +423,8 @@ export class FFmpegUtil extends EventEmitter {
   }
 
   /**
-   * 调整视频速度
+   * 智能缩放、裁剪和调整视频速度
+   * 目标输出分辨率: 720x1280
    */
   public adjustSpeed(
     inputPath: string,
@@ -431,13 +432,34 @@ export class FFmpegUtil extends EventEmitter {
     speed: number,
     operationName = '变速处理'
   ): Promise<void> {
+    // 定义缩放和裁剪的 filter_complex 字符串
+    // 1. scale=756:1344: 放大到目标尺寸的某个比例（例如 1.05倍）以进行裁剪前的填充
+    // 2. pad=756:1344:(ow-iw)/2:(oh-ih)/2: 将视频填充到 756x1344，居中
+    // 3. crop=720:1280: 裁剪到最终的 720x1280 分辨率
+    const scaleCropFilter =
+      'scale=756:1134,pad=756:1134:(ow-iw)/2:(oh-ih)/2,crop=720:1080';
+
+    // 调整速度的 setpts 滤镜
+    const setptsFilter = `setpts=${1 / speed}*PTS`;
+
+    // 组合视频滤镜 (setpts 必须在 scale/crop 之前应用)
+    const videoFilter = `${setptsFilter},${scaleCropFilter}`;
+
+    // 调整音频速度的滤镜数组 (保持原有逻辑，speed > 2 需要两次 atempo)
+    const audioFilters = [
+      `-af atempo=${speed > 2 ? 2 : speed}`,
+      ...(speed > 2 ? ['-af', `atempo=${speed / 2}`] : []),
+    ];
+
     return new Promise((resolve, reject) => {
       const command = ffmpeg(inputPath)
         .outputOptions([
-          `-vf setpts=${1 / speed}*PTS,scale=720:1280`, // 统一分辨率
-          `-af atempo=${speed > 2 ? 2 : speed}`,
-          ...(speed > 2 ? ['-af', `atempo=${speed / 2}`] : []),
-          '-t 20',
+          // 注意: 使用 -filter_complex 或 -vf 时，滤镜链需要写在一起。
+          // 由于你的 setpts 和 scale/crop 滤镜是串联的，且不涉及多输入，
+          // 我们可以使用 -vf (video filter) 来代替 -filter_complex。
+          `-vf ${videoFilter}`,
+          ...audioFilters, // 音频变速滤镜
+          '-t 20', // 截取前 20 秒 (保留你原有的时间限制)
           '-c:v libx264', // 视频编码器
           '-preset fast', // 编码速度
           '-crf 23', // 质量参数
@@ -455,23 +477,28 @@ export class FFmpegUtil extends EventEmitter {
   }
 
   /**
-   * 截取视频前20秒
+   * 智能缩放、裁剪并截取视频前20秒
+   * 目标输出分辨率: 720x1280
    */
   public trimVideo(
     inputPath: string,
     outputPath: string,
     operationName = '截取处理'
   ): Promise<void> {
+    // 定义缩放和裁剪的 video filter 字符串
+    const videoFilter =
+      'scale=756:1134,pad=756:1134:(ow-iw)/2:(oh-ih)/2,crop=720:1080';
+
     return new Promise((resolve, reject) => {
       const command = ffmpeg(inputPath)
         .outputOptions([
-          '-t 20',
+          '-t 20', // 截取前 20 秒
           '-c:v libx264', // 视频编码器
           '-preset fast', // 编码速度
           '-crf 23', // 质量参数
           '-c:a aac', // 音频编码器
           '-b:a 128k', // 音频比特率
-          '-vf scale=720:1280', // 统一分辨率
+          `-vf ${videoFilter}`, // 智能缩放和裁剪滤镜
           '-r 30', // 统一帧率
           '-movflags +faststart', // 优化网络播放
         ])
@@ -844,6 +871,49 @@ export class FFmpegUtil extends EventEmitter {
       this.runCommand(command, operationName)
         .then(() => resolve())
         .catch(reject);
+    });
+  }
+
+  /**
+   * 智能处理视频（缩放和调色），单步执行。
+   * 目标输出分辨率: 1080x1920
+   */
+  public processAndRecodeVideo(
+    inputPath: string,
+    outputPath: string,
+    operationName = '单步缩放与调色'
+  ): Promise<void> {
+    // --- 视频滤镜组合 (缩放和调色) ---
+    const videoFilter =
+      'scale=1080:1920,' + // 缩放至 1080x1920
+      'eq=contrast=1.03:brightness=0.01:saturation=1.02,' +
+      'unsharp=5:5:0.8,' +
+      'noise=alls=5:allf=t'; // 调色滤镜 (移除了 lutrgb 部分)
+
+    return new Promise((resolve, reject) => {
+      const command = ffmpeg(inputPath)
+        .outputOptions([
+          // 强制覆盖输出文件（对应 -y）
+          '-y',
+
+          // 视频滤镜
+          `-vf ${videoFilter}`,
+
+          // 视频编码器改为 libx264
+          '-c:v libx264',
+          '-preset fast',
+          '-crf 23',
+
+          // 音频参数
+          '-c:a aac',
+          '-b:a 128k',
+
+          // 优化网络播放
+          '-movflags +faststart',
+        ])
+        .output(outputPath); // 输出到最终路径 (此处将负责处理原命令中的 1_temp2.mp4)
+
+      this.runCommand(command, operationName).then(resolve).catch(reject);
     });
   }
 }

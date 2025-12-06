@@ -247,7 +247,7 @@ class VideoProcessor extends EventEmitter {
         /node_modules/,
       ],
       depth: 3, // 监控深度增加到3层
-      ignoreInitial: false, // 不忽略初始文件
+      ignoreInitial: true, // 不忽略初始文件
       awaitWriteFinish: {
         stabilityThreshold: 3000, // 文件稳定3秒后才触发
         pollInterval: 500,
@@ -268,7 +268,8 @@ class VideoProcessor extends EventEmitter {
         this.writeLog('文件监控系统就绪', 'success');
 
         // 扫描现有文件
-        setTimeout(() => this.scanExistingFiles(), 5000);
+        // setTimeout(() => this.scanExistingFiles(), 5000);
+        this.scanExistingFiles();
       })
       .on('error', (error: Error) => {
         this.writeLog(`文件监控错误: ${error.message}`, 'error');
@@ -404,7 +405,7 @@ class VideoProcessor extends EventEmitter {
           }
         }
       }
-    }, 2000);
+    }, 5000);
   }
 
   /**
@@ -415,6 +416,18 @@ class VideoProcessor extends EventEmitter {
     fileKey: string,
     eventType: string
   ): void {
+    // 核心：判断 filePath 是否已存在于 processingQueue 中
+    if (this.processingQueue.has(filePath)) {
+      // 重复时打印日志（非错误，仅提醒）
+      this.writeLog(
+        `文件已存在于处理队列，跳过添加: ${path.basename(
+          filePath
+        )} (fileKey: ${fileKey})`,
+        'warning' // 可指定日志级别，区分普通日志和提醒
+      );
+      return; // 终止方法，不执行后续添加逻辑
+    }
+
     this.processingQueue.set(filePath, {
       key: fileKey,
       eventType: eventType,
@@ -453,17 +466,23 @@ class VideoProcessor extends EventEmitter {
         this.writeLog(`检测到@开头文件，开始人脸识别处理: ${fileName}`);
         console.log('检测到@，触发人脸识别');
 
-        // 创建temp_face目录（父级目录平级）
+        // 获取原文件目录
         const fileDir = path.dirname(filePath);
-        const parentDir = path.dirname(fileDir);
-        const tempFaceDir = path.join(parentDir, 'temp_face');
+
+        // 使用本地固定路径作为temp_face目录
+        const os = require('os');
+        const tempFaceDir = path.join(os.tmpdir(), 'temp_face');
+
+        // 如果目录不存在，创建目录
         if (!fs.existsSync(tempFaceDir)) {
           fs.mkdirSync(tempFaceDir, { recursive: true });
         }
 
         // 将文件移动到temp_face目录
         const tempFilePath = path.join(tempFaceDir, fileName);
-        fs.renameSync(filePath, tempFilePath);
+        // fs.renameSync(filePath, tempFilePath);
+        await fs.promises.copyFile(filePath, tempFilePath);
+        await fs.promises.unlink(filePath);
 
         // 进行人脸识别处理
         const faceRecognition = new FaceRecognition();
@@ -474,8 +493,19 @@ class VideoProcessor extends EventEmitter {
 
         // 将处理后的文件移动回原目录
         const finalPath = path.join(fileDir, path.basename(processedPath));
-        fs.renameSync(processedPath, finalPath);
+        // fs.renameSync(processedPath, finalPath);
+        await fs.promises.copyFile(processedPath, finalPath);
+        await fs.promises.unlink(processedPath);
 
+        // 清理人脸识别生成的临时文件（如果存在）
+        if (fs.existsSync(processedPath)) {
+          fs.unlinkSync(processedPath);
+        }
+
+        // 清理队列使重新过来的文件触发加入队列再处理
+        this.processingQueue.delete(filePath);
+
+        this.handleFileEvent(finalPath, 'scan');
         return;
       }
 
@@ -492,7 +522,10 @@ class VideoProcessor extends EventEmitter {
       queueItem.retryCount++;
       queueItem.processing = false;
       this.currentlyProcessing.delete(queueItem.key);
-
+      this.emit('log', {
+        message: `视频处理失败: ${(error as Error).message}`,
+        type: 'error',
+      });
       if (queueItem.retryCount >= 3) {
         this.writeLog(
           `视频处理失败，已达到重试次数: ${path.basename(filePath)}`,
@@ -983,22 +1016,32 @@ class VideoProcessor extends EventEmitter {
   }
 
   // 扫描现有文件
-  private scanExistingFiles(): void {
+  private async scanExistingFiles(): Promise<void> {
     this.writeLog('开始扫描现有文件');
 
     const productDirs = this.getProductDirectories();
     let foundCount = 0;
 
-    productDirs.forEach(dir => {
+    // productDirs.forEach(dir => {
+    //   const files = fs.readdirSync(dir);
+    //   files.forEach(file => {
+    //     const filePath = path.join(dir, file);
+    //     if (isVideoFile(filePath) && !isProcessedVideoFile(filePath)) {
+    //       this.handleFileEvent(filePath, 'scan');
+    //       foundCount++;
+    //     }
+    //   });
+    // });
+    for (const dir of productDirs) {
       const files = fs.readdirSync(dir);
-      files.forEach(file => {
+      for (const file of files) {
         const filePath = path.join(dir, file);
         if (isVideoFile(filePath) && !isProcessedVideoFile(filePath)) {
-          this.handleFileEvent(filePath, 'scan');
+          await this.handleFileEvent(filePath, 'scan');
           foundCount++;
         }
-      });
-    });
+      }
+    }
     this.writeLog(`扫描完成，发现 ${foundCount} 个待处理文件`);
   }
 

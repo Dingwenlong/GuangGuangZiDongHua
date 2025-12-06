@@ -24,6 +24,7 @@ import S5TaskProcessor from './s5-task-processor';
 import { GuangProcessor } from './guang-processor';
 
 import FaceRecognition from './face-recognition';
+import { FFmpegUtil } from '../lib/ffmpeg';
 
 /**
  * 自定义全局
@@ -123,6 +124,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
   const isTest = false;
 
   const faceRecognition = new FaceRecognition();
+  const ffmpegUtil = FFmpegUtil.getInstance();
 
   // ----------------------执行每一步---------------------
   // s1
@@ -593,21 +595,27 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       handler: async (event, arg: { filePath: string }) => {
         const arr = {
           filePathArray: [
-            'C:\\Users\\ASUS\\Downloads\\ces\\S1---ces\\@jasdok4.mp4',
-            'C:\\Users\\ASUS\\Downloads\\ces\\S1---ces\\@jasdok3.mp4',
-            'C:\\Users\\ASUS\\Downloads\\ces\\S1---ces\\@jasdok2.mp4',
+            'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---3.mp4',
+            'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4',
+            'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
           ],
           guangId: '',
           videoDescription: '测试视频描述',
           videoTags: ['测试标签1', '测试标签2'],
           topic: '测试话题',
-          productIds: ['1234567890'],
+          productIds: ['979356468701', '623789783157', '622457528832'],
         };
         return await guangheTaobao.GuangheTaobaoIssue(arr);
+
         // const { filePath } = arg;
         // console.log(`[guangheCes] 输入视频路径: ${filePath}`);
 
         // return await faceRecognition.processVideo(filePath);
+        // const { filePath } = arg;
+        // return await ffmpegUtil.processAndRecodeVideo(
+        //   filePath,
+        //   'C:\\Users\\ASUS\\Downloads\\ces\\fenfa\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4'
+        // );
       },
     },
   ];

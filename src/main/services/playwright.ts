@@ -955,6 +955,30 @@ class PlaywrightScript extends EventEmitter {
         return { success: false, message: '下载文件无效' };
       }
 
+      // 检查视频时长，如果小于5秒直接返回
+      try {
+        const ffmpegUtil = FFmpegUtil.getInstance();
+        const duration = await ffmpegUtil.getVideoDuration(tempPath);
+        this.emit('log', {
+          message: `视频时长: ${duration.toFixed(2)}秒`,
+          type: 'info',
+        });
+
+        if (duration < 5) {
+          this.emit('log', {
+            message: `视频时长小于5秒 (${duration.toFixed(2)}秒)，直接返回`,
+            type: 'warning',
+          });
+          return { success: false, message: '视频时长过短' };
+        }
+      } catch (error) {
+        this.emit('log', {
+          message: `获取视频时长失败: ${(error as Error).message}`,
+          type: 'error',
+        });
+        return { success: false, message: '获取视频时长失败' };
+      }
+
       // 如果目标文件已存在，先删除旧文件
       if (fs.existsSync(targetPath)) {
         try {
@@ -993,6 +1017,59 @@ class PlaywrightScript extends EventEmitter {
           type: 'error',
         });
         return { success: false, message: '文件处理失败' };
+      }
+
+      // 调用FFmpegUtil进行高级视频处理
+      this.emit('log', {
+        message: `开始高级视频处理: ${targetPath}`,
+        type: 'info',
+      });
+
+      try {
+        const ffmpegUtil = FFmpegUtil.getInstance();
+
+        // 创建临时输出路径，避免同目录输出冲突
+        const tempOutputPath = path.join(downloadDir, `temp_${Date.now()}.mp4`);
+
+        // 调用高级视频处理函数
+        await ffmpegUtil.processAndRecodeVideo(targetPath, tempOutputPath);
+
+        this.emit('log', {
+          message: `高级视频处理完成: ${tempOutputPath}`,
+          type: 'success',
+        });
+
+        // 验证处理后的文件
+        if (
+          !fs.existsSync(tempOutputPath) ||
+          fs.statSync(tempOutputPath).size < 1024
+        ) {
+          this.emit('log', {
+            message: `高级处理后的文件无效: ${tempOutputPath}`,
+            type: 'error',
+          });
+          return { success: false, message: '高级视频处理失败' };
+        }
+
+        // 删除原始文件
+        fs.unlinkSync(targetPath);
+
+        // 将处理后的文件重命名为原始文件名
+        fs.renameSync(tempOutputPath, targetPath);
+
+        this.emit('log', {
+          message: `已用处理后的视频替换原始文件: ${targetPath}`,
+          type: 'success',
+        });
+      } catch (error) {
+        this.emit('log', {
+          message: `高级视频处理失败: ${(error as Error).message}`,
+          type: 'error',
+        });
+        return {
+          success: false,
+          message: `高级视频处理失败: ${(error as Error).message}`,
+        };
       }
 
       // 删除UUID格式的冗余文件（包括下载时的和目录中残留的）

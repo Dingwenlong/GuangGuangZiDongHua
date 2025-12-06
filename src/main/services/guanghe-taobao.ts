@@ -417,10 +417,28 @@ class GuangheTaobao extends EventEmitter {
       }
 
       // 在iframe内查找视频描述输入框
-      const describeInputWrapper = await frame
+      let describeInputWrapper = await frame
         .locator('.publish-content__title-input--inputWrap--3rmMJEo')
         .locator('span')
         .locator('input');
+
+      // 检查是否找到元素，如果没找到，使用placeholder备选方案
+      if ((await describeInputWrapper.count()) === 0) {
+        console.warn('按类名未找到视频描述输入框，尝试按placeholder查找');
+        describeInputWrapper = await frame.locator(
+          'input[placeholder="加个标题让内容更吸引人"]'
+        );
+
+        // 再次检查是否找到元素
+        if ((await describeInputWrapper.count()) === 0) {
+          console.error('按placeholder也未找到视频描述输入框');
+          throw new Error('未找到视频描述输入框');
+        }
+
+        console.log('成功按placeholder找到视频描述输入框');
+      } else {
+        console.log('成功按类名找到视频描述输入框');
+      }
 
       console.log('开始输入视频描述...');
 
@@ -809,10 +827,8 @@ class GuangheTaobao extends EventEmitter {
       if ((await quickDialog.count()) > 0) {
         console.log('检测到next-dialog-quick弹窗，准备关闭');
         try {
-          // 找到关闭按钮：.next-dialog-body > .next-dialog-footer > button
-          const closeButton = quickDialog.locator(
-            '.next-dialog-body .next-dialog-footer button'
-          );
+          // 找到关闭按钮：.next-dialog-footer > button
+          const closeButton = quickDialog.locator('.next-dialog-footer button');
           if ((await closeButton.count()) > 0) {
             await closeButton.click();
             console.log('成功关闭next-dialog-quick弹窗');
@@ -1180,6 +1196,7 @@ class GuangheTaobao extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 500));
       // 点击批量发布
       await page.locator('.next-menu-spacing-lr > ul > li').last().click();
+      // 上传视频
 
       // 上传视频 - next-upload-dragable
       try {
@@ -1668,12 +1685,8 @@ class GuangheTaobao extends EventEmitter {
             if (verifySuccess) {
               console.log('[主流程] 发布流程完成：检测到目标页面');
               this.emit('log', {
-                message: '发布成功：已跳转到目标页面',
+                message: '发布成功：跳转到目标页面；视频发布已完成。',
                 type: 'success',
-              });
-              this.emit('log', {
-                message: `已完成视频发布信息填写`,
-                type: 'info',
               });
             } else {
               console.error('[主流程] 发布失败：滑块验证超时或未跳转');
@@ -1699,14 +1712,10 @@ class GuangheTaobao extends EventEmitter {
         `光合发布视频成功；逛逛ID：${UserData.guangId}。`,
         'success'
       );
-      return await this.handleTaskCompletion();
+      return await this.handleTaskCompletion(UserData.guangId);
     } catch (error: any) {
       // 使用封装的方法处理任务失败
-      this.writeLog(
-        `GuangheError:发布视频出错: ${error.message}；逛逛ID：${UserData.guangId}`,
-        'error'
-      );
-      return await this.handleTaskFailure(error);
+      return await this.handleTaskFailure(error, UserData.guangId);
     } finally {
       // 无论成功还是失败，都要清理资源
       await cleanup();
@@ -1877,7 +1886,7 @@ class GuangheTaobao extends EventEmitter {
    * 处理任务失败后的逻辑
    * @param error 错误对象
    */
-  private async handleTaskFailure(error: any) {
+  private async handleTaskFailure(error: any, guangId: string) {
     const errorMsg = `发布到淘宝出错: ${error.message}`;
     console.error(errorMsg);
     this.emit('log', {
@@ -1988,7 +1997,16 @@ class GuangheTaobao extends EventEmitter {
         message: `处理失败目录时出错: ${dirError}`,
         type: 'warning',
       });
+      this.writeLog(
+        `GuangheError:失败后处理目录时出错：${dirError}；逛逛ID：${guangId}`,
+        'error'
+      );
     }
+
+    this.writeLog(
+      `GuangheError:发布视频出错: ${error.message}；逛逛ID：${guangId}`,
+      'error'
+    );
 
     return {
       success: false,
