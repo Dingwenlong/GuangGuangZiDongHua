@@ -593,23 +593,21 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     {
       channel: 'guangheCes',
       handler: async (event, arg: { filePath: string }) => {
-        const arr = {
-          filePathArray: [
-            'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---3.mp4',
-            'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4',
-            'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
-          ],
-          guangId: '',
-          videoDescription: '测试视频描述',
-          videoTags: ['测试标签1', '测试标签2'],
-          topic: '测试话题',
-          productIds: ['979356468701', '623789783157', '622457528832'],
-        };
-        return await guangheTaobao.GuangheTaobaoIssue(arr);
-
+        // const arr = {
+        //   filePathArray: [
+        //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---3.mp4',
+        //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4',
+        //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
+        //   ],
+        //   guangId: '',
+        //   videoDescription: '测试视频描述',
+        //   videoTags: ['测试标签1', '测试标签2'],
+        //   topic: '测试话题',
+        //   productIds: ['979356468701', '623789783157', '622457528832'],
+        // };
+        // return await guangheTaobao.GuangheTaobaoIssue(arr);
         // const { filePath } = arg;
         // console.log(`[guangheCes] 输入视频路径: ${filePath}`);
-
         // return await faceRecognition.processVideo(filePath);
         // const { filePath } = arg;
         // return await ffmpegUtil.processAndRecodeVideo(

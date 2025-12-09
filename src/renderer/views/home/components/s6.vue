@@ -129,7 +129,7 @@ function startOrStopTaskHandler(start = true) {
 function guanghe() {
   ipcRendererChannel.guangheCes.invoke({
     filePath:
-      'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4',
+      'C:\\Users\\ASUS\\Downloads\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
   });
 }
 

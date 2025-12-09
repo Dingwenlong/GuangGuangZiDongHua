@@ -115,30 +115,6 @@ class S5TaskProcessor extends EventEmitter {
       this.writeLog(`S5任务执行失败: ${error}`, 'error');
     }
   }
-  /**
-   * 执行S5任务
-   * @returns Promise<void>
-   */
-  async executes(): Promise<void> {
-    // 如果正在重启，跳过当前任务
-    if (this.isRebooting) {
-      console.log('服务正在重启中，等待3分钟后再继续处理任务');
-      return;
-    }
-    // console.log('开始处理S5任务');
-
-    const task = await WorkbenchManager.dequeueTask('s5TasksQueue');
-    if (!task) return;
-    console.log('执行任务s5');
-
-    try {
-      // 处理音频提取任务
-      const [videoPath, id] = task as [string, number];
-      console.log('视频路径:', videoPath);
-    } catch (error) {
-      console.error('S5任务执行失败:', error);
-    }
-  }
 
   /**
    * 处理服务重启逻辑

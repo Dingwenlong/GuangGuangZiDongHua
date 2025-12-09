@@ -167,28 +167,33 @@ class AudioProcessor extends EventEmitter {
   private async processMediaWithVideo(params: ProcessParams): Promise<void> {
     try {
       // 处理音频
-      await this.processMediaFile(params);
+      const audioSuccess = await this.processMediaFile(params);
 
-      // 检查是否有同名的视频文件需要处理
-      const { audioPath } = params;
-      const videoPath = audioPath.replace(/\.mp3$/i, '.mp4');
+      // 只有当音频处理成功时，才检查并处理视频
+      if (audioSuccess) {
+        // 检查是否有同名的视频文件需要处理
+        const { audioPath } = params;
+        const videoPath = audioPath.replace(/\.mp3$/i, '.mp4');
 
-      // 如果视频文件存在且尚未处理过，自动处理视频
-      if (fs.existsSync(videoPath) && !this.processedPrompts.has(videoPath)) {
-        // this.emit('log', {
-        //   message: `发现同名视频文件，开始处理视频: ${path.basename(
-        //     videoPath
-        //   )}`,
-        //   type: 'info',
-        // } as LogEvent);
+        // 如果视频文件存在且尚未处理过，自动处理视频
+        if (fs.existsSync(videoPath) && !this.processedPrompts.has(videoPath)) {
+          // this.emit('log', {
+          //   message: `发现同名视频文件，开始处理视频: ${path.basename(
+          //     videoPath
+          //   )}`,
+          //   type: 'info',
+          // } as LogEvent);
 
-        const videoParams: ProcessParams = {
-          audioPath,
-          videoPath,
-          isVideoProcessing: true,
-        };
+          const videoParams: ProcessParams = {
+            audioPath,
+            videoPath,
+            isVideoProcessing: true,
+          };
 
-        await this.processMediaFile(videoParams);
+          await this.processMediaFile(videoParams);
+        }
+      } else {
+        throw new Error(`音频处理失败,视频处理依赖音频,视频处理未执行`);
       }
     } catch (error) {
       this.emit('log', {
@@ -249,8 +254,9 @@ class AudioProcessor extends EventEmitter {
   /**
    * 通用媒体文件处理方法
    * @param params 处理参数
+   * @returns 是否处理成功
    */
-  private async processMediaFile(params: ProcessParams): Promise<void> {
+  private async processMediaFile(params: ProcessParams): Promise<boolean> {
     try {
       const { audioPath, videoPath, isVideoProcessing } = params;
       const targetPath = isVideoProcessing ? videoPath : audioPath;
@@ -259,13 +265,13 @@ class AudioProcessor extends EventEmitter {
           message: `处理${isVideoProcessing ? '视频' : '音频'}时路径为空`,
           type: 'error',
         } as LogEvent);
-        return;
+        return false;
       }
       // 自动初始化（如果尚未初始化）
       if (!this.status.initialized) {
         await this.initialize();
         if (!this.status.initialized) {
-          return;
+          return false;
         }
       }
 
@@ -276,13 +282,17 @@ class AudioProcessor extends EventEmitter {
           message: `${isVideoProcessing ? '视频' : '音频'}配置不存在`,
           type: 'error',
         } as LogEvent);
-        return;
+        return false;
       }
 
       // 检查是否已经处理过
       if (this.processedPrompts.has(targetPath)) {
-        return;
+        return false;
       }
+
+      // 定义背景音乐的基础路径 (UNC 路径)
+      const BGM_BASE_PATH =
+        '\\\\192.168.31.99\\影视存储\\逛逛客户端\\ComfyUI\\示例音频';
 
       // 读取工作流模板（音频使用workflow_09，视频使用workflow_10）
       const templatePath = isVideoProcessing
@@ -290,21 +300,99 @@ class AudioProcessor extends EventEmitter {
         : this.workflowTemplatePath;
       const workflowTemplate = fs.readFileSync(templatePath, 'utf-8');
       let promptData = JSON.parse(workflowTemplate);
-      // 替换音频路径
+
+      let updatedWorkflow = JSON.stringify(promptData);
+      let backgroundMusicPath = '';
+
+      // --- 1. 背景音乐路径逻辑 ---
+      if (isVideoProcessing && videoPath) {
+        // === 视频处理 (workflow_10) 逻辑 ===
+
+        // 随机选择 5 个背景音乐 + 1 个低音量背景音乐，共 6 个
+        const bgmFiles = [
+          '背景音乐1.MP3',
+          '背景音乐2.MP3',
+          '背景音乐3.MP3',
+          '背景音乐4.MP3',
+          '背景音乐5.MP3',
+          '背景音乐6.MP3',
+        ];
+        const randomIndex = Math.floor(Math.random() * bgmFiles.length);
+        backgroundMusicPath = path.join(BGM_BASE_PATH, bgmFiles[randomIndex]);
+
+        // 替换视频路径
+        const escapedVideoPath = videoPath.replace(/\\/g, '\\\\');
+        updatedWorkflow = updatedWorkflow.replace(
+          /#VideoUrl#/g, // 假设视频路径的占位符保持为 #VideoUrl#
+          escapedVideoPath
+        );
+      } else {
+        // === 音频处理 (workflow_09) 逻辑 ===
+
+        // 1. 获取视频文件路径的父级文件夹路径
+        // 注意：虽然是音频处理，但逻辑要求使用 videoPath 来获取文件夹信息
+        const parentDir = path.dirname(audioPath || '');
+        console.log('父级文件夹路径:', parentDir);
+
+        // 2. 获取父级文件夹的名称
+        const folderName = path.basename(parentDir);
+        console.log('文件夹名称:', folderName);
+
+        // 3. 尝试从文件夹名称中提取类目ID (示例格式: S1---2---...---大家电---...)
+        const parts = folderName.split('---');
+        let categoryId = '';
+
+        // 假设“大家电”这个类目在分隔后的第 4 个位置 (索引 3)
+        if (parts.length >= 4) {
+          categoryId = parts[3];
+        }
+        console.log('类目ID:', categoryId);
+
+        const categoryBgmFileName = categoryId
+          ? `${categoryId}-示例音频.MP3`
+          : '';
+        const categoryBgmPath = path.join(BGM_BASE_PATH, categoryBgmFileName);
+        const fallbackBgmPath = path.join(BGM_BASE_PATH, '示例声音.MP3');
+
+        // 4. 检查类目背景音乐文件是否存在，不存在则使用备用文件
+        if (categoryId && fs.existsSync(categoryBgmPath)) {
+          backgroundMusicPath = categoryBgmPath;
+        } else {
+          backgroundMusicPath = fallbackBgmPath;
+        }
+        console.log('背景音乐路径:', backgroundMusicPath);
+      }
+
+      // --- 2. 执行路径替换 ---
+
+      // 替换主音频/主声音路径
       const escapedAudioPath = audioPath.replace(/\\/g, '\\\\');
-      let updatedWorkflow = JSON.stringify(promptData).replace(
-        /#AudioUrl#/g,
+      updatedWorkflow = updatedWorkflow.replace(
+        /#AudioUrl#/g, // 假设主音频的占位符保持为 #AudioUrl#
         escapedAudioPath
       );
 
-      // 如果是视频处理，还需要替换视频路径
-      if (isVideoProcessing && videoPath) {
-        const escapedVideoPath = videoPath.replace(/\\/g, '\\\\');
+      // 替换背景音乐路径，使用不同的占位符
+      const escapedBackgroundMusicPath = backgroundMusicPath.replace(
+        /\\/g,
+        '\\\\'
+      );
+
+      if (isVideoProcessing) {
+        // 视频处理使用 #BgmUrl#
         updatedWorkflow = updatedWorkflow.replace(
-          /#VideoUrl#/g,
-          escapedVideoPath
+          /#BgmUrl#/g,
+          escapedBackgroundMusicPath
+        );
+      } else {
+        // 音频处理使用 #SampleUrl#
+        updatedWorkflow = updatedWorkflow.replace(
+          /#SampleUrl#/g,
+          escapedBackgroundMusicPath
         );
       }
+
+      console.log('更新后的工作流:', updatedWorkflow);
 
       promptData = JSON.parse(updatedWorkflow);
       // 调用接口获取promptId
@@ -347,7 +435,7 @@ class AudioProcessor extends EventEmitter {
                   message: '视频处理失败',
                   type: 'error',
                 } as LogEvent);
-                return;
+                return false;
               }
             }
             const targetData =
@@ -395,10 +483,12 @@ class AudioProcessor extends EventEmitter {
               type: 'error',
             } as LogEvent);
           }
+        } else {
+          throw new Error(`任务 ${promptId} 轮询超时,处理失败`);
         }
       }
 
-      return;
+      return true;
     } catch (error) {
       throw error;
     } finally {
@@ -426,7 +516,7 @@ class AudioProcessor extends EventEmitter {
       : `http://${server}`;
     const url = `${normalizedServer}:${port}/history/${promptId}`;
 
-    const maxRetries = 60; // 最多重试60次
+    const maxRetries = 30; // 最多重试30次
     const retryInterval = isVideoProcessing ? 15 * 1000 : 30 * 1000; // 视频处理每15秒轮询一次，音频处理每30秒轮询一次
 
     for (let i = 0; i < maxRetries; i++) {
@@ -459,6 +549,7 @@ class AudioProcessor extends EventEmitter {
       message: `任务 ${promptId} 轮询超时`,
       type: 'error',
     } as LogEvent);
+    this.writeLog(`任务 ${promptId} 轮询超时`, 'error');
     return null;
   }
 

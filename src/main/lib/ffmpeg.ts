@@ -437,7 +437,7 @@ export class FFmpegUtil extends EventEmitter {
     // 2. pad=756:1344:(ow-iw)/2:(oh-ih)/2: 将视频填充到 756x1344，居中
     // 3. crop=720:1280: 裁剪到最终的 720x1280 分辨率
     const scaleCropFilter =
-      'scale=756:1134,pad=756:1134:(ow-iw)/2:(oh-ih)/2,crop=720:1080';
+      'scale=756:1344,pad=756:1344:(ow-iw)/2:(oh-ih)/2,crop=720:1280';
 
     // 调整速度的 setpts 滤镜
     const setptsFilter = `setpts=${1 / speed}*PTS`;
@@ -487,7 +487,7 @@ export class FFmpegUtil extends EventEmitter {
   ): Promise<void> {
     // 定义缩放和裁剪的 video filter 字符串
     const videoFilter =
-      'scale=756:1134,pad=756:1134:(ow-iw)/2:(oh-ih)/2,crop=720:1080';
+      'scale=756:1344,pad=756:1344:(ow-iw)/2:(oh-ih)/2,crop=720:1280';
 
     return new Promise((resolve, reject) => {
       const command = ffmpeg(inputPath)

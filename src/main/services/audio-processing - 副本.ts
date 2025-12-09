@@ -284,105 +284,27 @@ class AudioProcessor extends EventEmitter {
         return;
       }
 
-      // 定义背景音乐的基础路径 (UNC 路径)
-      const BGM_BASE_PATH =
-        '\\\\192.168.31.99\\影视存储\\逛逛客户端\\ComfyUI\\示例音频';
-
       // 读取工作流模板（音频使用workflow_09，视频使用workflow_10）
       const templatePath = isVideoProcessing
         ? this.workflowTemplatePath10
         : this.workflowTemplatePath;
       const workflowTemplate = fs.readFileSync(templatePath, 'utf-8');
       let promptData = JSON.parse(workflowTemplate);
-
-      let updatedWorkflow = JSON.stringify(promptData);
-      let backgroundMusicPath = '';
-
-      // --- 1. 背景音乐路径逻辑 ---
-      if (isVideoProcessing && videoPath) {
-        // === 视频处理 (workflow_10) 逻辑 ===
-
-        // 随机选择 5 个背景音乐 + 1 个低音量背景音乐，共 6 个
-        const bgmFiles = [
-          '背景音乐1.MP3',
-          '背景音乐2.MP3',
-          '背景音乐3.MP3',
-          '背景音乐4.MP3',
-          '背景音乐5.MP3',
-          '背景音乐6.MP3',
-        ];
-        const randomIndex = Math.floor(Math.random() * bgmFiles.length);
-        backgroundMusicPath = path.join(BGM_BASE_PATH, bgmFiles[randomIndex]);
-
-        // 替换视频路径
-        const escapedVideoPath = videoPath.replace(/\\/g, '\\\\');
-        updatedWorkflow = updatedWorkflow.replace(
-          /#VideoUrl#/g, // 假设视频路径的占位符保持为 #VideoUrl#
-          escapedVideoPath
-        );
-      } else {
-        // === 音频处理 (workflow_09) 逻辑 ===
-
-        // 1. 获取视频文件路径的父级文件夹路径
-        // 注意：虽然是音频处理，但逻辑要求使用 videoPath 来获取文件夹信息
-        const parentDir = path.dirname(videoPath || '');
-
-        // 2. 获取父级文件夹的名称
-        const folderName = path.basename(parentDir);
-
-        // 3. 尝试从文件夹名称中提取类目ID (示例格式: S1---2---...---大家电---...)
-        const parts = folderName.split('---');
-        let categoryId = '';
-
-        // 假设“大家电”这个类目在分隔后的第 4 个位置 (索引 3)
-        if (parts.length >= 4) {
-          categoryId = parts[3];
-        }
-
-        const categoryBgmFileName = categoryId
-          ? `${categoryId}-示例音频.MP3`
-          : '';
-        const categoryBgmPath = path.join(BGM_BASE_PATH, categoryBgmFileName);
-        const fallbackBgmPath = path.join(BGM_BASE_PATH, '示例声音.MP3');
-
-        // 4. 检查类目背景音乐文件是否存在，不存在则使用备用文件
-        if (categoryId && fs.existsSync(categoryBgmPath)) {
-          backgroundMusicPath = categoryBgmPath;
-        } else {
-          backgroundMusicPath = fallbackBgmPath;
-        }
-      }
-
-      // --- 2. 执行路径替换 ---
-
-      // 替换主音频/主声音路径
+      // 替换音频路径
       const escapedAudioPath = audioPath.replace(/\\/g, '\\\\');
-      updatedWorkflow = updatedWorkflow.replace(
-        /#AudioUrl#/g, // 假设主音频的占位符保持为 #AudioUrl#
+      let updatedWorkflow = JSON.stringify(promptData).replace(
+        /#AudioUrl#/g,
         escapedAudioPath
       );
 
-      // 替换背景音乐路径，使用不同的占位符
-      const escapedBackgroundMusicPath = backgroundMusicPath.replace(
-        /\\/g,
-        '\\\\'
-      );
-
-      if (isVideoProcessing) {
-        // 视频处理使用 #BgmUrl#
+      // 如果是视频处理，还需要替换视频路径
+      if (isVideoProcessing && videoPath) {
+        const escapedVideoPath = videoPath.replace(/\\/g, '\\\\');
         updatedWorkflow = updatedWorkflow.replace(
-          /#BgmUrl#/g,
-          escapedBackgroundMusicPath
-        );
-      } else {
-        // 音频处理使用 #SampleUrl#
-        updatedWorkflow = updatedWorkflow.replace(
-          /#SampleUrl#/g,
-          escapedBackgroundMusicPath
+          /#VideoUrl#/g,
+          escapedVideoPath
         );
       }
-
-      console.log('更新后的工作流:', updatedWorkflow);
 
       promptData = JSON.parse(updatedWorkflow);
       // 调用接口获取promptId
