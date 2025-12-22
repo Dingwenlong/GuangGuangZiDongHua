@@ -114,8 +114,6 @@ function openFolder(path: string) {
   shell.openPath(path);
 }
 
-const videoMonitoringRunning = ref(false);
-
 function startOrStopTaskHandler(start = true) {
   // 更新 s6 的 running 状态
   ipcRendererChannel.UpdateWorkbenchData.invoke({
@@ -128,8 +126,7 @@ function startOrStopTaskHandler(start = true) {
 
 function guanghe() {
   ipcRendererChannel.guangheCes.invoke({
-    filePath:
-      'C:\\Users\\ASUS\\Downloads\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
+    filePath: '',
   });
 }
 

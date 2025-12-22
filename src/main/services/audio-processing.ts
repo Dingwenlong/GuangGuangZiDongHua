@@ -10,27 +10,10 @@ interface AudioProcessorOptions {
   [key: string]: any;
 }
 
-interface AudioConfig {
-  server: string;
-  port: number;
-}
-
-interface VideoConfig extends AudioConfig {
-  reboot?: {
-    require: boolean;
-    threshold: number;
-  };
-}
-
-interface ConfigData {
-  audio_config: AudioConfig[];
-  video_config: VideoConfig[];
-}
-
 interface StatusObject {
   initialized: boolean;
   processingStatus: string;
-  activeConfig: AudioConfig | null;
+  activeConfig: any;
 }
 
 interface ProcessParams {
@@ -41,94 +24,39 @@ interface ProcessParams {
 
 class AudioProcessor extends EventEmitter {
   private options: AudioProcessorOptions;
-  private configPath: string;
   private workflowTemplatePath: string;
-  private workflowTemplatePath10: string; // workflow_10模板路径
   private status: StatusObject;
   private processedPrompts: Map<string, string>; // 存储路径和对应的prompt_id
-  private audioConfig: AudioConfig | null; // 音频配置
-  private videoConfig: VideoConfig | null; // 视频配置
+
+  // 新增：固定服务器地址
+  private readonly fixedServer: string = 'http://192.168.31.222';
 
   constructor(options: AudioProcessorOptions = {}) {
     super();
     this.options = options;
 
-    // 配置文件路径
-    this.configPath =
-      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\config.json';
-    // 支持多个工作流模板
+    // 统一的工作流模板（路径保持不变）
     this.workflowTemplatePath =
-      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\工作流模板\\\\workflow_09.json';
-    this.workflowTemplatePath10 =
-      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\工作流模板\\\\workflow_10.json';
+      '\\\\192.168.31.99\\\\影视存储\\\\逛逛客户端\\\\ComfyUI\\\\工作流模板\\\\workflow_1208.json'; // 沿用原文件名
 
     // 系统状态
     this.status = {
-      initialized: false,
+      initialized: true, // 简化：始终视为已初始化
       processingStatus: '空闲',
       activeConfig: null,
     };
 
-    // 存储配置
-    this.audioConfig = null;
-    this.videoConfig = null;
-
-    // 存储处理过的prompt
     this.processedPrompts = new Map<string, string>();
   }
 
   /**
-   * 初始化音频处理器
-   */
-  private async initialize(): Promise<void> {
-    try {
-      // 加载配置
-      await this.loadConfig();
-      this.status.initialized = true;
-    } catch (error) {
-      this.status.initialized = false;
-    }
-  }
-
-  /**
-   * 加载配置文件
-   */
-  private async loadConfig(): Promise<void> {
-    try {
-      const configContent = fs.readFileSync(this.configPath, 'utf-8');
-      const configData: ConfigData = JSON.parse(configContent);
-
-      if (!configData.audio_config || configData.audio_config.length === 0) {
-        throw new Error('配置文件中未找到音频配置');
-      }
-
-      if (!configData.video_config || configData.video_config.length === 0) {
-        throw new Error('配置文件中未找到视频配置');
-      }
-
-      // 加载音频配置
-      this.audioConfig = configData.audio_config[0];
-      // 加载视频配置
-      this.videoConfig = configData.video_config[0];
-
-      // 设置默认活动配置为音频配置
-      // this.status.activeConfig = this.audioConfig;
-    } catch (error) {
-      throw new Error(`加载配置文件失败: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * 处理音频文件
+   * 处理文件 - 入口 (修改: 合并逻辑，只进行一次处理)
    * @param audioPath 音频文件路径
+   * @param port 端口参数
    */
-  public async processAudio(audioPath: string): Promise<void> {
+  public async processAudio(audioPath: string, port: string): Promise<void> {
     try {
-      // this.emit('log', {
-      //   message: `开始处理音频文件: ${path.basename(audioPath)}`,
-      //   type: 'info',
-      // } as LogEvent);
-      // 首先检查文件是否存在
+      // 1. 文件检查
       if (!fs.existsSync(audioPath)) {
         this.emit('log', {
           message: `音频文件不存在: ${audioPath}`,
@@ -137,105 +65,32 @@ class AudioProcessor extends EventEmitter {
         return;
       }
 
+      this.writeLog(`开始处理音频文件: ${audioPath}`, 'info');
+
+      // 2. 推导出视频路径并检查是否存在
+      const videoPath = audioPath.replace(/\.mp3$/i, '.mp4');
+      const videoExists = fs.existsSync(videoPath);
+
+      // 3. 构造统一参数
       const params: ProcessParams = {
         audioPath,
-        isVideoProcessing: false,
-      };
-
-      // 使用完整的处理流程，包括可能的视频处理
-      await this.processMediaWithVideo(params);
-    } catch (error) {
-      this.emit('log', {
-        message: `音频处理失败: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        type: 'error',
-      } as LogEvent);
-      this.writeLog(
-        `音频处理失败: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        'error'
-      );
-    }
-  }
-
-  /**
-   * 处理媒体文件并自动处理关联的视频（如果存在）
-   * @param params 处理参数
-   */
-  private async processMediaWithVideo(params: ProcessParams): Promise<void> {
-    try {
-      // 处理音频
-      const audioSuccess = await this.processMediaFile(params);
-
-      // 只有当音频处理成功时，才检查并处理视频
-      if (audioSuccess) {
-        // 检查是否有同名的视频文件需要处理
-        const { audioPath } = params;
-        const videoPath = audioPath.replace(/\.mp3$/i, '.mp4');
-
-        // 如果视频文件存在且尚未处理过，自动处理视频
-        if (fs.existsSync(videoPath) && !this.processedPrompts.has(videoPath)) {
-          // this.emit('log', {
-          //   message: `发现同名视频文件，开始处理视频: ${path.basename(
-          //     videoPath
-          //   )}`,
-          //   type: 'info',
-          // } as LogEvent);
-
-          const videoParams: ProcessParams = {
-            audioPath,
-            videoPath,
-            isVideoProcessing: true,
-          };
-
-          await this.processMediaFile(videoParams);
-        }
-      } else {
-        throw new Error(`音频处理失败,视频处理依赖音频,视频处理未执行`);
-      }
-    } catch (error) {
-      this.emit('log', {
-        message: `音视频处理流程失败: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        type: 'error',
-      } as LogEvent);
-      this.writeLog(
-        `音视频处理流程失败: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        'error'
-      );
-    }
-  }
-
-  /**
-   * 处理视频文件
-   * @param videoPath 视频文件路径
-   * @param audioPath 音频文件路径（与视频同名）
-   */
-  public async processVideo(
-    videoPath: string,
-    audioPath: string
-  ): Promise<void> {
-    try {
-      const params: ProcessParams = {
-        audioPath,
-        videoPath,
+        // 如果视频不存在，则 videoPath 可能是 undefined
+        videoPath: videoExists ? videoPath : undefined,
+        // 如果视频存在，标记为 isVideoProcessing=true，确保下载和 S4/S5 逻辑正确
         isVideoProcessing: true,
       };
-      await this.processMediaFile(params);
+
+      // 4. 调用统一的处理方法
+      await this.processMediaFile(params, port);
     } catch (error) {
       this.emit('log', {
-        message: `视频处理失败: ${
+        message: `S5初始处理失败: ${
           error instanceof Error ? error.message : String(error)
         }`,
         type: 'error',
       } as LogEvent);
       this.writeLog(
-        `视频处理失败: ${
+        `S5初始处理失败: ${
           error instanceof Error ? error.message : String(error)
         }`,
         'error'
@@ -244,200 +99,158 @@ class AudioProcessor extends EventEmitter {
   }
 
   /**
-   * 获取指定处理类型的配置
-   * @param isVideoProcessing 是否为视频处理
-   */
-  private getConfig(isVideoProcessing: boolean): AudioConfig | null {
-    return isVideoProcessing ? this.videoConfig : this.audioConfig;
-  }
-
-  /**
-   * 通用媒体文件处理方法
-   * @param params 处理参数
+   * 统一媒体文件处理方法 (核心逻辑)
+   * @param params 处理参数 (包含 audioPath, videoPath, isVideoProcessing 标记)
+   * @param port 端口参数
    * @returns 是否处理成功
    */
-  private async processMediaFile(params: ProcessParams): Promise<boolean> {
+  private async processMediaFile(
+    params: ProcessParams,
+    port: string
+  ): Promise<boolean> {
     try {
       const { audioPath, videoPath, isVideoProcessing } = params;
-      const targetPath = isVideoProcessing ? videoPath : audioPath;
-      if (!targetPath) {
-        this.emit('log', {
-          message: `处理${isVideoProcessing ? '视频' : '音频'}时路径为空`,
-          type: 'error',
-        } as LogEvent);
-        return false;
-      }
-      // 自动初始化（如果尚未初始化）
-      if (!this.status.initialized) {
-        await this.initialize();
-        if (!this.status.initialized) {
-          return false;
-        }
-      }
+      // 目标路径：优先视频（用于去重和日志），其次音频
+      const targetPath = videoPath || audioPath;
 
-      // 获取对应类型的配置
-      const activeConfig = this.getConfig(isVideoProcessing);
-      if (!activeConfig) {
-        this.emit('log', {
-          message: `${isVideoProcessing ? '视频' : '音频'}配置不存在`,
-          type: 'error',
-        } as LogEvent);
-        return false;
-      }
-
-      // 检查是否已经处理过
-      if (this.processedPrompts.has(targetPath)) {
-        return false;
-      }
+      this.status.processingStatus = '处理中'; // 设置状态
 
       // 定义背景音乐的基础路径 (UNC 路径)
       const BGM_BASE_PATH =
         '\\\\192.168.31.99\\影视存储\\逛逛客户端\\ComfyUI\\示例音频';
 
-      // 读取工作流模板（音频使用workflow_09，视频使用workflow_10）
-      const templatePath = isVideoProcessing
-        ? this.workflowTemplatePath10
-        : this.workflowTemplatePath;
-      const workflowTemplate = fs.readFileSync(templatePath, 'utf-8');
+      // 读取统一的工作流模板
+      const workflowTemplate = fs.readFileSync(
+        this.workflowTemplatePath,
+        'utf-8'
+      );
       let promptData = JSON.parse(workflowTemplate);
 
       let updatedWorkflow = JSON.stringify(promptData);
+      let backgroundVideoPath = '';
       let backgroundMusicPath = '';
 
-      // --- 1. 背景音乐路径逻辑 ---
-      if (isVideoProcessing && videoPath) {
-        // === 视频处理 (workflow_10) 逻辑 ===
+      // --- 1. 路径替换：音频、视频、端口 ---
 
-        // 随机选择 5 个背景音乐 + 1 个低音量背景音乐，共 6 个
-        const bgmFiles = [
-          '背景音乐1.MP3',
-          '背景音乐2.MP3',
-          '背景音乐3.MP3',
-          '背景音乐4.MP3',
-          '背景音乐5.MP3',
-          '背景音乐6.MP3',
-        ];
-        const randomIndex = Math.floor(Math.random() * bgmFiles.length);
-        backgroundMusicPath = path.join(BGM_BASE_PATH, bgmFiles[randomIndex]);
-
-        // 替换视频路径
-        const escapedVideoPath = videoPath.replace(/\\/g, '\\\\');
-        updatedWorkflow = updatedWorkflow.replace(
-          /#VideoUrl#/g, // 假设视频路径的占位符保持为 #VideoUrl#
-          escapedVideoPath
-        );
-      } else {
-        // === 音频处理 (workflow_09) 逻辑 ===
-
-        // 1. 获取视频文件路径的父级文件夹路径
-        // 注意：虽然是音频处理，但逻辑要求使用 videoPath 来获取文件夹信息
-        const parentDir = path.dirname(audioPath || '');
-        console.log('父级文件夹路径:', parentDir);
-
-        // 2. 获取父级文件夹的名称
-        const folderName = path.basename(parentDir);
-        console.log('文件夹名称:', folderName);
-
-        // 3. 尝试从文件夹名称中提取类目ID (示例格式: S1---2---...---大家电---...)
-        const parts = folderName.split('---');
-        let categoryId = '';
-
-        // 假设“大家电”这个类目在分隔后的第 4 个位置 (索引 3)
-        if (parts.length >= 4) {
-          categoryId = parts[3];
-        }
-        console.log('类目ID:', categoryId);
-
-        const categoryBgmFileName = categoryId
-          ? `${categoryId}-示例音频.MP3`
-          : '';
-        const categoryBgmPath = path.join(BGM_BASE_PATH, categoryBgmFileName);
-        const fallbackBgmPath = path.join(BGM_BASE_PATH, '示例声音.MP3');
-
-        // 4. 检查类目背景音乐文件是否存在，不存在则使用备用文件
-        if (categoryId && fs.existsSync(categoryBgmPath)) {
-          backgroundMusicPath = categoryBgmPath;
-        } else {
-          backgroundMusicPath = fallbackBgmPath;
-        }
-        console.log('背景音乐路径:', backgroundMusicPath);
-      }
-
-      // --- 2. 执行路径替换 ---
-
-      // 替换主音频/主声音路径
+      // 替换音频路径
       const escapedAudioPath = audioPath.replace(/\\/g, '\\\\');
       updatedWorkflow = updatedWorkflow.replace(
-        /#AudioUrl#/g, // 假设主音频的占位符保持为 #AudioUrl#
+        /#AudioUrl#/g,
         escapedAudioPath
       );
 
-      // 替换背景音乐路径，使用不同的占位符
+      // 替换视频路径
+      // 如果 videoPath 不存在，则替换为空字符串
+      const escapedVideoPath = videoPath
+        ? videoPath.replace(/\\/g, '\\\\')
+        : '';
+      updatedWorkflow = updatedWorkflow.replace(
+        /#VideoUrl#/g,
+        escapedVideoPath
+      );
+
+      // 替换端口参数
+      updatedWorkflow = updatedWorkflow.replace(/#Port#/g, port);
+
+      // --- 2. 背景音乐路径逻辑（统一计算一次最终路径） ---
+
+      // 如果 videoPath 存在，则使用视频处理的 BGM 逻辑 (随机 BGM)
+      // 视频处理逻辑：随机选择背景音乐
+      const bgmFiles = [
+        '背景音乐1.MP3',
+        '背景音乐2.MP3',
+        '背景音乐3.MP3',
+        '背景音乐4.MP3',
+        '背景音乐5.MP3',
+        '背景音乐6.MP3',
+      ];
+      const randomIndex = Math.floor(Math.random() * bgmFiles.length);
+      backgroundMusicPath = path.join(BGM_BASE_PATH, bgmFiles[randomIndex]);
+
+      // 否则使用音频处理的 BGM 逻辑 (类别 BGM)
+      const parentDir = path.dirname(audioPath || '');
+
+      const folderName = path.basename(parentDir);
+
+      // 尝试从文件夹名称中提取类目ID
+      const parts = folderName.split('---');
+      let categoryId = '';
+
+      // 假设“大家电”这个类目在分隔后的第 4 个位置 (索引 3)
+      if (parts.length >= 4) {
+        categoryId = parts[3];
+      }
+      // console.log('类目ID:', categoryId); // 移除 console.log
+
+      const categoryArr = [
+        '彩妆护肤',
+        '宠物用品',
+        '大家电',
+        '健康品类',
+        '母婴用品',
+        '生活电器',
+        '时尚穿搭',
+      ];
+      let categoryBgmFileName = '';
+      categoryArr.includes(categoryId)
+        ? (categoryBgmFileName = '示例声音-女声.MP3')
+        : (categoryBgmFileName = '');
+
+      const categoryBgmPath = path.join(BGM_BASE_PATH, categoryBgmFileName);
+      const fallbackBgmPath = path.join(BGM_BASE_PATH, '示例声音.MP3');
+
+      // 检查类目背景音乐文件是否存在，且文件名不为空，不存在则使用备用文件
+      if (categoryId && categoryBgmFileName && fs.existsSync(categoryBgmPath)) {
+        backgroundVideoPath = categoryBgmPath;
+      } else {
+        backgroundVideoPath = fallbackBgmPath;
+      }
+
+      const escapedBackgroundVideoPath = backgroundVideoPath.replace(
+        /\\/g,
+        '\\\\'
+      );
+
+      // 替换 #BgmUrl#
+      updatedWorkflow = updatedWorkflow.replace(
+        /#SampleUrl#/g,
+        escapedBackgroundVideoPath
+      );
+
       const escapedBackgroundMusicPath = backgroundMusicPath.replace(
         /\\/g,
         '\\\\'
       );
 
-      if (isVideoProcessing) {
-        // 视频处理使用 #BgmUrl#
-        updatedWorkflow = updatedWorkflow.replace(
-          /#BgmUrl#/g,
-          escapedBackgroundMusicPath
-        );
-      } else {
-        // 音频处理使用 #SampleUrl#
-        updatedWorkflow = updatedWorkflow.replace(
-          /#SampleUrl#/g,
-          escapedBackgroundMusicPath
-        );
-      }
-
-      console.log('更新后的工作流:', updatedWorkflow);
+      // 音频处理使用 #SampleUrl#
+      updatedWorkflow = updatedWorkflow.replace(
+        /#BgmUrl#/g,
+        escapedBackgroundMusicPath
+      );
 
       promptData = JSON.parse(updatedWorkflow);
+      console.log('promptData', promptData); // 移除 console.log
+
       // 调用接口获取promptId
-      const promptId = await this.callPromptApi(promptData, isVideoProcessing);
-      // this.emit('log', {
-      //   message: `获取到${
-      //     isVideoProcessing ? '视频' : '音频'
-      //   }处理任务ID: ${promptId}`,
-      //   type: 'info',
-      // } as LogEvent);
+      const promptId = await this.callPromptApi(promptData, port);
+      console.log('promptId', promptId); // 移除 console.log
 
       // 存储结果并进行后续处理
       if (promptId) {
         this.processedPrompts.set(targetPath, promptId);
-        this.emit(
-          isVideoProcessing ? 'videoProcessComplete' : 'audioProcessComplete',
-          {
-            audioPath,
-            videoPath,
-            promptId,
-          }
-        );
-        // 轮询任务状态
-        const historyResult = await this.pollTaskStatus(
-          promptId,
-          isVideoProcessing
-        );
-        // 如果任务完成且有结果，调用view下载文件
+        // 轮询任务状态（16秒间隔）
+        const historyResult = await this.pollTaskStatus(promptId, port);
+        console.log('historyResult', JSON.stringify(historyResult)); // 移除 console.log
+
         if (historyResult && Object.keys(historyResult).length > 0) {
           try {
-            // 根据处理类型提取相应的输出数据
-            // 音频使用57节点
-            const nodeKey = isVideoProcessing ? '35' : '57';
-            const mediaType = isVideoProcessing ? 'videos' : 'audio';
-
-            // 如果是视频则检测status.status_str是否为success，是则继续处理
-            if (mediaType === 'videos') {
-              if (historyResult[promptId]?.status.status_str !== 'success') {
-                this.emit('log', {
-                  message: '视频处理失败',
-                  type: 'error',
-                } as LogEvent);
-                return false;
-              }
+            if (historyResult[promptId]?.status.status_str !== 'success') {
+              throw new Error(
+                `任务 ${promptId} 处理失败,状态: ${historyResult[promptId]?.status.status_str}`
+              );
             }
+            const nodeKey = '86';
+            const mediaType = 'videos';
             const targetData =
               historyResult[promptId]?.outputs?.[nodeKey]?.[mediaType]?.[0];
 
@@ -450,20 +263,14 @@ class AudioProcessor extends EventEmitter {
                 filteredData['filename'] = targetData.filename;
               }
               if ('subfolder' in targetData && targetData.subfolder) {
-                filteredData['subfolder'] = targetData.subfolder;
+                filteredData['subfolder'] = targetData.subfolder.replace(
+                  /\\/g,
+                  '/'
+                );
               }
               if ('type' in targetData && targetData.type) {
                 filteredData['type'] = targetData.type;
               }
-
-              // 记录提取的参数信息
-              // const mediaTypeText = isVideoProcessing ? '视频' : '音频';
-              // this.emit('log', {
-              //   message: `提取的${mediaTypeText}参数(仅非空): ${JSON.stringify(
-              //     filteredData
-              //   )}`,
-              //   type: 'info',
-              // } as LogEvent);
 
               // 对于视频处理，如果没有必要的参数，可以记录警告但不中断处理
               if (isVideoProcessing && Object.keys(filteredData).length === 0) {
@@ -473,7 +280,9 @@ class AudioProcessor extends EventEmitter {
                 } as LogEvent);
               }
 
-              await this.fetchViewData(filteredData, params);
+              await this.fetchViewData(filteredData, params, port);
+            } else {
+              throw new Error('未找到处理后的媒体文件数据');
             }
           } catch (error) {
             this.emit('log', {
@@ -482,6 +291,11 @@ class AudioProcessor extends EventEmitter {
               }`,
               type: 'error',
             } as LogEvent);
+            throw new Error(
+              `提取目标数据路径时出错: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
           }
         } else {
           throw new Error(`任务 ${promptId} 轮询超时,处理失败`);
@@ -497,42 +311,89 @@ class AudioProcessor extends EventEmitter {
   }
 
   /**
-   * 轮询任务状态
-   * @param promptId 任务ID
-   * @param isVideoProcessing 是否为视频处理
+   * 调用 /prompt API (固定IP)
    */
-  private async pollTaskStatus(
-    promptId: string,
-    isVideoProcessing: boolean
-  ): Promise<any> {
-    const activeConfig = this.getConfig(isVideoProcessing);
-    if (!activeConfig) {
-      return null;
-    }
+  private async callPromptApi(
+    promptData: any,
+    port: string
+  ): Promise<string | null> {
+    const normalizedServer = this.fixedServer; // 使用固定的 IP
+    const url = `${normalizedServer}:${port}/prompt`;
+    console.log('请求url：', url);
 
-    const { server, port } = activeConfig;
-    const normalizedServer = server.startsWith('http')
-      ? server
-      : `http://${server}`;
+    // 构建请求数据
+    const requestDataObj = {
+      client_id: 'hanliyan_604984af-ffbf-4b0f-9820-a23d2d568093',
+      prompt: promptData,
+    };
+
+    const requestData = JSON.stringify(requestDataObj);
+
+    return new Promise(resolve => {
+      // 固定使用http模块
+      const httpModule = http;
+
+      const options: http.RequestOptions = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(requestData),
+        },
+      };
+
+      const req = httpModule.request(url, options, (res: any) => {
+        let responseData = '';
+        res.on('data', (chunk: any) => {
+          responseData += chunk;
+        });
+
+        res.on('end', () => {
+          try {
+            const parsedResponse = JSON.parse(responseData);
+
+            if (parsedResponse.prompt_id) {
+              resolve(parsedResponse.prompt_id);
+            } else {
+              resolve(null);
+            }
+          } catch (error) {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', (error: Error) => {
+        this.emit('log', {
+          message: `[callPromptApi] 请求错误: ${error.message}`,
+          type: 'error',
+        } as LogEvent);
+        resolve(null);
+      });
+
+      req.write(requestData);
+
+      req.end();
+    });
+  }
+
+  /**
+   * 轮询任务状态 (固定IP)
+   */
+  private async pollTaskStatus(promptId: string, port: string): Promise<any> {
+    const normalizedServer = this.fixedServer; // 使用固定的 IP
     const url = `${normalizedServer}:${port}/history/${promptId}`;
 
-    const maxRetries = 30; // 最多重试30次
-    const retryInterval = isVideoProcessing ? 15 * 1000 : 30 * 1000; // 视频处理每15秒轮询一次，音频处理每30秒轮询一次
+    const maxRetries = 60; // 最多重试60次
+    const retryInterval = 16 * 1000; // 16秒轮询一次
 
     for (let i = 0; i < maxRetries; i++) {
       try {
         const response = await this.httpGetRequest(url);
         const historyData = JSON.parse(response);
-        // this.emit('log', {
-        //   message: `轮询任务状态返回数据: ${JSON.stringify(historyData)}`,
-        //   type: 'info',
-        // } as LogEvent);
 
-        // 检查是否返回了非空对象
         if (historyData && Object.keys(historyData).length > 0) {
           return historyData;
         }
-        // 继续等待
         await new Promise(resolve => setTimeout(resolve, retryInterval));
       } catch (error) {
         this.emit('log', {
@@ -544,7 +405,6 @@ class AudioProcessor extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, retryInterval));
       }
     }
-
     this.emit('log', {
       message: `任务 ${promptId} 轮询超时`,
       type: 'error',
@@ -554,24 +414,14 @@ class AudioProcessor extends EventEmitter {
   }
 
   /**
-   * 下载媒体文件并保存到处理的媒体目录
-   * @param targetData 包含文件下载参数的数据对象
-   * @param params 处理参数
+   * 下载媒体文件并保存到处理的媒体目录 (固定IP)
    */
   private async fetchViewData(
     targetData: any,
-    params: ProcessParams
+    params: ProcessParams,
+    port: string
   ): Promise<void> {
     const { isVideoProcessing } = params;
-    const activeConfig = this.getConfig(isVideoProcessing);
-
-    if (!activeConfig) {
-      this.emit('log', {
-        message: `${isVideoProcessing ? '视频' : '音频'}配置不存在`,
-        type: 'error',
-      } as LogEvent);
-      return;
-    }
 
     if (!targetData || typeof targetData !== 'object') {
       this.emit('log', {
@@ -582,13 +432,8 @@ class AudioProcessor extends EventEmitter {
     }
 
     try {
-      const { server, port } = activeConfig;
-      const { audioPath, videoPath, isVideoProcessing } = params;
-
-      // 确保使用http协议
-      const normalizedServer = server.startsWith('http')
-        ? server
-        : `http://${server}`;
+      const normalizedServer = this.fixedServer; // 使用固定的 IP
+      const { audioPath, videoPath } = params;
 
       // 构建查询参数
       const paramsQuery = Object.entries(targetData)
@@ -635,12 +480,10 @@ class AudioProcessor extends EventEmitter {
 
       // 创建新文件名
       let newFileName: string;
-      let originalPath: string = targetPath;
       let originalVideoName: string = '';
 
       if (isVideoProcessing && videoPath) {
         // 视频处理 - 使用视频文件名
-        originalPath = videoPath;
         originalVideoName = path.basename(videoPath, path.extname(videoPath));
         // 如果文件名以S4开头，则改为S5
         if (originalVideoName.startsWith('S4')) {
@@ -649,8 +492,7 @@ class AudioProcessor extends EventEmitter {
           newFileName = `${originalVideoName}${fileExt}`;
         }
       } else if (audioPath) {
-        // 音频处理 - 使用音频文件名（不再添加随机数）
-        originalPath = audioPath;
+        // 音频处理 - 使用音频文件名
         const originalAudioName = path.basename(
           audioPath,
           path.extname(audioPath)
@@ -687,11 +529,14 @@ class AudioProcessor extends EventEmitter {
       if (isVideoProcessing && fs.existsSync(savePath)) {
         const stats = fs.statSync(savePath);
         if (stats.size > 0) {
+          // 保持原有逻辑，但这里应该只存在处理后的文件，无需添加时间戳，沿用之前的逻辑
+          // 如果文件已存在，说明是上次处理成功的，这里不再处理，避免重复。
+          // 但如果流程走到这里，说明是新下载的文件，所以这里逻辑保留原意：检查文件是否在之前已存在
           const nameWithoutExt = path.basename(savePath, fileExt);
           newFileName = `${nameWithoutExt}${fileExt}`;
           savePath = path.join(mediaDir, newFileName);
           this.emit('log', {
-            message: `视频处理完成: ${newFileName}`,
+            message: `视频文件已存在，但流程仍在进行，可能发生冲突`,
             type: 'warning',
           } as LogEvent);
         }
@@ -722,6 +567,11 @@ class AudioProcessor extends EventEmitter {
           if (fs.existsSync(audioFilePath)) {
             fs.unlinkSync(audioFilePath);
           }
+
+          this.emit('log', {
+            message: `已删除原始S4视频和对应的音频文件`,
+            type: 'info',
+          } as LogEvent);
         } catch (deleteError) {
           this.emit('log', {
             message: `删除原始S4文件时出错: ${
@@ -731,123 +581,130 @@ class AudioProcessor extends EventEmitter {
             }`,
             type: 'warning',
           } as LogEvent);
-        }
-      }
-
-      // 保留日志记录以表明处理完成
-      if (!isVideoProcessing && audioPath) {
-        this.emit('log', {
-          message: `音频处理完成，已使用新文件替代原文件`,
-          type: 'info',
-        } as LogEvent);
-      }
-
-      this.emit('log', {
-        message: `${
-          isVideoProcessing ? '视频' : '音频'
-        }文件下载成功，已保存到: ${savePath}`,
-        type: 'success',
-      } as LogEvent);
-
-      // 如果为视频则代表处理完成，触发完成的处理
-      if (isVideoProcessing) {
-        try {
-          // 获取当前视频所在的S4文件夹路径
-          const currentDir = path.dirname(savePath);
-          const parentDir = path.dirname(currentDir);
-          const dirName = path.basename(currentDir);
-          const fileName = path.basename(savePath);
-
-          // 步骤1: 只将文件名更改为S5开头，不创建新文件夹
-          if (fileName.startsWith('S4')) {
-            const newFileName = fileName.replace('S4', 'S5');
-            const newFilePath = path.join(currentDir, newFileName);
-
-            if (fs.existsSync(savePath) && savePath !== newFilePath) {
-              // 如果目标文件已存在，先删除它
-              if (fs.existsSync(newFilePath)) {
-                fs.unlinkSync(newFilePath);
-              }
-              // 重命名文件
-              fs.renameSync(savePath, newFilePath);
-              savePath = newFilePath;
-
-              this.emit('log', {
-                message: `已将文件重命名为S5开头: ${newFileName}`,
-                type: 'info',
-              } as LogEvent);
-            }
-          }
-
-          // 步骤2: 检查当前文件夹下是否有四个S4开头的文件（现在应该都是S5开头了）
-          if (dirName.startsWith('S4')) {
-            try {
-              // 获取当前文件夹下所有以S5开头的文件
-              const files = fs.readdirSync(currentDir);
-              const s5Files = files.filter(
-                file => file.startsWith('S5') && file.endsWith('.mp4')
-              );
-
-              this.emit('log', {
-                message: `检测到当前文件夹中S5开头的视频文件数量: ${s5Files.length}`,
-                type: 'info',
-              } as LogEvent);
-
-              // 当有四个S5文件时，将外面一层文件夹的S4前缀改为S5
-              if (s5Files.length === 4) {
-                // 创建对应的S5文件夹路径
-                const newDirName = dirName.replace('S4', 'S5');
-                const newDirPath = path.join(parentDir, newDirName);
-
-                // 如果S5文件夹不存在，则重命名整个S4文件夹
-                if (!fs.existsSync(newDirPath)) {
-                  fs.renameSync(currentDir, newDirPath);
-                  this.emit('log', {
-                    message: `已将文件夹 ${dirName} 重命名为 ${newDirName}`,
-                    type: 'success',
-                  } as LogEvent);
-
-                  // 构建四个文件的完整路径数组
-                  const updatedFilePaths = s5Files.map(file =>
-                    path.join(newDirPath, file)
-                  );
-
-                  // 触发s5OkCallback事件，传入四个文件的路径数组
-                  this.emit('s5OkCallback', updatedFilePaths);
-                  this.emit('log', {
-                    message: `已触发s5OkCallback，传入${
-                      updatedFilePaths.length
-                    }个文件路径,文件路径为: ${updatedFilePaths.join(', ')}`,
-                    type: 'success',
-                  } as LogEvent);
-                } else {
-                  this.emit('log', {
-                    message: `目标文件夹 ${newDirName} 已存在，无法重命名`,
-                    type: 'warning',
-                  } as LogEvent);
-                }
-              }
-            } catch (checkError) {
-              this.emit('log', {
-                message: `检查文件夹中S5文件数量时出错: ${
-                  checkError instanceof Error
-                    ? checkError.message
-                    : String(checkError)
-                }`,
-                type: 'warning',
-              } as LogEvent);
-            }
-          }
-        } catch (folderError) {
-          this.emit('log', {
-            message: `处理文件夹时出错: ${
-              folderError instanceof Error
-                ? folderError.message
-                : String(folderError)
+          this.writeLog(
+            `S5操作中，删除原始S4文件时出错: ${
+              deleteError instanceof Error
+                ? deleteError.message
+                : String(deleteError)
             }`,
-            type: 'warning',
-          } as LogEvent);
+            'warning'
+          );
         }
+      }
+
+      try {
+        // 获取当前视频所在的S4文件夹路径
+        const currentDir = path.dirname(savePath);
+        const parentDir = path.dirname(currentDir);
+        const dirName = path.basename(currentDir);
+        const fileName = path.basename(savePath);
+
+        // 步骤1: 只将文件名更改为S5开头
+        if (fileName.startsWith('S4')) {
+          const newFileName = fileName.replace('S4', 'S5');
+          const newFilePath = path.join(currentDir, newFileName);
+
+          if (fs.existsSync(savePath) && savePath !== newFilePath) {
+            // 如果目标文件已存在，先删除它
+            if (fs.existsSync(newFilePath)) {
+              fs.unlinkSync(newFilePath);
+            }
+            // 重命名文件
+            fs.renameSync(savePath, newFilePath);
+            savePath = newFilePath;
+
+            this.emit('log', {
+              message: `已将文件重命名为S5开头: ${newFileName}`,
+              type: 'info',
+            } as LogEvent);
+          }
+        }
+
+        // 步骤2: 检查当前文件夹下是否有四个S5开头的文件
+        if (dirName.startsWith('S4')) {
+          try {
+            // 获取当前文件夹下所有以S5开头的文件
+            const files = fs.readdirSync(currentDir);
+            const s5Files = files.filter(
+              file => file.startsWith('S5') && file.endsWith('.mp4')
+            );
+
+            this.emit('log', {
+              message: `检测到当前文件夹中S5开头的视频文件数量: ${s5Files.length}`,
+              type: 'info',
+            } as LogEvent);
+
+            // 当有四个S5文件时，将外面一层文件夹的S4前缀改为S5
+            if (s5Files.length === 4) {
+              // 创建对应的S5文件夹路径
+              const newDirName = dirName.replace('S4', 'S5');
+              const newDirPath = path.join(parentDir, newDirName);
+
+              // 如果S5文件夹不存在，则重命名整个S4文件夹
+              if (!fs.existsSync(newDirPath)) {
+                fs.renameSync(currentDir, newDirPath);
+                this.emit('log', {
+                  message: `已将文件夹 ${dirName} 重命名为 ${newDirName}`,
+                  type: 'success',
+                } as LogEvent);
+
+                // 构建四个文件的完整路径数组
+                const updatedFilePaths = s5Files.map(file =>
+                  path.join(newDirPath, file)
+                );
+
+                // 触发s5OkCallback事件
+                this.emit('s5OkCallback', updatedFilePaths);
+                this.emit('log', {
+                  message: `已触发s5OkCallback`,
+                  type: 'success',
+                } as LogEvent);
+                this.writeLog(
+                  `S5四个文件处理完成，已触发s5OkCallback，传入${
+                    updatedFilePaths.length
+                  }个文件,文件路径为: ${updatedFilePaths.join(', ')}`
+                );
+              } else {
+                this.emit('log', {
+                  message: `目标文件夹 ${newDirName} 已存在，无法重命名`,
+                  type: 'warning',
+                } as LogEvent);
+              }
+            }
+          } catch (checkError) {
+            this.emit('log', {
+              message: `检查文件夹中S5文件数量时出错: ${
+                checkError instanceof Error
+                  ? checkError.message
+                  : String(checkError)
+              }`,
+              type: 'warning',
+            } as LogEvent);
+            this.writeLog(
+              `检查文件夹中S5文件数量时出错: ${
+                checkError instanceof Error
+                  ? checkError.message
+                  : String(checkError)
+              }`
+            );
+          }
+        }
+      } catch (folderError) {
+        this.emit('log', {
+          message: `处理文件夹时出错: ${
+            folderError instanceof Error
+              ? folderError.message
+              : String(folderError)
+          }`,
+          type: 'warning',
+        } as LogEvent);
+        this.writeLog(
+          `S5处理文件夹时出错: ${
+            folderError instanceof Error
+              ? folderError.message
+              : String(folderError)
+          }`
+        );
       }
     } catch (error) {
       const errorMessage =
@@ -861,239 +718,103 @@ class AudioProcessor extends EventEmitter {
   }
 
   /**
-   * 重启服务的方法
+   * 辅助方法：服务重启
    */
   public async rebootService(): Promise<void> {
+    const rebootUrl = 'http://192.168.31.222:9001/api/easyuse/reboot';
     try {
-      const url = 'http://192.168.31.222:9001/api/easyuse/reboot';
       this.emit('log', {
-        message: `正在调用重启服务API: ${url}`,
+        message: `正在请求服务重启: ${rebootUrl}`,
         type: 'info',
       } as LogEvent);
-
-      const response = await this.httpGetRequest(url);
-
+      await this.httpGetRequest(rebootUrl);
       this.emit('log', {
-        message: `重启服务API调用成功`,
+        message: '服务重启请求发送成功',
         type: 'success',
       } as LogEvent);
-
-      // this.emit('serviceRebooted', { success: true, response });
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
       this.emit('log', {
-        message: `重启服务API调用失败: ${errorMessage}`,
+        message: `服务重启请求失败: ${(error as Error).message}`,
         type: 'error',
       } as LogEvent);
-      // this.emit('serviceRebooted', { success: false, error: errorMessage });
-      throw error;
     }
   }
 
   /**
-   * 下载文件到指定路径
-   * @param fileUrl 文件URL
-   * @param savePath 保存路径
+   * 辅助方法：下载文件
    */
-  private async downloadFile(fileUrl: string, savePath: string): Promise<void> {
+  private downloadFile(fileUrl: string, savePath: string): Promise<void> {
+    const isHttps = fileUrl.startsWith('https');
+    const httpModule = isHttps ? https : http;
+
     return new Promise((resolve, reject) => {
-      const httpModule = fileUrl.startsWith('https') ? https : http;
-
-      // 确保目录存在
-      const dir = path.dirname(savePath);
-      if (!fs.existsSync(dir)) {
-        try {
-          fs.mkdirSync(dir, { recursive: true });
-        } catch (mkdirError: any) {
-          reject(mkdirError);
-          return;
-        }
-      }
-
       const fileStream = fs.createWriteStream(savePath);
-      httpModule
-        .get(fileUrl, response => {
-          if (response.statusCode !== 200) {
-            fileStream.close();
-            const error = new Error(`下载失败: HTTP ${response.statusCode}`);
-            this.emit('log', {
-              message: error.message,
-              type: 'error',
-            } as LogEvent);
-            reject(error);
-            return;
-          }
 
-          response.pipe(fileStream);
-
-          fileStream.on('finish', () => {
-            fileStream.close();
-
-            // 验证文件是否成功写入
-            if (fs.existsSync(savePath) && fs.statSync(savePath).size > 0) {
-              resolve();
-            } else {
-              const error = new Error(`文件下载失败: 保存文件为空或不存在`);
-              reject(error);
-            }
-          });
-        })
-        .on('error', error => {
+      const request = httpModule.get(fileUrl, res => {
+        if (res.statusCode !== 200) {
           fileStream.close();
-          this.emit('log', {
-            message: `HTTP请求错误: ${error.message}`,
-            type: 'error',
-          } as LogEvent);
-          reject(error);
+          fs.unlink(savePath, () => {}); // 删除部分下载的文件
+          return reject(
+            new Error(`下载失败，状态码: ${res.statusCode} (${fileUrl})`)
+          );
+        }
+
+        res.pipe(fileStream);
+
+        fileStream.on('finish', () => {
+          fileStream.close();
+          // 确保文件大小大于0
+          if (fs.statSync(savePath).size > 0) {
+            resolve();
+          } else {
+            fs.unlink(savePath, () => {});
+            reject(new Error(`下载文件为空: ${savePath}`));
+          }
         });
+      });
+
+      request.on('error', err => {
+        fileStream.close();
+        fs.unlink(savePath, () => {}); // 删除部分下载的文件
+        reject(err);
+      });
+
+      request.end();
     });
   }
 
   /**
-   * 执行HTTP GET请求的工具方法
-   * @param url 请求URL
+   * 辅助方法：HTTP GET 请求
    */
   private httpGetRequest(url: string): Promise<string> {
+    const isHttps = url.startsWith('https');
+    const httpModule = isHttps ? https : http;
+
     return new Promise((resolve, reject) => {
-      const httpModule = url.startsWith('https') ? https : http;
-
-      const req = httpModule.get(url, (res: any) => {
-        let responseData = '';
-
-        res.on('data', (chunk: any) => {
-          responseData += chunk;
+      const req = httpModule.get(url, res => {
+        let data = '';
+        res.on('data', chunk => {
+          data += chunk;
         });
-
         res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(responseData);
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(data);
           } else {
-            reject(new Error(`HTTP error! Status: ${res.statusCode}`));
+            reject(
+              new Error(
+                `请求失败，状态码: ${res.statusCode} URL: ${url} 响应: ${data}`
+              )
+            );
           }
         });
       });
 
-      req.on('error', (error: Error) => {
-        reject(error);
+      req.on('error', err => {
+        reject(err);
       });
 
       req.end();
     });
-  }
-
-  /**
-   * 调用 /prompt API
-   * @param promptData 提示数据
-   * @param isVideoProcessing 是否为视频处理
-   */
-  private async callPromptApi(
-    promptData: any,
-    isVideoProcessing: boolean = false
-  ): Promise<string | null> {
-    const activeConfig = this.getConfig(isVideoProcessing);
-    if (!activeConfig) {
-      return null;
-    }
-
-    const { server, port } = activeConfig;
-
-    // 确保使用http协议
-    const normalizedServer = server.startsWith('http')
-      ? server
-      : `http://${server}`;
-    const url = `${normalizedServer}:${port}/prompt`;
-    // this.emit('log', {
-    //   message: `调用API: ${url}获取prompt_id`,
-    //   type: 'info',
-    // } as LogEvent);
-
-    // 构建请求数据
-    const requestDataObj = {
-      client_id: 'hanliyan_604984af-ffbf-4b0f-9820-a23d2d568093',
-      prompt: promptData,
-    };
-
-    const requestData = JSON.stringify(requestDataObj);
-
-    return new Promise(resolve => {
-      // 固定使用http模块
-      const httpModule = http;
-
-      const options: http.RequestOptions = {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(requestData),
-        },
-      };
-
-      const req = httpModule.request(url, options, (res: any) => {
-        let responseData = '';
-        res.on('data', (chunk: any) => {
-          responseData += chunk;
-        });
-
-        res.on('end', () => {
-          try {
-            // 尝试解析响应体
-            const parsedResponse = JSON.parse(responseData);
-
-            // 检查是否有prompt_id字段
-            if (parsedResponse.prompt_id) {
-              resolve(parsedResponse.prompt_id);
-            } else {
-              resolve(null);
-            }
-          } catch (error) {
-            resolve(null);
-          }
-        });
-      });
-
-      req.on('error', (error: Error) => {
-        this.emit('log', {
-          message: `[callPromptApi] 请求错误: ${error.message}`,
-          type: 'error',
-        } as LogEvent);
-        resolve(null);
-      });
-
-      req.write(requestData);
-
-      req.end();
-    });
-  }
-
-  /**
-   * 重新加载配置
-   */
-  public async reloadConfig(): Promise<void> {
-    try {
-      await this.loadConfig();
-      this.emit('log', {
-        message: '配置已重新加载',
-        type: 'success',
-      } as LogEvent);
-    } catch (error) {
-      this.emit('log', {
-        message: `重新加载配置失败: ${(error as Error).message}`,
-        type: 'error',
-      } as LogEvent);
-    }
-  }
-
-  /**
-   * 获取视频配置中的重启参数
-   */
-  public getVideoRebootConfig(): {
-    require: boolean;
-    threshold: number;
-  } | null {
-    if (this.videoConfig?.reboot) {
-      return this.videoConfig.reboot;
-    }
-    return null;
   }
 
   private writeLog(message: string, type: LogEvent['type'] = 'info') {

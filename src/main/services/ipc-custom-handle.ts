@@ -365,6 +365,7 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
     // 增加第六步队列
     for (const path of savePath) {
       await workbenchManager.enqueueTask('s6TasksQueue', path);
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
     // console.log('新增s6任务:', savePath);
   });
@@ -577,13 +578,6 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       },
     },
     {
-      channel: 'ProcessAudio',
-      handler: async (event, arg: { audioPath: string }) => {
-        const { audioPath } = arg;
-        return await audioProcessor.processAudio(audioPath);
-      },
-    },
-    {
       channel: 'ProcessAudioExtract',
       handler: async (event, arg: { videoPath: string }) => {
         const { videoPath } = arg;
@@ -599,13 +593,37 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4',
         //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
         //   ],
-        //   guangId: '',
+        //   guangId: '4852373241',
         //   videoDescription: '测试视频描述',
         //   videoTags: ['测试标签1', '测试标签2'],
         //   topic: '测试话题',
         //   productIds: ['979356468701', '623789783157', '622457528832'],
         // };
-        // return await guangheTaobao.GuangheTaobaoIssue(arr);
+        return await guangheTaobao.MoveFile(
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\已分发问题视频',
+          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\逛逛配音',
+          [
+            '彩妆护肤',
+            '宠物用品',
+            '大家电',
+            '健康品类',
+            '母婴用品',
+            '生活电器',
+            '时尚穿搭',
+          ]
+        );
+        console.log('执行s5-task-processor-new');
+
+        // return await s5TaskProcessorNew.executes(
+        //   [
+        //     '\\\\192.168.31.99\\\\影视存储\\\\研发资产\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---3.mp4',
+        //     992989631352,
+        //   ],
+        //   [
+        //     '\\\\192.168.31.99\\\\影视存储\\\\研发资产\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---4.mp4',
+        //     992989631352,
+        //   ]
+        // );
         // const { filePath } = arg;
         // console.log(`[guangheCes] 输入视频路径: ${filePath}`);
         // return await faceRecognition.processVideo(filePath);

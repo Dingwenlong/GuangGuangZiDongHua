@@ -75,7 +75,6 @@ export class IpcChannelMainCustomClass {
   GetWorkbenchData!: IpcMainEventListener<string, any>;
   StartMonitoringDirectory!: IpcMainEventListener<string>;
   StopMonitoringDirectory!: IpcMainEventListener<string>;
-  ProcessAudio!: IpcMainEventListener<{ audioPath: string }, string>;
   guangheCes!: IpcMainEventListener<{ filePath: string }>;
 }
 

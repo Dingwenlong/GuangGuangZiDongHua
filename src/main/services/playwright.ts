@@ -22,7 +22,7 @@ class PlaywrightScript extends EventEmitter {
    * 视频去水印处理
    */
   // 初始化浏览器实例
-  private static async initBrowser(downloadDir: string) {
+  private static async initBrowser() {
     // 检查浏览器实例是否存在且可用，如果不存在或已关闭，则重新初始化
     if (!PlaywrightScript.browser || !PlaywrightScript.isBrowserReady) {
       if (PlaywrightScript.browserInitPromise) {
@@ -52,7 +52,7 @@ class PlaywrightScript extends EventEmitter {
               headless: false,
               viewport: null,
               acceptDownloads: true,
-              downloadsPath: downloadDir,
+              // downloadsPath: downloadDir,
             }
           );
 
@@ -108,7 +108,7 @@ class PlaywrightScript extends EventEmitter {
       this.writeLog(`开始处理视频去水印：${filePath}`, 'info');
 
       // 初始化浏览器实例
-      await PlaywrightScript.initBrowser(downloadDir);
+      await PlaywrightScript.initBrowser();
       if (!PlaywrightScript.browser) {
         throw new Error('无法初始化浏览器实例');
       }
@@ -750,7 +750,7 @@ class PlaywrightScript extends EventEmitter {
       this.writeLog(`开始处理视频质量修复，目标文件: ${filePath}`, 'info');
 
       // 初始化浏览器和页面
-      await PlaywrightScript.initBrowser(downloadDir);
+      await PlaywrightScript.initBrowser();
       if (!PlaywrightScript.browser) throw new Error('无法初始化浏览器');
       page = await PlaywrightScript.browser.newPage();
       await page.goto('https://www.kaipai.com/video-tool/quality');
@@ -759,7 +759,7 @@ class PlaywrightScript extends EventEmitter {
       // 上传文件
       const uploadArea = await page.waitForSelector(
         '.UploadContentV2_cardRightBox__s8gmc',
-        { timeout: 30000 }
+        { timeout: 60000 }
       );
       const [fileChooser] = await Promise.all([
         page.waitForEvent('filechooser', { timeout: 15000 }),
@@ -784,7 +784,7 @@ class PlaywrightScript extends EventEmitter {
       await new Promise(resolve => setTimeout(resolve, 20000));
 
       // 全局超时和检测间隔设置
-      const maxWaitTime = 30 * 60 * 1000; // 30分钟
+      const maxWaitTime = 15 * 60 * 1000; // 30分钟
       const checkInterval = 10 * 1000; // 10秒
 
       // 等待任务项DOM稳定
@@ -792,7 +792,8 @@ class PlaywrightScript extends EventEmitter {
 
       // 等待导出按钮可用
       let exportButton: any = null;
-      const exportBtnStart = Date.now();
+      let retryClicked = false;
+      let exportBtnStart = Date.now();
       while (Date.now() - exportBtnStart < maxWaitTime) {
         exportButton = await page
           .locator('.index_trackList__1mQ3P')
@@ -805,11 +806,39 @@ class PlaywrightScript extends EventEmitter {
           const isEnabled = await exportButton.isEnabled();
 
           if (isVisible && isEnabled) {
+            // 获取按钮文本
+            const buttonText = await exportButton.textContent();
             this.emit('log', {
-              message: `导出按钮可见且可用，点击导出...`,
+              message: `检测到按钮: ${buttonText}`,
               type: 'info',
             });
-            break;
+
+            if (buttonText === '导出') {
+              this.emit('log', {
+                message: `导出按钮可见且可用，点击导出...`,
+                type: 'info',
+              });
+              break;
+            } else if (buttonText === '重试' && !retryClicked) {
+              this.emit('log', {
+                message: `检测到重试按钮，点击重试...`,
+                type: 'info',
+              });
+              await exportButton.click();
+              retryClicked = true;
+              // 重新开始30分钟的超时等待
+              exportBtnStart = Date.now();
+              this.emit('log', {
+                message: `已点击重试，重新开始等待导出按钮...`,
+                type: 'info',
+              });
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+              continue;
+            } else {
+              throw new Error(
+                `按钮文本不是'导出'或'重试'，而是: ${buttonText}`
+              );
+            }
           }
         }
 
@@ -1193,16 +1222,21 @@ class PlaywrightScript extends EventEmitter {
             file => !file.startsWith('.') && file !== 'desktop.ini'
           );
 
-          if (nonSystemFiles.length === 0) {
-            // 目录为空，删除目录
-            fs.rmdirSync(originalFileDir);
+          // 筛选出以S5或S6开头的有效文件
+          const validFiles = nonSystemFiles.filter(
+            file => file.startsWith('S5') || file.startsWith('S6')
+          );
+
+          if (validFiles.length === 0) {
+            // 没有有效文件，删除目录和里面的所有文件
+            fs.rmSync(originalFileDir, { recursive: true, force: true });
             this.emit('log', {
-              message: `原始文件目录已清空，删除目录：${originalFileDir}`,
+              message: `原始文件目录中没有S5/S6开头的文件，删除目录及所有文件：${originalFileDir}`,
               type: 'info',
             });
           } else {
             this.emit('log', {
-              message: `原始文件目录中还有 ${nonSystemFiles.length} 个文件，保留目录：${originalFileDir}`,
+              message: `原始文件目录中还有 ${validFiles.length} 个有效文件（S5/S6开头），保留目录：${originalFileDir}`,
               type: 'info',
             });
           }
@@ -1250,10 +1284,8 @@ class PlaywrightScript extends EventEmitter {
    */
   public async CheckKaipaiLoginStatus() {
     try {
-      // 确定下载目录
-      const defaultDownloadDir = path.join(__dirname, '../../downloads');
       // 初始化浏览器实例
-      await PlaywrightScript.initBrowser(defaultDownloadDir);
+      await PlaywrightScript.initBrowser();
 
       if (!PlaywrightScript.browser) {
         throw new Error('无法初始化浏览器实例');

@@ -1036,7 +1036,7 @@ class VideoProcessor extends EventEmitter {
       const files = fs.readdirSync(dir);
       for (const file of files) {
         const filePath = path.join(dir, file);
-        if (isVideoFile(filePath) && !isProcessedVideoFile(filePath)) {
+        if (!isProcessedVideoFile(filePath)) {
           await this.handleFileEvent(filePath, 'scan');
           foundCount++;
         }

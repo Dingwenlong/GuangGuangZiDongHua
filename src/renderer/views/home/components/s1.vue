@@ -262,10 +262,14 @@ async function batchCreationFolderHandler() {
     )
     .map(([title, category, productId], i) => {
       startFolderIndex += 1;
-      return `S1---${startFolderIndex}---${sanitizeFolderName(title).replaceAll(
-        ' ',
-        ''
-      )}---${category}---${productId.replace(/\r/g, '')}---${nanoid(8)}`;
+
+      // 此时无需在外面 replaceAll(' ', '')，函数内部已处理
+      const safeTitle = sanitizeFolderName(title);
+      const cleanProductId = productId.replace(/\r/g, '');
+
+      return `S1---${startFolderIndex}---${safeTitle}---${category}---${cleanProductId}---${nanoid(
+        8
+      )}`;
     });
 
   await Promise.all(

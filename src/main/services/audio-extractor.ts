@@ -45,7 +45,7 @@ class AudioExtractor extends EventEmitter {
    */
   public async extractAudio(videoPath: string): Promise<AudioExtractResult> {
     this.emit('log', {
-      message: `开始提取音频: ${path.basename(videoPath)}`,
+      message: `开始提取音频: ${videoPath}`,
       type: 'info',
     } as LogEvent);
     this.status.processingStatus = `提取音频中: ${path.basename(videoPath)}`;

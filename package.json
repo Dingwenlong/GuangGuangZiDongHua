@@ -1,6 +1,6 @@
 {
   "name": "mei-ke-guang-guang-zi-dong-hua",
-  "version": "0.0.1",
+  "version": "2.0.18",
   "main": "./dist/electron/main/main.js",
   "author": "Pincheng Technology",
   "description": "guang-guang-zi-dong-hua project",

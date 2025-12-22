@@ -67,26 +67,51 @@ class S5TaskProcessor extends EventEmitter {
       console.log('服务正在重启中，等待3分钟后再继续处理任务');
       return;
     }
-    // console.log('开始处理S5任务');
 
-    const task = await WorkbenchManager.dequeueTask('s5TasksQueue');
-    if (!task) return;
-    console.log('执行任务s5');
+    // 从队列中取出两个任务
+    const fTask = await WorkbenchManager.dequeueTask('s5TasksQueue');
+    const lTask = await WorkbenchManager.dequeueTask('s5TasksQueue');
+
+    // 如果没有任务，直接返回
+    if (!fTask && !lTask) return;
+
+    console.log('开始执行S5任务');
 
     try {
-      // 处理音频提取任务
-      const [videoPath, id] = task as [string, number];
-      // 提取音频
-      const extractResult = await this.audioExtractor.extractAudio(videoPath);
-      console.log('音频提取完成:', extractResult);
+      // 准备要处理的任务数组
+      const tasks = [];
 
-      // 检查是否需要重启服务（基于配置控制）
+      if (fTask) {
+        const [fVideoPath, fId] = fTask as [string, number];
+        tasks.push(this.processSingleTask(fVideoPath, fId, '9000'));
+      }
+
+      if (lTask) {
+        const [lVideoPath, lId] = lTask as [string, number];
+        tasks.push(this.processSingleTask(lVideoPath, lId, '9001'));
+      }
+
+      // 并发处理所有任务
+      const results = await Promise.allSettled(tasks);
+
+      // 统计成功和失败的任务
+      const successfulTasks = results.filter(
+        r => r.status === 'fulfilled'
+      ).length;
+      const failedTasks = results.filter(r => r.status === 'rejected').length;
+
+      console.log(`任务处理完成: ${successfulTasks} 成功, ${failedTasks} 失败`);
+
+      // 增加处理计数（只计算成功的任务）
+      this.audioProcessCount += successfulTasks;
+
+      // 检查是否需要重启服务
       if (
         this.enableRebootCheck &&
         this.audioProcessCount >= this.rebootThreshold
       ) {
         console.log(
-          `重启检测已启用，当前处理数量${this.audioProcessCount}达到阈值${this.rebootThreshold}，执行重启逻辑`
+          `重启检测已启用，当前处理数量 ${this.audioProcessCount} 达到阈值 ${this.rebootThreshold}，执行重启逻辑`
         );
         await this.handleServiceReboot();
       } else if (
@@ -94,26 +119,110 @@ class S5TaskProcessor extends EventEmitter {
         this.audioProcessCount >= this.rebootThreshold
       ) {
         console.log(
-          `重启检测已禁用，当前处理数量${this.audioProcessCount}达到阈值${this.rebootThreshold}，跳过重启逻辑`
+          `重启检测已禁用，当前处理数量 ${this.audioProcessCount} 达到阈值 ${this.rebootThreshold}，跳过重启逻辑`
         );
       }
-
-      // 处理音频
-      await this.audioProcessor.processAudio(extractResult.outputPath);
-      // console.log('音频处理完成');
-
-      // 通知任务完成
-      await WorkbenchManager.updateTaskStatus(
-        's5TasksQueue',
-        id,
-        WorkbenchTaskStatus.COMPLETED
-      );
-      // 增加处理计数
-      this.audioProcessCount++;
     } catch (error) {
       console.error('S5任务执行失败:', error);
       this.writeLog(`S5任务执行失败: ${error}`, 'error');
     }
+  }
+  /**
+   * 执行S5任务
+   * @returns Promise<void>
+   */
+  async executes(
+    fTask: [string, number],
+    lTask: [string, number]
+  ): Promise<void> {
+    // 如果正在重启，跳过当前任务
+    if (this.isRebooting) {
+      console.log('服务正在重启中，等待3分钟后再继续处理任务');
+      return;
+    }
+    console.log('开始执行newS5任务:', fTask);
+
+    // 如果没有任务，直接返回
+    if (!fTask && !lTask) return;
+    if (!fTask) return;
+    try {
+      // 准备要处理的任务数组
+      const tasks = [];
+
+      if (fTask) {
+        const [fVideoPath, fId] = fTask as [string, number];
+        const [lVideoPath, lId] = lTask as [string, number];
+        console.log(`任务 ${fId} 开始处理视频: ${fVideoPath}`);
+        tasks.push(this.processSingleTask(fVideoPath, fId, '9000'));
+        tasks.push(this.processSingleTask(lVideoPath, lId, '9001'));
+      }
+      console.log(tasks);
+
+      // 并发处理所有任务
+      const results = await Promise.allSettled(tasks);
+
+      // 统计成功和失败的任务
+      const successfulTasks = results.filter(
+        r => r.status === 'fulfilled'
+      ).length;
+      const failedTasks = results.filter(r => r.status === 'rejected').length;
+
+      console.log(`任务处理完成: ${successfulTasks} 成功, ${failedTasks} 失败`);
+
+      // 增加处理计数（只计算成功的任务）
+      this.audioProcessCount += successfulTasks;
+
+      // 检查是否需要重启服务
+      if (
+        this.enableRebootCheck &&
+        this.audioProcessCount >= this.rebootThreshold
+      ) {
+        console.log(
+          `重启检测已启用，当前处理数量 ${this.audioProcessCount} 达到阈值 ${this.rebootThreshold}，执行重启逻辑`
+        );
+        await this.handleServiceReboot();
+      } else if (
+        !this.enableRebootCheck &&
+        this.audioProcessCount >= this.rebootThreshold
+      ) {
+        console.log(
+          `重启检测已禁用，当前处理数量 ${this.audioProcessCount} 达到阈值 ${this.rebootThreshold}，跳过重启逻辑`
+        );
+      }
+    } catch (error) {
+      console.error('S5任务执行失败:', error);
+      this.writeLog(`S5任务执行失败: ${error}`, 'error');
+    }
+  }
+
+  /**
+   * 处理单个S5任务
+   * @param videoPath 视频路径
+   * @param taskId 任务ID
+   * @param param 处理参数 ('9000' 或 '9001')
+   * @returns Promise<void>
+   */
+  private async processSingleTask(
+    videoPath: string,
+    taskId: number,
+    param: string
+  ): Promise<void> {
+    // 提取音频
+    const extractResult = await this.audioExtractor.extractAudio(videoPath);
+    console.log(`任务 ${taskId} 音频提取完成:`, extractResult);
+
+    // 处理音频，传入参数
+    await this.audioProcessor.processAudio(extractResult.outputPath, param);
+    console.log(`任务 ${taskId} 音频处理完成`);
+
+    // 通知任务完成
+    await WorkbenchManager.updateTaskStatus(
+      's5TasksQueue',
+      taskId,
+      WorkbenchTaskStatus.COMPLETED
+    );
+
+    console.log(`任务 ${taskId} 完成`);
   }
 
   /**

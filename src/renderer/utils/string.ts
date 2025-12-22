@@ -5,8 +5,8 @@
  */
 export function sanitizeFolderName(input: string): string {
   // Windows 文件夹名称不允许的字符集
-  const invalidChars = /[\\/:*?"<>|]/g;
-
+  // const invalidChars = /[\\/:*?"<>|]/g;
+  const invalidChars = /[\\/:*?"<>|'\s]/g;
   // 替换所有非法字符为空字符串
   let sanitized = input.replace(invalidChars, '');
 

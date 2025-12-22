@@ -1,5 +1,6 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
+import { promises as fsPromises } from 'fs';
 import path from 'path';
 import os from 'os';
 import { EventEmitter } from 'events';
@@ -7,7 +8,6 @@ import { EventEmitter } from 'events';
 import http from 'http';
 import dayjs from 'dayjs';
 import { GuangProcessor, GuangHePublishStatus } from './guang-processor';
-import workbenchManager from './workbench-manager';
 import { writeLog, type LogEvent } from '@main/utils/log';
 import SliderValidator from './SliderValidator';
 
@@ -995,6 +995,57 @@ class GuangheTaobao extends EventEmitter {
     }
   }
 
+  public async MoveFile(
+    sourceDir: string,
+    targetDir: string,
+    categories: string[]
+  ) {
+    try {
+      // 确保目标目录存在。使用 promises 版本的 mkdir
+      // { recursive: true } 在 fs.promises.mkdir 中是合法的
+      await fsPromises.mkdir(targetDir, { recursive: true });
+
+      // readdir 现在只需要 1 个参数，因为它返回 Promise<string[]>
+      const files = await fsPromises.readdir(sourceDir);
+
+      // 2025年12月16日 11:00 的时间戳
+      const thresholdTime = new Date('2025-12-16T11:00:00').getTime();
+
+      for (const fileName of files) {
+        const filePath = path.join(sourceDir, fileName);
+
+        const stats = await fsPromises.stat(filePath);
+
+        if (!stats.isFile()) continue;
+
+        const parts = fileName.split('---');
+        const fileCategory = parts[3];
+
+        // 简单的视频后缀判断
+        const isVideo = /\.(mp4|mkv|mov|avi|wmv)$/i.test(fileName);
+        const isTargetCategory = !categories.includes(fileCategory);
+        const isAfterTime = stats.mtimeMs > thresholdTime;
+
+        if (isVideo && isTargetCategory && isAfterTime) {
+          const destPath = path.join(targetDir, fileName);
+
+          try {
+            // 使用同步复制
+            // fs.copyFileSync(filePath, destPath);
+            fs.unlinkSync(filePath);
+            console.log(`[shanchu成功]: ${filePath}`);
+          } catch (copyError: any) {
+            console.error(
+              `[删除失败]: ${filePath}, 原因: ${copyError.message}`
+            );
+          }
+        }
+      }
+    } catch (error: any) {
+      console.error(`处理失败: ${error.message}`);
+    }
+  }
+
   // 整体调用
   public async GuangheTaobaoIssue(UserData: any) {
     // if (!(await workbenchManager.getByKey('s8')).running) {
@@ -1177,9 +1228,24 @@ class GuangheTaobao extends EventEmitter {
       await page.locator('.search-view > button').nth(0).click();
 
       // 等待搜索结果加载
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 4000));
 
       // 点击达人的发布
+      // 检查.next-table-row元素数量，确保只有一个
+      const tableRows = await page.locator('.next-table-row');
+      const rowCount = await tableRows.count();
+      if (rowCount > 1) {
+        const errorMsg = `发现${rowCount}个达人，预期只有1个`;
+        this.emit('log', {
+          message: errorMsg,
+          type: 'error',
+        });
+
+        throw new Error(errorMsg);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 4000));
+
       const userCheckbox = await page
         .locator('.next-table-row')
         .first()
