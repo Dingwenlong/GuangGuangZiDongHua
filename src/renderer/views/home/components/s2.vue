@@ -116,13 +116,6 @@ function startOrStopTaskHandler(start = true) {
     stepNo: 's2',
     sData: { autoHandOnWorkflow: s2.value.autoHandOnWorkflow, running: start },
   });
-  // const dsjao = [
-  //   'C:\\Users\\ASUS\\Downloads\\ces\\S1---33019725083-1-192.mp4',
-  //   'C:\\Users\\ASUS\\Downloads\\ces\\S3---33019725083-1-192.mp4',
-  // ];
-  // dsjao.forEach(item => {
-  //   setCookie(item);
-  // });
 }
 
 // 调用去水印脚本
@@ -153,39 +146,11 @@ function setCookie(filePath: string) {
   }
 }
 
-// 调用登录检测脚本
-// function checkLogin() {
-//   console.log('开始检测登录状态');
-
-//   try {
-//     // 调用登录检测脚本
-//     ipcRendererChannel.CheckKaipaiLoginStatus.invoke()
-//       .then(result => {
-//         console.log('登录检测结果:', result);
-//         // 日志信息会通过IPC事件自动显示在页面上
-//       })
-//       .catch(error => {
-//         console.error('检测登录状态时出错:', error);
-//       });
-//   } catch (error: any) {
-//     console.error('检测登录状态时出错:', error.message);
-//   }
-// }
-
 watch(s2.value, async (val, _) => {
-  // ipcRendererChannel.UpdateWorkbenchData.invoke({
-  //   stepNo: 's1',
-  //   sData: { ...val },
-  // });
   ipcRendererChannel.UpdateWorkbenchData.invoke({
     stepNo: 's2',
     sData: { ...val },
   });
-  // 监听视频
-  // if(!val.autoMonitoring) {
-  //   videoMonitoringRunning.value = false;
-  //   ipcRendererChannel.StopMonitoringVideo.invoke();
-  // }
 });
 
 onMounted(async () => {
@@ -196,7 +161,7 @@ onMounted(async () => {
         // 获取历史缓存
         const workbenchS1 = await ipcRendererChannel.GetWorkbenchData.invoke('s1');
         s1.taskDirectory = workbenchS1.taskDirectory ?? '';
-        
+
         const workbenchS2 = await ipcRendererChannel.GetWorkbenchData.invoke('s2');
         s2.value = { ...workbenchS2 };
       })(),
@@ -230,7 +195,7 @@ onMounted(async () => {
         }
       }
     );
-    
+
     console.log('组件初始化完成');
   } catch (error) {
     console.error('组件初始化失败:', error);

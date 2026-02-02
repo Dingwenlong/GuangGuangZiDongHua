@@ -470,68 +470,59 @@ class GuangheTaobao extends EventEmitter {
         await describeInputWrapper.type(currentDescription);
       }
 
-      // 开始输入标签
-      const currentTagsStr =
-        UserData.videoTags?.[this.currentVideoIndex || 0] || '';
-      // 转换为标签数组（过滤空空值）
+      // 输入标签
+      let currentTags: string[] = [];
+      // --- 1. 获取并处理配置标签 ---
+      try {
+        const configPath = path.join(UserData.directory, 'config.json');
+        const configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
-      let currentTags = currentTagsStr
-        ? currentTagsStr.split(',').filter(Boolean)
-        : [];
+        let availableTags = Array.isArray(configData.tags)
+          ? configData.tags
+          : [];
 
-      // 如果当前视频没有有效标签，从config.json获取默认标签
-      if (currentTags.length === 0) {
-        try {
-          const configPath = path.join(UserData.directory, 'config.json');
-          if (fs.existsSync(configPath)) {
-            const configData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-            if (
-              configData.tags &&
-              Array.isArray(configData.tags) &&
-              configData.tags.length > 0
-            ) {
-              // 取前两个标签并删除所有下划线
-              currentTags = configData.tags
-                .slice(0, 2)
-                .map((tag: string) => tag.replace(/_/g, ''))
-                .filter(Boolean);
-            }
-          }
-        } catch (configError) {
-          console.error('读取config.json获取默认标签失败:', configError);
-          this.writeLog(
-            `GuangheError:读取config.json获取默认标签失败: ${configError}`,
-            'info'
-          );
+        if (availableTags.length > 0) {
+          // 随机洗牌算法 (Fisher-Yates) 或简单随机排序
+          // 如果数量 > 2，随机选两个；否则全取
+          const selectedTags = availableTags
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 2);
+
+          // 处理标签：去除下划线并过滤空值
+          currentTags = selectedTags
+            .map((tag: string) => tag.replace(/_/g, ''))
+            .filter(Boolean);
         }
+      } catch (configError) {
+        console.error('读取config.json获取默认标签失败:', configError);
+        this.writeLog(
+          `GuangheError:读取config.json获取默认标签失败: ${configError}`,
+          'info'
+        );
       }
 
+      // --- 2. 浏览器自动化输入部分 ---
       const labelInput = await frame.locator('div[data-cangjie-editable]');
       if (await labelInput.isVisible()) {
         console.log('开始输入标签');
         await labelInput.click();
-        await labelInput.press('Control+A'); // 全选内容
-        await labelInput.press('Delete'); // 删除选中内容
 
-        const tagItems = await frame.locator('.hashTag-recommend-item');
-        const tagItemsCount = await tagItems.count(); // 等待count()异步方法完成
-        this.emit('log', {
-          message: `找到 ${tagItemsCount} 个标签项`,
-          type: 'info',
-        });
-        if (tagItemsCount > 2) {
-          await tagItems.nth(0).click(); // 等待点击完成
-          await tagItems.nth(1).click(); // 等待点击完成
-        } else {
-          // 使用处理后的当前视频标签数组
-          for (const item of currentTags) {
-            console.log(`输入标签: ${item}`);
-            if (item && item !== '') {
-              await this.simulateHumanInput(labelInput, `#${item}#`);
-            }
+        // 清空原有内容
+        await labelInput.press('Control+A');
+        await labelInput.press('Delete');
+
+        // 循环输入处理后的标签
+        for (const item of currentTags) {
+          console.log(`准备输入标签: ${item}`);
+          if (item) {
+            // 按照你要求的格式前后加 #
+            await this.simulateHumanInput(labelInput, `#${item}#`);
+            // 每个标签输入后稍微停顿，模拟真实输入节奏
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
       }
+
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       // 点击话题活动
@@ -995,54 +986,96 @@ class GuangheTaobao extends EventEmitter {
     }
   }
 
-  public async MoveFile(
-    sourceDir: string,
-    targetDir: string,
-    categories: string[]
-  ) {
+  // public async MoveFile(arr: string[]) {
+  //   const targetDir =
+  //     '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\逛逛配音';
+
+  //   try {
+  //     // 1. 获取目录下所有文件
+  //     const allFiles = await fsPromises.readdir(targetDir);
+  //     let deleteCount = 0;
+
+  //     // 2. 遍历文件进行匹配
+  //     for (const fileName of allFiles) {
+  //       // 检查当前文件名是否以数组中任何一个字符串开头
+  //       // 使用 some 匹配，只要满足 fileName 包含 传入字符串 + "---" 即可
+  //       const isMatch = arr.some(targetStr =>
+  //         fileName.startsWith(`${targetStr}---`)
+  //       );
+
+  //       if (isMatch) {
+  //         const filePath = path.join(targetDir, fileName);
+  //         try {
+  //           await fsPromises.unlink(filePath);
+  //           console.log(`成功删除文件: ${fileName}`);
+  //           deleteCount++;
+  //         } catch (err: any) {
+  //           console.error(`无法删除文件 ${fileName}: ${err.message}`);
+  //         }
+  //       }
+  //     }
+
+  //     console.log(`清理完毕，共删除 ${deleteCount} 个视频文件。`);
+  //   } catch (error: any) {
+  //     console.error(`读取目录失败: ${error.message}`);
+  //   }
+  // }
+
+  /**
+   * 整合后的主逻辑方法
+   */
+  public async MoveFile() {
     try {
-      // 确保目标目录存在。使用 promises 版本的 mkdir
-      // { recursive: true } 在 fs.promises.mkdir 中是合法的
-      await fsPromises.mkdir(targetDir, { recursive: true });
+      const rootPath = '\\\\192.168.31.99\\影视存储\\逛逛客户端\\监控目录';
+      const videoExtensions = ['.mp4', '.mkv', '.mov', '.avi', '.flv', '.wmv'];
+      let allVideoPaths: string[] = [];
 
-      // readdir 现在只需要 1 个参数，因为它返回 Promise<string[]>
-      const files = await fsPromises.readdir(sourceDir);
+      // 1. 读取并筛选目录
+      const entries = await fsPromises.readdir(rootPath, {
+        withFileTypes: true,
+      });
+      const s4Directories = entries.filter(
+        entry => entry.isDirectory() && entry.name.startsWith('S4')
+      );
 
-      // 2025年12月16日 11:00 的时间戳
-      const thresholdTime = new Date('2025-12-16T11:00:00').getTime();
+      // 2. 遍历获取视频完整路径
+      for (const dir of s4Directories) {
+        const fullDirPath = path.join(rootPath, dir.name);
+        const files = await fsPromises.readdir(fullDirPath);
 
-      for (const fileName of files) {
-        const filePath = path.join(sourceDir, fileName);
+        const videoFiles = files
+          .filter(file =>
+            videoExtensions.includes(path.extname(file).toLowerCase())
+          )
+          .map(file => path.join(fullDirPath, file));
 
-        const stats = await fsPromises.stat(filePath);
-
-        if (!stats.isFile()) continue;
-
-        const parts = fileName.split('---');
-        const fileCategory = parts[3];
-
-        // 简单的视频后缀判断
-        const isVideo = /\.(mp4|mkv|mov|avi|wmv)$/i.test(fileName);
-        const isTargetCategory = !categories.includes(fileCategory);
-        const isAfterTime = stats.mtimeMs > thresholdTime;
-
-        if (isVideo && isTargetCategory && isAfterTime) {
-          const destPath = path.join(targetDir, fileName);
-
-          try {
-            // 使用同步复制
-            // fs.copyFileSync(filePath, destPath);
-            fs.unlinkSync(filePath);
-            console.log(`[shanchu成功]: ${filePath}`);
-          } catch (copyError: any) {
-            console.error(
-              `[删除失败]: ${filePath}, 原因: ${copyError.message}`
-            );
-          }
-        }
+        allVideoPaths = allVideoPaths.concat(videoFiles);
       }
+
+      // 3. 准备写入桌面文件
+      const desktopPath = path.join(os.homedir(), 'Desktop', 'video_paths.txt');
+
+      /**
+       * 调整点：使用 JSON.stringify 将数组转换为标准数组格式字符串
+       * 如果你希望格式更好看一点（带缩进），可以使用 JSON.stringify(allVideoPaths, null, 2)
+       */
+      const fileContent = JSON.stringify(allVideoPaths);
+
+      await fsPromises.writeFile(desktopPath, fileContent, 'utf8');
+
+      // 4. 输出结果
+      console.log(`-----------------------------------`);
+      console.log(`处理完成！`);
+      console.log(`找到 S4 目录: ${s4Directories.length} 个`);
+      console.log(`视频文件总数: ${allVideoPaths.length} 个`);
+      console.log(`结果已保存至桌面 (数组格式): ${desktopPath}`);
+      console.log(`-----------------------------------`);
     } catch (error: any) {
-      console.error(`处理失败: ${error.message}`);
+      if (error.code === 'ENOENT') {
+        console.error('错误：路径不存在或无法访问桌面。');
+      } else {
+        console.error(`任务执行过程中出现异常: ${error.message}`);
+      }
     }
   }
 
@@ -1325,19 +1358,14 @@ class GuangheTaobao extends EventEmitter {
 
             // 逐个上传剩余的视频
             for (let i = 1; i < validFiles.length; i++) {
-              console.log(`开始上传第${i + 1}个视频...`);
-
               if (frame) {
                 // 在iframe中查找并点击"添加视频"按钮
-                console.log('在iframe中查找"添加视频"按钮...');
                 const addVideoButton = await frame.waitForSelector(
                   'span.next-btn-helper:has-text("添加视频")',
                   { timeout: 5000 }
                 );
 
                 if (addVideoButton) {
-                  console.log('找到"添加视频"按钮，准备点击...');
-
                   // 触发文件上传对话框
                   const nextUploadPromise = page.waitForEvent('filechooser', {
                     timeout: 5000,
@@ -1392,55 +1420,60 @@ class GuangheTaobao extends EventEmitter {
         console.log('iframe内容获取完成:', frame);
 
         console.log('赋值定时器');
-
         iframeDetection = setInterval(async () => {
-          // 检测当前iframe的状态，true为存在，false为已经清空
-          if (!frameSwitch) {
-            console.log('frame不存在或已断开连接，清理定时器');
-            if (iframeDetection) {
+          try {
+            if (!frameSwitch) {
               clearInterval(iframeDetection);
               iframeDetection = null;
+              return;
             }
-            return;
-          }
 
-          // 检测关闭按钮是否存在
-          const closeBtn = await frame.$('.baxia-dialog-close');
-          if (closeBtn) {
-            try {
-              // 使用较短的超时时间并添加try-catch处理嵌套iframe访问
-              const imgIframeSelector = await frame.waitForSelector(
-                'iframe#baxia-dialog-content',
-                { timeout: 3000 }
-              );
+            // 1. 定位嵌套的验证码 iframe
+            const captchaIframeElement = await frame.$(
+              'iframe[src*="action=captcha"]'
+            );
+            if (!captchaIframeElement) return;
 
-              // 再次检查frame连接状态
-              if (!frameSwitch) {
-                console.log('frame在访问嵌套iframe前断开连接');
-                return;
-              }
-              const imgIframe = await imgIframeSelector.contentFrame();
-              const targetImg = await imgIframe.$(
-                `img[src="https://img.alicdn.com/imgextra/i2/O1CN010VLpQY1VWKHBQuBUQ_!!6000000002660-2-tps-222-222.png"]`
-              );
+            const captchaFrame = await captchaIframeElement.contentFrame();
+            if (!captchaFrame) return;
 
-              if (targetImg) {
+            // 2. 定位滑块和滑道
+            const slider = await captchaFrame.$('#nc_1_n1z');
+            const sliderTrack = await captchaFrame.$('#nc_1_n1t');
+
+            if (slider && sliderTrack) {
+              const sliderBox = await slider.boundingBox();
+              const trackBox = await sliderTrack.boundingBox();
+
+              if (sliderBox && trackBox) {
                 this.emit('log', {
-                  message: '检测到人机验证弹窗，执行关闭',
+                  message: '检测到滑块，正在快速滑动...',
                   type: 'info',
                 });
-                await new Promise(resolve => setTimeout(resolve, 200));
-                await closeBtn.click();
+
+                const startX = sliderBox.x + sliderBox.width / 2;
+                const startY = sliderBox.y + sliderBox.height / 2;
+                // 目标位置：起始位置 + 滑道总宽度（通常足以滑到底）
+                const endX = startX + trackBox.width;
+
+                // 3. 快速执行滑动：按下 -> 瞬移 -> 释放
+                await frame.page().mouse.move(startX, startY);
+                await frame.page().mouse.down();
+
+                // steps: 1 表示直接跳到终点，不产生中间路径点，速度最快
+                await frame.page().mouse.move(endX, startY, { steps: 5 });
+
+                await frame.page().mouse.up();
+
+                this.emit('log', { message: '快速滑动完成', type: 'success' });
+
+                // 注意：如果不成功，由于定时器没清理且弹窗还在，下个周期会再次尝试
               }
-            } catch (innerErr: any) {
-              // 嵌套iframe访问出错，不清理定时器，继续下一次检测
-              // console.log(
-              //   '访问嵌套iframe出错，继续下一次检测:',
-              //   innerErr.message
-              // );
             }
+          } catch (err: any) {
+            // 捕获 frame 切换导致的上下文失效等错误
           }
-        }, 1000); // 每1秒检测一次
+        }, 1000); // 间隔可以缩短到 1s，提高响应速度
         if (frame) {
           // 获取所有视频的队列
           const videoQueue = await frame.locator('.batchItemWrap').all();
@@ -2217,8 +2250,8 @@ class GuangheTaobao extends EventEmitter {
       // 检查当前时间是否在早上七点之前
       const now = dayjs();
       const currentHour = now.hour();
-      // 早于七点不发
-      if (currentHour < 12) {
+      // 早于10点不发
+      if (currentHour < 10) {
         return;
       }
 
@@ -2347,7 +2380,6 @@ class GuangheTaobao extends EventEmitter {
 
         // 处理视频描述和标签
         const videoDescriptions: string[] = [];
-        const videoTagsStr: string[] = [];
         let topics: string[] = [''];
         const usedDescriptionsMap = new Map<string, number[]>(); // 记录每个商品ID已使用的描述索引
 
@@ -2361,7 +2393,6 @@ class GuangheTaobao extends EventEmitter {
             const currentProductName = videoFileParts[2] || '';
 
             let currentDescription = currentProductName; // 默认使用商品名称
-            let currentTagsStr = '';
 
             if (currentProductId) {
               const descriptionFilePath = `\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频标题\\${currentProductId}_gg.json`;
@@ -2432,35 +2463,6 @@ class GuangheTaobao extends EventEmitter {
                           );
                         }
                       }
-
-                      // 提取标签（修复的核心部分）
-                      // 处理连续#号，然后匹配所有#后面到下一个#之前的内容
-                      const processedDescription = description.replace(
-                        /#+/g,
-                        '#'
-                      );
-                      const tagMatches =
-                        processedDescription.match(/#([^#]+)/g);
-
-                      if (tagMatches && tagMatches.length > 0) {
-                        currentTagsStr = tagMatches
-                          .map((tag: string) => {
-                            // 先去除#号和下划线
-                            let cleanTag = tag
-                              .replace(/#/g, '')
-                              .replace(/_/g, '');
-                            // 清除除中英文、数字以外的所有字符（包括表情、特殊符号）
-                            // 匹配规则：保留 [a-zA-Z0-9]（英文数字）和 [\u4e00-\u9fa5]（中文）
-                            cleanTag = cleanTag.replace(
-                              /[^\u4e00-\u9fa5a-zA-Z0-9]/g,
-                              ''
-                            );
-                            return cleanTag.length > 10 ? '' : cleanTag;
-                          })
-                          .filter(Boolean) // 过滤空标签（处理后可能变为空的标签）
-                          .slice(0, 2) // 取前两个
-                          .join(',');
-                      }
                     }
                   } else {
                     console.log(
@@ -2478,7 +2480,6 @@ class GuangheTaobao extends EventEmitter {
             }
 
             videoDescriptions.push(currentDescription);
-            videoTagsStr.push(currentTagsStr);
           }
         } catch (descError) {
           console.error('读取视频描述文件失败:', descError);
@@ -2489,7 +2490,6 @@ class GuangheTaobao extends EventEmitter {
             const videoFileParts = videoFileName.split('---');
             const currentProductName = videoFileParts[2] || '';
             videoDescriptions.push(currentProductName);
-            videoTagsStr.push('');
           }
         }
 
@@ -2497,7 +2497,6 @@ class GuangheTaobao extends EventEmitter {
         if (videoDescriptions.length < videoFiles.length) {
           const diff = videoFiles.length - videoDescriptions.length;
           videoDescriptions.push(...new Array(diff).fill(''));
-          videoTagsStr.push(...new Array(diff).fill(''));
         }
 
         // 读取话题配置
@@ -2522,7 +2521,6 @@ class GuangheTaobao extends EventEmitter {
           console.error('读取config.json获取话题失败:', configError);
         }
 
-        console.log(`videoTagsStr: ${JSON.stringify(videoTagsStr)}`);
         console.log(`topics数量: ${topics.length}`);
         console.log(`videoDescriptions数量: ${videoDescriptions.length}`);
 
@@ -2534,7 +2532,6 @@ class GuangheTaobao extends EventEmitter {
           directory: directory,
           filePathArray: videoFiles,
           guangId: guangId,
-          videoTags: videoTagsStr,
           topic: topics,
           videoDescription: videoDescriptions,
           guangCatalogue: guangCatalogue,

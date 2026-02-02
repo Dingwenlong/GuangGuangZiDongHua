@@ -213,6 +213,10 @@ class PlaywrightScript extends EventEmitter {
         await new Promise(resolve => setTimeout(resolve, checkInterval));
       }
 
+      if (!exportButton) {
+        throw new Error(`导出按钮未找到或超时不可用,文件${filePath}出错`);
+      }
+
       // 获取原始文件名（不包含扩展名），用于匹配下载的文件
       const originalFileName = path.basename(filePath, path.extname(filePath));
 

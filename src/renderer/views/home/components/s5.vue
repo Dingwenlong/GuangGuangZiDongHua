@@ -69,7 +69,7 @@ function openFolderHandler(dir: string) {
 
 watch(s4.value, val => {
   ipcRendererChannel.UpdateWorkbenchData.invoke({
-    stepNo: 's4',
+    stepNo: 's5',
     sData: { ...val },
   });
 });
@@ -90,7 +90,6 @@ onMounted(() => {
       tableData.value = arg.structure
         .filter(dir => {
           const [first, seconds, ..._] = dir.name;
-          // console.log(dir.name);
           return dir.type === 'directory' && first === 'S' && seconds === '4';
         })
         .map(dir => {

@@ -589,9 +589,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
       handler: async (event, arg: { filePath: string }) => {
         // const arr = {
         //   filePathArray: [
-        //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---3.mp4',
-        //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4',
-        //     'C:\\Users\\ASUS\\Downloads\\ces\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
+        //     'C:\\Users\\ASUS\\Downloads\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---e\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---1.mp4',
+        //     'C:\\Users\\ASUS\\Downloads\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---e\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4',
+        //     'C:\\Users\\ASUS\\Downloads\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---e\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---3.mp4',
         //   ],
         //   guangId: '4852373241',
         //   videoDescription: '测试视频描述',
@@ -599,20 +599,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         //   topic: '测试话题',
         //   productIds: ['979356468701', '623789783157', '622457528832'],
         // };
-        return await guangheTaobao.MoveFile(
-          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\已分发问题视频',
-          '\\\\192.168.31.99\\影视存储\\逛逛客户端\\视频分发\\逛逛配音',
-          [
-            '彩妆护肤',
-            '宠物用品',
-            '大家电',
-            '健康品类',
-            '母婴用品',
-            '生活电器',
-            '时尚穿搭',
-          ]
-        );
-        console.log('执行s5-task-processor-new');
+        // return await guangheTaobao.GuangheTaobaoIssue(arr);
+        await guangheTaobao.MoveFile();
+        // console.log('执行s5-task-processor-new');
 
         // return await s5TaskProcessorNew.executes(
         //   [

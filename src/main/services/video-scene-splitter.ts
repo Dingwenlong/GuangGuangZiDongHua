@@ -212,6 +212,19 @@ export class VideoSceneSplitter extends EventEmitter {
       // 商品目录的 S3 改为 S4
       await renameProductDir(videosChunk.folderName, 'S3---', 'S4---');
       this.writeLog(`${videosChunk.folderName}目录已重命名为S4`);
+
+      this.emit('s4OkCallback', videos);
+      this.writeLog(
+        `视频混剪任务混剪完成 ${videosChunk.folderName}, ${videos}`
+      );
+    } catch (error) {
+      this.writeLog(
+        `视频${videosChunk.folderName}切片混剪异常：${error}`,
+        'error'
+      );
+    }
+
+    try {
       // 把四个分镜视频文件夹移动到规定文件夹
       for (const childFolder of videosChunk.childFolders) {
         const childFolderName = childFolder.folderName;
@@ -239,13 +252,9 @@ export class VideoSceneSplitter extends EventEmitter {
         );
         this.writeLog(`${childFolderName}已移动到${targetDir}`);
       }
-      this.emit('s4OkCallback', videos);
-      this.writeLog(
-        `视频混剪任务混剪完成 ${videosChunk.folderName}, ${videos}`
-      );
     } catch (error) {
       this.writeLog(
-        `视频${videosChunk.folderName}切片混剪异常：${error}`,
+        `视频${videosChunk.folderName}移动分镜视频异常：${error}`,
         'error'
       );
     }
@@ -383,9 +392,8 @@ export class VideoSceneSplitter extends EventEmitter {
       // 计算总片段时长
       let totalSegmentsDuration = 0;
       for (const segmentPath of segments) {
-        const duration = await this.ffmpegUtil.verifySegmentDuration(
-          segmentPath
-        );
+        const duration =
+          await this.ffmpegUtil.verifySegmentDuration(segmentPath);
         totalSegmentsDuration += duration;
       }
 

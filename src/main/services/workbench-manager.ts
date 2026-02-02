@@ -174,7 +174,7 @@ const defaultData: WorkbenchConfigStoreSchema = {
   },
   s2: {
     autoHandOnWorkflow: true,
-    running: false,
+    running: true,
   },
   s3s4: {
     productMaterialNum: 4,
@@ -186,19 +186,19 @@ const defaultData: WorkbenchConfigStoreSchema = {
   },
   s5: {
     autoHandOnWorkflow: true,
-    running: false,
+    running: true,
   },
   s6: {
     autoHandOnWorkflow: true,
-    running: false,
+    running: true,
   },
   s7: {
     taskDirectory: '',
-    running: false,
+    running: true,
   },
   s8: {
     taskDirectory: '',
-    running: false,
+    running: true,
   },
 };
 

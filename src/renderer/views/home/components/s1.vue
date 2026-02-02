@@ -263,7 +263,6 @@ async function batchCreationFolderHandler() {
     .map(([title, category, productId], i) => {
       startFolderIndex += 1;
 
-      // 此时无需在外面 replaceAll(' ', '')，函数内部已处理
       const safeTitle = sanitizeFolderName(title);
       const cleanProductId = productId.replace(/\r/g, '');
 

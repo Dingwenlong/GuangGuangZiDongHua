@@ -116,49 +116,18 @@ function openFolder(path: string) {
 
 function startOrStopTaskHandler(start = true) {
   // 更新 s6 的 running 状态
-  ipcRendererChannel.UpdateWorkbenchData.invoke({
-    stepNo: 's6',
-    sData: { ...s6.value, running: start },
-  });
+  // ipcRendererChannel.UpdateWorkbenchData.invoke({
+  //   stepNo: 's6',
+  //   sData: { ...s6.value, running: start },
+  // });
 
-  // guanghe();
+  guanghe();
 }
 
 function guanghe() {
   ipcRendererChannel.guangheCes.invoke({
     filePath: '',
   });
-}
-
-// 调用高清化脚本
-function setCookie(filePath: string) {
-  console.log('设置Cookie并执行高清化');
-
-  try {
-    // 处理文件路径（使用/代替\避免转义问题）
-    // const firstFilePath = 'C:\\Users\\ASUS\\Downloads\\S5-testMP4.mp4';
-
-    // 调用高清化脚本
-    ipcRendererChannel.RunVideoQualityFix.invoke({
-      filePath: filePath,
-      targetDir: 'C:/Users/ASUS/Downloads/ces/S5-asd',
-    })
-      .then((result: any) => {
-        // 直接处理返回结果
-        if (result && result.success) {
-          console.log('去水印成功:', result.message);
-          console.log('处理后的文件路径:', result.filePath);
-          // 日志信息会通过IPC事件自动显示在页面上
-        } else {
-          console.error('去水印失败:', result?.message || '未知错误');
-        }
-      })
-      .catch(error => {
-        console.error('调用去水印脚本时出错:', error);
-      });
-  } catch (error: any) {
-    console.error('执行去水印脚本时出错:', error.message);
-  }
 }
 
 onMounted(async () => {
