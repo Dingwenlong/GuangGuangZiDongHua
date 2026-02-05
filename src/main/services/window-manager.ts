@@ -47,32 +47,37 @@ class MainInit {
             this.loadWindow.destroy();
         }
       );
-      
+
       // 设置10秒超时
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('主窗口创建超时')), 10000);
       });
-      
-      this.mainWindow = await Promise.race([mainWindowPromise, timeoutPromise]) as BrowserWindow;
-      
+
+      this.mainWindow = (await Promise.race([
+        mainWindowPromise,
+        timeoutPromise,
+      ])) as BrowserWindow;
+
       // 注册主窗体专属的IPC事件
       registerIpcHandlers(ipcCustomMainHandlers(this));
-      
+
       this.mainWindow.on('closed', () => {
         this.mainWindow = null;
         unregisterIpcHandlers(ipcCustomMainHandlers(this));
       });
-      
+
       // 添加窗口加载完成的监听，确保页面已完全加载
       this.mainWindow.webContents.once('did-finish-load', () => {
         console.log('主窗口页面加载完成');
       });
-      
+
       // 添加页面加载失败的错误处理
-      this.mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription) => {
-        console.error(`主窗口加载失败: ${errorCode} - ${errorDescription}`);
-      });
-      
+      this.mainWindow.webContents.once(
+        'did-fail-load',
+        (event, errorCode, errorDescription) => {
+          console.error(`主窗口加载失败: ${errorCode} - ${errorDescription}`);
+        }
+      );
     } catch (error) {
       console.error('创建主窗口失败:', error);
       // 即使创建失败，也尝试清理资源

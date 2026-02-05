@@ -15,7 +15,7 @@ import DirectoryMonitor from './directory-monitor';
 import VideoProcessor from './video-processor';
 import AudioExtractor from './audio-extractor';
 import AudioProcessor from './audio-processing';
-import PlaywrightScript from './playwright';
+import PlaywrightScript from './new-Kaipai';
 import GuangheTaobao from './guanghe-taobao';
 // import GuangheCes from './guanghe-ces';
 import VideoSceneSplitter from './video-scene-splitter';
@@ -600,26 +600,9 @@ export const ipcCustomMainHandlers = (mainInit: MainInit): IpcHandler[] => {
         //   productIds: ['979356468701', '623789783157', '622457528832'],
         // };
         // return await guangheTaobao.GuangheTaobaoIssue(arr);
-        await guangheTaobao.MoveFile();
-        // console.log('执行s5-task-processor-new');
-
-        // return await s5TaskProcessorNew.executes(
-        //   [
-        //     '\\\\192.168.31.99\\\\影视存储\\\\研发资产\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---3.mp4',
-        //     992989631352,
-        //   ],
-        //   [
-        //     '\\\\192.168.31.99\\\\影视存储\\\\研发资产\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3\\\\S4---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---4.mp4',
-        //     992989631352,
-        //   ]
-        // );
-        // const { filePath } = arg;
-        // console.log(`[guangheCes] 输入视频路径: ${filePath}`);
-        // return await faceRecognition.processVideo(filePath);
-        // const { filePath } = arg;
-        // return await ffmpegUtil.processAndRecodeVideo(
-        //   filePath,
-        //   'C:\\Users\\ASUS\\Downloads\\ces\\fenfa\\S6---1---办公接待沙发会客贵宾新中式会议室大会酒店领导商务洽谈单人位---家居家装---992989631352---j8KvfwA3---2.mp4'
+        // await guangheTaobao.MoveFile();
+        // await playwrightScript.runWatermarkRemoval(
+        //   'C:\\Users\\ASUS\\Downloads\\S1---194---Septree果蔬烘干机食品家用小型宠物零食鸡胸肉风干机食物干果机---生活电器---678426854849---MRamKFo5---4.mp4'
         // );
       },
     },

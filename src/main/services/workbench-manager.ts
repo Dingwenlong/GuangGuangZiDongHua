@@ -194,11 +194,11 @@ const defaultData: WorkbenchConfigStoreSchema = {
   },
   s7: {
     taskDirectory: '',
-    running: true,
+    running: false,
   },
   s8: {
     taskDirectory: '',
-    running: true,
+    running: false,
   },
 };
 
